@@ -104,6 +104,7 @@ model User {
   leaveRequests      LeaveRequest[]
   payrollRecords     PayrollRecord[]
   performanceReviews PerformanceReview[]
+  notifications      Notification[]
 
   createdBy           String?
   updatedBy           String?
@@ -420,6 +421,25 @@ model PerformanceReview {
   @@map("performance_reviews")
 }
 
+// Notification Management
+model Notification {
+  id        String               @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType
+  priority  NotificationPriority @default(MEDIUM)
+  isRead    Boolean              @default(false)
+  data      Json? // Additional data for the notification
+  createdAt DateTime             @default(now())
+  readAt    DateTime?
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@map("notifications")
+}
+
 // Enums
 enum Role {
   ADMIN
@@ -519,6 +539,28 @@ enum ReviewStatus {
   IN_PROGRESS
   COMPLETED
   OVERDUE
+}
+
+enum NotificationType {
+  LEAVE_REQUEST_SUBMITTED
+  LEAVE_REQUEST_APPROVED
+  LEAVE_REQUEST_REJECTED
+  PAYROLL_PROCESSED
+  PERFORMANCE_REVIEW_DUE
+  ATTENDANCE_REMINDER
+  SYSTEM_ANNOUNCEMENT
+  BIRTHDAY_REMINDER
+  WORK_ANNIVERSARY
+  DOCUMENT_EXPIRY
+  TASK_ASSIGNED
+  MEETING_SCHEDULED
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
 //PDF Management

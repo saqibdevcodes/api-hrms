@@ -36,7 +36,8 @@
     "express-validator": "^7.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^8.5.1",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

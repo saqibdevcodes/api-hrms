@@ -4,9 +4,11 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import { createServer } from "http";
 import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
 import router from "./routes";
+import { SocketManager } from "./socket/socketManager";
 
 // Validate environment configuration
 try {
@@ -245,14 +247,23 @@ process.on("unhandledRejection", (reason, promise) => {
   process.exit(1);
 });
 
+// Global socket manager instance
+let socketManager: SocketManager;
+
 // Start server
 const startServer = async () => {
   try {
     // Connect to database
     await DatabaseConnection.connect();
 
+    // Create HTTP server
+    const httpServer = createServer(app);
+
+    // Initialize Socket.IO
+    socketManager = new SocketManager(httpServer);
+
     // Start HTTP server
-    const server = app.listen(config.PORT, () => {
+    httpServer.listen(config.PORT, () => {
       console.log("");
       console.log("🎉 ======================================");
       console.log(`🏢 ${config.COMPANY_NAME} HRMS API`);
@@ -264,6 +275,7 @@ const startServer = async () => {
         `🔗 API Base: http://localhost:${config.PORT}${config.API_PREFIX}`
       );
       console.log(`🏥 Health Check: http://localhost:${config.PORT}/health`);
+      console.log(`🔔 Socket.IO: Notifications enabled`);
       console.log("🎉 ======================================");
       console.log("");
       console.log("📋 Available Demo Credentials:");
@@ -273,7 +285,7 @@ const startServer = async () => {
     });
 
     // Server error handling
-    server.on("error", (error: any) => {
+    httpServer.on("error", (error: any) => {
       if (error.code === "EADDRINUSE") {
         console.error(`❌ Port ${config.PORT} is already in use`);
       } else {
@@ -286,6 +298,9 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Export socket manager for use in controllers
+export const getSocketManager = (): SocketManager => socketManager;
 
 // Initialize server
 startServer();
