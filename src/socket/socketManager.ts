@@ -316,4 +316,22 @@ export class SocketManager {
   public getIo(): Server {
     return this.io;
   }
+
+  // Emit methods for real-time updates
+  public emitToUser(userId: string, event: string, data: any): void {
+    const socketId = this.connectedUsers.get(userId);
+    if (socketId) {
+      this.io.to(socketId).emit(event, data);
+    }
+    // Also emit to user room in case of multiple connections
+    this.io.to(`user:${userId}`).emit(event, data);
+  }
+
+  public emitToRole(role: string, event: string, data: any): void {
+    this.io.to(`role:${role}`).emit(event, data);
+  }
+
+  public emitToAll(event: string, data: any): void {
+    this.io.emit(event, data);
+  }
 }

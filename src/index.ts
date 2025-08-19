@@ -9,6 +9,7 @@ import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
 import router from "./routes";
 import { SocketManager } from "./socket/socketManager";
+import { zktecoService } from "./services/zktecoService";
 
 // Validate environment configuration
 try {
@@ -80,6 +81,22 @@ const globalRateLimit = rateLimit({
 
 app.use(globalRateLimit);
 
+// Raw body parsing for ZKTeco iClock routes
+app.use(
+  "/iclock",
+  express.raw({
+    type: "*/*",
+    limit: "10mb",
+  })
+);
+app.use(
+  "/api/v1/zkteco/iclock",
+  express.raw({
+    type: "*/*",
+    limit: "10mb",
+  })
+);
+
 // Body parsing middleware
 app.use(
   express.json({
@@ -104,6 +121,9 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+// iClock routes at root level for ZKTeco device communication
+app.use("/iclock", require("./routes/zktecoRoutes").default);
 
 // API routes
 app.use(config.API_PREFIX, router);
@@ -276,6 +296,7 @@ const startServer = async () => {
       );
       console.log(`🏥 Health Check: http://localhost:${config.PORT}/health`);
       console.log(`🔔 Socket.IO: Notifications enabled`);
+      console.log(`🏭 ZKTeco: iClock HTTP Server running on port 3001`);
       console.log("🎉 ======================================");
       console.log("");
       console.log("📋 Available Demo Credentials:");

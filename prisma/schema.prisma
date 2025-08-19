@@ -101,6 +101,7 @@ model User {
 
   // Employee-related relations (moved from Employee model)
   attendances        Attendance[]
+  zktecoRecords      ZKTecoAttendanceRecord[]
   leaveRequests      LeaveRequest[]
   payrollRecords     PayrollRecord[]
   performanceReviews PerformanceReview[]
@@ -287,16 +288,27 @@ model Department {
 }
 
 // Attendance Management
+// Enhanced Attendance model to support ZKTeco device data
 model Attendance {
-  id        String           @id @default(cuid())
-  date      DateTime
-  checkIn   DateTime?
-  checkOut  DateTime?
-  status    AttendanceStatus @default(PRESENT)
-  reason    String?
-  notes     String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id       String           @id @default(cuid())
+  date     DateTime         @db.Date // Date only (YYYY-MM-DD)
+  checkIn  DateTime? // First check-in time of the day
+  checkOut DateTime? // Last check-out time of the day
+  status   AttendanceStatus @default(PRESENT)
+  reason   String?
+  notes    String?
+
+  // ZKTeco device integration fields
+  deviceCheckIns  Int       @default(0) // Count of check-ins from device
+  deviceCheckOuts Int       @default(0) // Count of check-outs from device
+  lastDeviceSync  DateTime? // Last time device data was synced
+
+  // Working hours calculation
+  totalHours    Decimal? @db.Decimal(5, 2) // Total working hours for the day
+  overtimeHours Decimal? @db.Decimal(5, 2) // Overtime hours
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   employee              User                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -306,8 +318,53 @@ model Attendance {
   AttendanceDeduction   AttendanceDeduction? @relation(fields: [attendanceDeductionId], references: [id])
   attendanceDeductionId String?
 
+  // Relation to ZKTeco records
+  zktecoRecords ZKTecoAttendanceRecord[]
+
   @@unique([employeeId, date])
   @@map("attendances")
+}
+
+// New model for storing raw ZKTeco device records
+model ZKTecoAttendanceRecord {
+  id String @id @default(cuid())
+
+  // ZKTeco device data
+  employeeId String // User ID from ZKTeco device (e.g., "100074")
+  deviceId   String // Device serial number (e.g., "AF4C211360469")
+  timestamp  DateTime // Exact punch time from device
+  checkType  ZKTecoCheckType // check_in or check_out
+  verifyType Int // 1=Fingerprint, 2=Password, 3=Card, etc.
+  workCode   String? // Work code from device (optional)
+
+  // Processing status
+  processed       Boolean @default(false) // Whether this record has been processed into attendance
+  processingError String? // Error message if processing failed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  User         User?       @relation(fields: [userId], references: [id])
+  userId       String? // Link to actual user (after ID mapping)
+  attendance   Attendance? @relation(fields: [attendanceId], references: [id])
+  attendanceId String? // Link to daily attendance record
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([timestamp])
+  @@index([processed])
+  @@map("zkteco_attendance_records")
+}
+
+// Enum for ZKTeco check types
+enum ZKTecoCheckType {
+  check_in
+  check_out
+  break_out
+  break_in
+  overtime_in
+  overtime_out
 }
 
 model AttendanceReason {

@@ -10,6 +10,8 @@ import leavePolicyRoutes from "./leavePolicyRoutes";
 import employeeLeaveRoutes from "./employeeLeaveRoutes";
 import leaveRequestRoutes from "./leaveRequestRoutes";
 import notificationRoutes from "./notificationRoutes";
+import offDaysRoutes from "./offDays";
+import zktecoRoutes from "./zktecoRoutes";
 import { authenticate, adminOnly, hrAndAdmin } from "../middleware/auth";
 import { AuthenticatedRequest } from "../types/auth";
 
@@ -47,6 +49,12 @@ router.use("/leave-requests", leaveRequestRoutes);
 
 // Notification management routes (protected)
 router.use("/notifications", notificationRoutes);
+
+// Off days management routes (protected)
+router.use("/off-days", offDaysRoutes);
+
+// ZKTeco device management routes (protected)
+router.use("/zkteco", zktecoRoutes);
 
 // Example protected routes (for demonstration)
 /**
