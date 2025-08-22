@@ -182,7 +182,16 @@ export class ShiftController {
         });
       }
 
-      const { name, startTime, endTime, breakTime, isActive } = req.body;
+      const {
+        name,
+        startTime,
+        endTime,
+        earlyOut,
+        halfDayStart,
+        fullDayStart,
+        breakTime,
+        isActive,
+      } = req.body;
 
       const shift = await prisma.shift.findUnique({
         where: { id },
@@ -201,6 +210,9 @@ export class ShiftController {
           name,
           startTime: new Date(startTime),
           endTime: new Date(endTime),
+          earlyOut: new Date(earlyOut),
+          halfDayStart: new Date(halfDayStart),
+          fullDayStart: new Date(fullDayStart),
           breakTime: breakTime ? parseInt(breakTime) : null,
           isActive,
         },

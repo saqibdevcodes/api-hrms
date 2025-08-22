@@ -150,9 +150,12 @@ async function main() {
     update: {},
     create: {
       name: "Morning Shift",
-      startTime: new Date("2024-01-01T09:00:00Z"),
-      endTime: new Date("2024-01-01T17:00:00Z"),
-      breakTime: 60,
+      startTime: new Date("2024-01-01T09:30:00Z"), // 09:30 AM
+      endTime: new Date("2024-01-01T18:00:00Z"), // 06:00 PM
+      breakTime: 60, // 60 minutes break
+      halfDayStart: new Date("2024-01-01T11:00:00Z"), // 11:00 AM - Half Day Start
+      fullDayStart: new Date("2024-01-01T13:00:00Z"), // 01:00 PM - Full Day Start
+      earlyOut: new Date("2024-01-01T17:00:00Z"), // 05:00 PM - Early Out
       isActive: true,
     },
   });
@@ -332,6 +335,41 @@ async function main() {
   });
 
   console.log("✅ Database seeded successfully!");
+  // Create employee leave records for testing progressive deductions
+  console.log("Creating employee leave records...");
+
+  await prisma.employeeLeave.upsert({
+    where: { userId: adminUser.id },
+    update: {},
+    create: {
+      userId: adminUser.id,
+      annualLeaves: 21,
+      sickLeaves: 10,
+      casualLeaves: 5, // This will be deducted when 2 half days = 1 full day
+      compensatoryLeaves: 0,
+      maternityLeaves: 0,
+      paternityLeaves: 0,
+      leavePolicyId: standardLeavePolicy.id,
+      datetime: new Date(),
+    },
+  });
+
+  await prisma.employeeLeave.upsert({
+    where: { userId: hrUser.id },
+    update: {},
+    create: {
+      userId: hrUser.id,
+      annualLeaves: 21,
+      sickLeaves: 10,
+      casualLeaves: 5,
+      compensatoryLeaves: 0,
+      maternityLeaves: 0,
+      paternityLeaves: 0,
+      leavePolicyId: standardLeavePolicy.id,
+      datetime: new Date(),
+    },
+  });
+
   console.log(`📊 Created:`);
   console.log(`   - ${5} Employment Types`);
   console.log(`   - ${2} Departments`);
@@ -341,6 +379,7 @@ async function main() {
   console.log(`   - ${1} Leave Policy`);
   console.log(`   - ${2} Emergency Contacts`);
   console.log(`   - ${2} Users/Employees`);
+  console.log(`   - ${2} Employee Leave Records`);
 
   console.log("\n👤 Demo Accounts:");
   console.log("   Admin: admin@iris-communications.com / admin123");

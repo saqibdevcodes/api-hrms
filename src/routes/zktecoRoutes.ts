@@ -83,6 +83,61 @@ router.get(
   validateRequest,
   ZKTecoController.getAttendanceStats
 );
+router.get(
+  "/attendance/fetch-all-from-machine",
+  authenticate,
+  ZKTecoController.fetchAllAttendanceFromMachine
+);
+router.get(
+  "/attendance/zkteco-records",
+  authenticate,
+  ZKTecoController.getAllZKTecoRecords
+);
+router.get(
+  "/attendance/export",
+  authenticate,
+  ZKTecoController.exportAttendanceData
+);
+router.post(
+  "/employees/create-from-zkteco",
+  authenticate,
+  ZKTecoController.createEmployeeFromZKTeco
+);
+
+// Get employee deduction history
+router.get(
+  "/employees/:employeeId/deduction-history",
+  authenticate,
+  ZKTecoController.getEmployeeDeductionHistory
+);
+
+// Get employee leave balance
+router.get(
+  "/employees/:employeeId/leave-balance",
+  authenticate,
+  ZKTecoController.getEmployeeLeaveBalance
+);
+
+// Debug attendance records for a specific date
+router.get(
+  "/employees/:employeeId/debug-attendance/:date",
+  authenticate,
+  ZKTecoController.debugAttendanceRecords
+);
+
+// Fix attendance records for a specific date
+router.post(
+  "/employees/:employeeId/fix-attendance/:date",
+  authenticate,
+  ZKTecoController.fixAttendanceRecords
+);
+
+// Validate records for deduction
+router.post(
+  "/attendance/validate-records",
+  authenticate,
+  ZKTecoController.validateRecordsForDeduction
+);
 
 // Device Operations Routes
 router.post(
@@ -100,10 +155,12 @@ router.post(
 router.get("/getrequest", ZKTecoController.handleIClockGetRequest);
 router.post("/ping", ZKTecoController.handleIClockPing);
 router.post("/cdata", ZKTecoController.handleIClockCData);
+router.post("/fdata", ZKTecoController.handleIClockFData); // Add face data handler
 
 // API versions for manual calls (/api/v1/zkteco/iclock/path)
 router.get("/iclock/getrequest", ZKTecoController.handleIClockGetRequest);
 router.post("/iclock/ping", ZKTecoController.handleIClockPing);
 router.post("/iclock/cdata", ZKTecoController.handleIClockCData);
+router.post("/iclock/fdata", ZKTecoController.handleIClockFData); // Add face data handler
 
 export default router;

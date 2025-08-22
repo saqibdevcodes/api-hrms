@@ -45,10 +45,15 @@ export class SocketManager {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        console.log("🔓 JWT decoded payload:", {
+          userId: decoded.userId,
+          email: decoded.email,
+          role: decoded.role,
+        });
 
         // Fetch user details from database
         const user = await prisma.user.findUnique({
-          where: { id: decoded.id },
+          where: { id: decoded.userId },
           select: {
             id: true,
             email: true,
@@ -64,10 +69,19 @@ export class SocketManager {
         }
 
         socket.user = user;
+        console.log(
+          `✅ Socket authenticated for user: ${user.email} (${user.role})`
+        );
         next();
       } catch (error) {
         console.error("Socket authentication error:", error);
-        next(new Error("Invalid authentication token"));
+        if (error instanceof jwt.JsonWebTokenError) {
+          next(new Error("Invalid JWT token"));
+        } else if (error instanceof jwt.TokenExpiredError) {
+          next(new Error("JWT token expired"));
+        } else {
+          next(new Error("Authentication failed"));
+        }
       }
     });
   }

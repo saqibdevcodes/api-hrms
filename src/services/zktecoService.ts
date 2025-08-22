@@ -15,6 +15,9 @@ export interface ZKTecoDevice {
   serialNumber?: string;
   model?: string;
   isActive: boolean;
+  status?: "online" | "offline";
+  lastSeen?: Date;
+  info?: any;
 }
 
 export interface AttendanceData {
@@ -493,6 +496,44 @@ export class ZKTecoService {
   }
 
   /**
+   * Get detailed device information from the device
+   */
+  async getDeviceInfo(deviceId: string): Promise<any> {
+    try {
+      const device = this.devices.get(deviceId);
+      if (!device) {
+        throw new Error(`Device ${deviceId} not found`);
+      }
+
+      // Try to get device info via HTTP (if supported)
+      const response = await this.httpClient.get(
+        `http://${device.ip}:${device.port}/cgi-bin/getdeviceinfo.cgi`,
+        {
+          params: { password: device.password || "888888" },
+          timeout: 5000,
+        }
+      );
+
+      if (response.data) {
+        return {
+          model: response.data.deviceName || device.model,
+          firmwareVersion: response.data.firmwareVersion,
+          deviceTime: response.data.deviceTime,
+          ...response.data,
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.log(
+        `Could not fetch device info for ${deviceId}:`,
+        (error as Error).message
+      );
+      return null;
+    }
+  }
+
+  /**
    * Get all registered devices
    */
   getDevices(): ZKTecoDevice[] {
@@ -608,14 +649,81 @@ export class ZKTecoService {
   async handleIClockGetRequest(sn: string): Promise<string> {
     console.log(`Device ${sn} requesting commands`);
 
-    // Update device status
+    // Update device status and sync details automatically
     if (sn) {
-      // You can update device status in database here
-      console.log(`Device ${sn} is online`);
+      try {
+        await this.autoSyncDeviceDetails(sn);
+        console.log(
+          `🔍 Device ${sn} is online - waiting for attendance data...`
+        );
+        console.log(
+          `📡 Device should push to: http://192.168.2.85:3001/api/v1/zkteco/iclock/`
+        );
+        console.log(
+          `💡 Check device configuration: ADMS Server = 192.168.2.85, Port = 3001`
+        );
+      } catch (error) {
+        console.error(`Error auto-syncing device ${sn}:`, error);
+      }
     }
 
     // Return OK (no commands to send)
     return "OK";
+  }
+
+  /**
+   * Auto-sync device details when device connects
+   */
+  private async autoSyncDeviceDetails(sn: string): Promise<void> {
+    try {
+      console.log(`🔄 Auto-syncing device details for ${sn}...`);
+
+      // Check if device exists in our in-memory storage
+      const existingDevice = this.devices.get(sn);
+
+      if (existingDevice) {
+        // Update device status and last seen
+        existingDevice.status = "online";
+        existingDevice.lastSeen = new Date();
+        this.devices.set(sn, existingDevice);
+        console.log(`✅ Device ${sn} status updated to online`);
+      } else {
+        // Create new device record if not exists
+        const newDevice: ZKTecoDevice = {
+          id: `device_${sn}`,
+          name: `ZKTeco Device ${sn}`,
+          serialNumber: sn,
+          status: "online",
+          lastSeen: new Date(),
+          model: "UFace 800",
+          ip: "192.168.2.202", // Default IP, can be updated later
+          port: 4370,
+          password: "",
+          isActive: true,
+        };
+        this.devices.set(sn, newDevice);
+        console.log(`✅ New device ${sn} created in memory`);
+      }
+
+      // Try to fetch additional device info if possible
+      try {
+        const deviceInfo = await this.getDeviceInfo(sn);
+        if (deviceInfo && existingDevice) {
+          existingDevice.model = deviceInfo.model || existingDevice.model;
+          existingDevice.info = deviceInfo;
+          this.devices.set(sn, existingDevice);
+          console.log(`✅ Device ${sn} info updated`);
+        }
+      } catch (infoError) {
+        console.log(
+          `ℹ️ Could not fetch detailed info for device ${sn}:`,
+          (infoError as Error).message
+        );
+      }
+    } catch (error) {
+      console.error(`❌ Error auto-syncing device ${sn}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -626,7 +734,19 @@ export class ZKTecoService {
 
     // Update device status
     if (sn) {
-      console.log(`Device ${sn} heartbeat received`);
+      try {
+        // Update last seen timestamp in memory
+        const device = this.devices.get(sn);
+
+        if (device) {
+          device.lastSeen = new Date();
+          device.status = "online";
+          this.devices.set(sn, device);
+          console.log(`💓 Device ${sn} heartbeat - status updated`);
+        }
+      } catch (error) {
+        console.error(`Error updating device ${sn} heartbeat:`, error);
+      }
     }
 
     return "OK";
@@ -643,6 +763,9 @@ export class ZKTecoService {
     console.log(`Device ${sn} uploading ${table} data`);
 
     try {
+      // Auto-sync device status when data is received
+      await this.autoSyncDeviceDetails(sn);
+
       if (table === "ATTLOG") {
         await this.processIClockAttendanceData(sn, postData);
       } else if (table === "USER") {
@@ -726,6 +849,14 @@ export class ZKTecoService {
               verifyType: parseInt(verify),
             };
 
+            console.log(`🔄 Processing attendance record:`, {
+              employeeId: attendanceData.employeeId,
+              timestamp: attendanceData.timestamp.toISOString(),
+              checkType: attendanceData.checkType,
+              deviceId: attendanceData.deviceId,
+              verifyType: attendanceData.verifyType,
+            });
+
             // Process the attendance data (this will save to DB and emit live updates)
             await this.processZKTecoAttendanceData(
               attendanceData,
@@ -743,10 +874,11 @@ export class ZKTecoService {
       }
 
       console.log(
-        `Processed ${recordsProcessed} attendance records from ${deviceSn}`
+        `✅ Processed ${recordsProcessed} attendance records from ${deviceSn}`
       );
+      console.log(`📊 Processing completed at: ${new Date().toISOString()}`);
     } catch (error) {
-      console.error("Error processing iClock attendance data:", error);
+      console.error("❌ Error processing iClock attendance data:", error);
       throw error;
     }
   }
@@ -764,6 +896,732 @@ export class ZKTecoService {
   }
 
   /**
+   * Handle progressive deductions and update employee leaves
+   * 3 LATE = 1 HALF_DAY_LEAVE deduction
+   * 2 HALF_DAY_LEAVE = 1 FULL_DAY_LEAVE deduction (from casual leaves)
+   */
+  private async handleProgressiveDeductions(
+    employeeId: string,
+    attendanceId: string
+  ): Promise<void> {
+    try {
+      // Get recent statuses that haven't been used for deductions (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const unusedLateRecords = await prisma.zKTecoAttendanceRecord.findMany({
+        where: {
+          userId: employeeId,
+          timestamp: { gte: thirtyDaysAgo },
+          overallStatus: "LATE",
+          usedForDeduction: false, // Only get records not used for deductions
+        },
+        select: { id: true, timestamp: true, overallStatus: true },
+        orderBy: { timestamp: "asc" },
+      });
+
+      const unusedHalfDayRecords = await prisma.zKTecoAttendanceRecord.findMany(
+        {
+          where: {
+            userId: employeeId,
+            timestamp: { gte: thirtyDaysAgo },
+            overallStatus: "HALF_DAY_LEAVE",
+            usedForDeduction: false, // Only get records not used for deductions
+          },
+          select: { id: true, timestamp: true, overallStatus: true },
+          orderBy: { timestamp: "asc" },
+        }
+      );
+
+      console.log(
+        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}`
+      );
+
+      // Check for 3 LATE = 1 HALF_DAY_LEAVE deduction
+      if (unusedLateRecords.length >= 3) {
+        // Take the first 3 unused late records
+        const recordsToUse = unusedLateRecords.slice(0, 3);
+        const recordIds = recordsToUse.map((r) => r.id);
+
+        await this.createAttendanceDeduction(
+          attendanceId,
+          "3 Late arrivals converted to Half Day Leave deduction",
+          0.5, // Half day
+          employeeId,
+          recordIds,
+          "LATE_TO_HALF_DAY"
+        );
+
+        // Mark these records as used for deduction
+        await this.markRecordsAsUsedForDeduction(recordIds);
+
+        // Deduct from leave policy
+        await this.deductFromLeavePolicy(employeeId, 0.5, "LATE_TO_HALF_DAY");
+
+        console.log(
+          `⚠️ Applied Half Day deduction for 3 late arrivals to employee ${employeeId}. Records: ${recordIds.join(
+            ", "
+          )}`
+        );
+      }
+
+      // Check for 2 HALF_DAY_LEAVE = 1 FULL_DAY_LEAVE deduction
+      if (unusedHalfDayRecords.length >= 2) {
+        // Take the first 2 unused half day records
+        const recordsToUse = unusedHalfDayRecords.slice(0, 2);
+        const recordIds = recordsToUse.map((r) => r.id);
+
+        await this.createAttendanceDeduction(
+          attendanceId,
+          "2 Half Day leaves converted to Full Day Leave deduction",
+          1.0, // Full day
+          employeeId,
+          recordIds,
+          "HALF_DAY_TO_FULL_DAY"
+        );
+
+        // Mark these records as used for deduction
+        await this.markRecordsAsUsedForDeduction(recordIds);
+
+        // Deduct from leave policy
+        await this.deductFromLeavePolicy(employeeId, 1, "HALF_DAY_TO_FULL_DAY");
+
+        console.log(
+          `⚠️ Applied Full Day deduction and deducted from casual leaves for employee ${employeeId}. Records: ${recordIds.join(
+            ", "
+          )}`
+        );
+      }
+    } catch (error) {
+      console.error("Error handling progressive deductions:", error);
+    }
+  }
+
+  /**
+   * Create an attendance deduction record with tracking
+   */
+  private async createAttendanceDeduction(
+    attendanceId: string,
+    reason: string,
+    deductValue: number,
+    employeeId: string,
+    zktecoRecordIds: string[],
+    deductionType: string
+  ): Promise<void> {
+    // Get employee's leave record ID
+    const employeeLeave = await prisma.employeeLeave.findUnique({
+      where: { userId: employeeId },
+    });
+
+    await prisma.attendanceDeduction.create({
+      data: {
+        attendanceId,
+        deductionReason: reason,
+        deductValue,
+        leaveId: employeeLeave?.id || null,
+        datetime: new Date(),
+        zktecoRecordIds: JSON.stringify(zktecoRecordIds), // Store which records triggered this
+        deductionType,
+      },
+    });
+  }
+
+  /**
+   * Mark ZKTeco records as used for deduction to prevent duplicate processing
+   */
+  private async markRecordsAsUsedForDeduction(
+    recordIds: string[]
+  ): Promise<void> {
+    await prisma.zKTecoAttendanceRecord.updateMany({
+      where: {
+        id: { in: recordIds },
+      },
+      data: {
+        usedForDeduction: true,
+        deductionAppliedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Deduct from employee's leave policy based on attendance violation type
+   */
+  private async deductFromLeavePolicy(
+    employeeId: string,
+    daysToDeduct: number,
+    violationType: "LATE_TO_HALF_DAY" | "HALF_DAY_TO_FULL_DAY"
+  ): Promise<void> {
+    try {
+      // Get employee's leave policy and current balances
+      const employeeLeave = await prisma.employeeLeave.findUnique({
+        where: { userId: employeeId },
+        include: {
+          user: {
+            include: {
+              leavePolicy: true, // Include the assigned leave policy
+            },
+          },
+        },
+      });
+
+      if (!employeeLeave) {
+        console.warn(
+          `❌ No employee leave record found for user ${employeeId}`
+        );
+        return;
+      }
+
+      if (!employeeLeave.user.leavePolicy) {
+        console.warn(`❌ No leave policy assigned to user ${employeeId}`);
+        return;
+      }
+
+      const leavePolicy = employeeLeave.user.leavePolicy;
+      console.log(`📋 Leave policy for ${employeeId}: ${leavePolicy.name}`);
+
+      // Determine which leave category to deduct from based on violation type
+      let leaveCategory: string = "";
+      let currentBalance: number = 0;
+      let newBalance: number = 0;
+
+      if (violationType === "LATE_TO_HALF_DAY") {
+        // For 3 LATE = 0.5 day deduction, prefer casual leaves first
+        if (employeeLeave.casualLeaves >= daysToDeduct) {
+          leaveCategory = "casualLeaves";
+          currentBalance = employeeLeave.casualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { casualLeaves: newBalance },
+          });
+        } else if (employeeLeave.annualLeaves >= daysToDeduct) {
+          // Fallback to annual leaves if casual leaves insufficient
+          leaveCategory = "annualLeaves";
+          currentBalance = employeeLeave.annualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { annualLeaves: newBalance },
+          });
+        } else {
+          console.warn(
+            `⚠️ Insufficient leave balance for deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`
+          );
+          return;
+        }
+      } else if (violationType === "HALF_DAY_TO_FULL_DAY") {
+        // For 2 HALF_DAY_LEAVE = 1 day deduction, prefer annual leaves
+        if (employeeLeave.annualLeaves >= daysToDeduct) {
+          leaveCategory = "annualLeaves";
+          currentBalance = employeeLeave.annualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { annualLeaves: newBalance },
+          });
+        } else if (employeeLeave.casualLeaves >= daysToDeduct) {
+          // Fallback to casual leaves if annual leaves insufficient
+          leaveCategory = "casualLeaves";
+          currentBalance = employeeLeave.casualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { casualLeaves: newBalance },
+          });
+        } else {
+          console.warn(
+            `⚠️ Insufficient leave balance for deduction. Annual: ${employeeLeave.annualLeaves}, Casual: ${employeeLeave.casualLeaves}`
+          );
+          return;
+        }
+      }
+
+      console.log(
+        `📉 Deducted ${daysToDeduct} day(s) from ${leaveCategory}. Old balance: ${currentBalance}, New balance: ${newBalance}`
+      );
+
+      // Log the deduction details for audit
+      console.log(
+        `📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`
+      );
+
+      // Also log the updated leave balance summary
+      const updatedBalance = await prisma.employeeLeave.findUnique({
+        where: { userId: employeeId },
+        select: {
+          annualLeaves: true,
+          casualLeaves: true,
+          sickLeaves: true,
+        },
+      });
+
+      if (updatedBalance) {
+        console.log(
+          `📊 Updated leave balance for ${employeeId}: Annual: ${updatedBalance.annualLeaves}, Casual: ${updatedBalance.casualLeaves}, Sick: ${updatedBalance.sickLeaves}`
+        );
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error deducting from leave policy for user ${employeeId}:`,
+        error
+      );
+    }
+  }
+
+  /**
+   * Debug function: Check attendance records for a specific employee and date
+   */
+  public async debugAttendanceRecords(
+    employeeId: string,
+    date: string
+  ): Promise<any> {
+    try {
+      const targetDate = new Date(date);
+      const dateOnly = new Date(
+        Date.UTC(
+          targetDate.getUTCFullYear(),
+          targetDate.getUTCMonth(),
+          targetDate.getUTCDate()
+        )
+      );
+
+      console.log(
+        `🔍 Debug: Searching for attendance on ${dateOnly.toISOString()}`
+      );
+
+      // Get attendance record
+      const attendance = await prisma.attendance.findFirst({
+        where: {
+          employeeId: employeeId,
+          date: dateOnly,
+        },
+      });
+
+      // Get all ZKTeco records for this employee on this date
+      const zktecoRecords = await prisma.zKTecoAttendanceRecord.findMany({
+        where: {
+          userId: employeeId,
+          timestamp: {
+            gte: dateOnly,
+            lt: new Date(dateOnly.getTime() + 24 * 60 * 60 * 1000),
+          },
+        },
+        orderBy: {
+          timestamp: "asc",
+        },
+      });
+
+      return {
+        date: dateOnly.toISOString(),
+        attendance: attendance
+          ? {
+              id: attendance.id,
+              date: attendance.date?.toISOString(),
+              checkIn: attendance.checkIn?.toISOString(),
+              checkOut: attendance.checkOut?.toISOString(),
+              deviceCheckIns: attendance.deviceCheckIns,
+              deviceCheckOuts: attendance.deviceCheckOuts,
+              totalHours: attendance.totalHours,
+            }
+          : null,
+        zktecoRecords: zktecoRecords.map((record) => ({
+          id: record.id,
+          timestamp: record.timestamp.toISOString(),
+          checkType: record.checkType,
+          overallStatus: record.overallStatus,
+          processed: record.processed,
+          processingError: record.processingError,
+        })),
+        summary: {
+          totalRecords: zktecoRecords.length,
+          checkIns: zktecoRecords.filter((r) => r.checkType === "check_in")
+            .length,
+          checkOuts: zktecoRecords.filter((r) => r.checkType === "check_out")
+            .length,
+          processed: zktecoRecords.filter((r) => r.processed).length,
+          errors: zktecoRecords.filter((r) => r.processingError).length,
+        },
+      };
+    } catch (error) {
+      console.error(`❌ Error debugging attendance records:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Fix attendance records by processing unprocessed ZKTeco records
+   */
+  public async fixAttendanceRecords(
+    employeeId: string,
+    date: string
+  ): Promise<any> {
+    try {
+      const targetDate = new Date(date);
+      const dateOnly = new Date(
+        Date.UTC(
+          targetDate.getUTCFullYear(),
+          targetDate.getUTCMonth(),
+          targetDate.getUTCDate()
+        )
+      );
+
+      console.log(
+        `🔧 Fix: Processing attendance for ${employeeId} on ${dateOnly.toISOString()}`
+      );
+
+      // Get all unprocessed ZKTeco records for this employee on this date
+      const unprocessedRecords = await prisma.zKTecoAttendanceRecord.findMany({
+        where: {
+          userId: employeeId,
+          processed: false,
+          timestamp: {
+            gte: dateOnly,
+            lt: new Date(dateOnly.getTime() + 24 * 60 * 60 * 1000),
+          },
+        },
+        orderBy: {
+          timestamp: "asc",
+        },
+      });
+
+      console.log(`🔧 Found ${unprocessedRecords.length} unprocessed records`);
+
+      let fixedCount = 0;
+      for (const record of unprocessedRecords) {
+        try {
+          // Process each unprocessed record
+          const attendanceData = {
+            employeeId: record.employeeId || "",
+            timestamp: record.timestamp,
+            checkType: record.checkType as "check_in" | "check_out",
+            deviceId: record.deviceId,
+            verifyType: record.verifyType,
+            workCode: record.workCode,
+          };
+
+          const result = await this.processZKTecoAttendanceData(
+            attendanceData,
+            record.deviceId
+          );
+          if (result) {
+            fixedCount++;
+            console.log(`✅ Fixed record ${record.id}`);
+          }
+        } catch (error) {
+          console.error(`❌ Error fixing record ${record.id}:`, error);
+        }
+      }
+
+      // Get updated attendance record
+      const updatedAttendance = await prisma.attendance.findFirst({
+        where: {
+          employeeId: employeeId,
+          date: dateOnly,
+        },
+      });
+
+      return {
+        date: dateOnly.toISOString(),
+        processedRecords: fixedCount,
+        totalUnprocessed: unprocessedRecords.length,
+        updatedAttendance: updatedAttendance
+          ? {
+              id: updatedAttendance.id,
+              checkIn: updatedAttendance.checkIn?.toISOString(),
+              checkOut: updatedAttendance.checkOut?.toISOString(),
+              deviceCheckIns: updatedAttendance.deviceCheckIns,
+              deviceCheckOuts: updatedAttendance.deviceCheckOuts,
+              totalHours: updatedAttendance.totalHours,
+            }
+          : null,
+      };
+    } catch (error) {
+      console.error(`❌ Error fixing attendance records:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get employee's current leave balance summary
+   */
+  public async getEmployeeLeaveBalance(employeeId: string): Promise<any> {
+    try {
+      const employeeLeave = await prisma.employeeLeave.findUnique({
+        where: { userId: employeeId },
+        include: {
+          user: {
+            include: {
+              leavePolicy: true,
+            },
+          },
+        },
+      });
+
+      if (!employeeLeave) {
+        return null;
+      }
+
+      return {
+        employeeId,
+        employeeName: `${employeeLeave.user.firstName} ${employeeLeave.user.lastName}`,
+        leavePolicy:
+          employeeLeave.user.leavePolicy?.name || "No Policy Assigned",
+        currentBalance: {
+          annualLeaves: employeeLeave.annualLeaves,
+          casualLeaves: employeeLeave.casualLeaves,
+          sickLeaves: employeeLeave.sickLeaves,
+          compensatoryLeaves: employeeLeave.compensatoryLeaves,
+          maternityLeaves: employeeLeave.maternityLeaves,
+          paternityLeaves: employeeLeave.paternityLeaves,
+        },
+        policyLimits: employeeLeave.user.leavePolicy
+          ? {
+              annualLeaves: employeeLeave.user.leavePolicy.annualLeaves,
+              casualLeaves: employeeLeave.user.leavePolicy.casualLeaves,
+              sickLeaves: employeeLeave.user.leavePolicy.sickLeaves,
+            }
+          : null,
+      };
+    } catch (error) {
+      console.error(
+        `❌ Error getting leave balance for user ${employeeId}:`,
+        error
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Get deduction history for an employee with details of which records triggered deductions
+   */
+  public async getEmployeeDeductionHistory(employeeId: string): Promise<any[]> {
+    const deductions = await prisma.attendanceDeduction.findMany({
+      where: {
+        attendance: {
+          some: {
+            employeeId: employeeId,
+          },
+        },
+      },
+      orderBy: {
+        datetime: "desc",
+      },
+    });
+
+    // Enhance with ZKTeco record details
+    const enhancedDeductions = await Promise.all(
+      deductions.map(async (deduction) => {
+        let triggeringRecords: any[] = [];
+
+        if (deduction.zktecoRecordIds) {
+          try {
+            const recordIds = JSON.parse(deduction.zktecoRecordIds);
+            triggeringRecords = await prisma.zKTecoAttendanceRecord.findMany({
+              where: {
+                id: { in: recordIds },
+              },
+              select: {
+                id: true,
+                timestamp: true,
+                overallStatus: true,
+                checkType: true,
+              },
+            });
+          } catch (error) {
+            console.error("Error parsing zktecoRecordIds:", error);
+          }
+        }
+
+        return {
+          ...deduction,
+          triggeringRecords,
+        };
+      })
+    );
+
+    return enhancedDeductions;
+  }
+
+  /**
+   * Validate if specific records have already been used for deductions
+   */
+  public async validateRecordsForDeduction(recordIds: string[]): Promise<{
+    canUse: boolean;
+    alreadyUsed: string[];
+    available: string[];
+  }> {
+    const records = await prisma.zKTecoAttendanceRecord.findMany({
+      where: {
+        id: { in: recordIds },
+      },
+      select: {
+        id: true,
+        usedForDeduction: true,
+        deductionAppliedAt: true,
+        overallStatus: true,
+      },
+    });
+
+    const alreadyUsed = records
+      .filter((r) => r.usedForDeduction)
+      .map((r) => r.id);
+    const available = records
+      .filter((r) => !r.usedForDeduction)
+      .map((r) => r.id);
+
+    return {
+      canUse: alreadyUsed.length === 0,
+      alreadyUsed,
+      available,
+    };
+  }
+
+  /**
+   * Calculate precise attendance status based on shift timing rules
+   */
+  private calculatePreciseAttendanceStatus(
+    checkType: string,
+    timestamp: Date,
+    shift: any
+  ): string | null {
+    if (!shift) return null;
+
+    const checkTime = new Date(timestamp);
+    const attendanceDate = new Date(timestamp);
+
+    // Extract times from shift (these are stored as full DateTime in DB)
+    const shiftStart = new Date(shift.startTime); // st (start time)
+    const halfDayStart = shift.halfDayStart
+      ? new Date(shift.halfDayStart)
+      : null; // hfs
+    const fullDayStart = shift.fullDayStart
+      ? new Date(shift.fullDayStart)
+      : null; // fds
+    const earlyOut = shift.earlyOut ? new Date(shift.earlyOut) : null; // eo
+    const shiftEnd = new Date(shift.endTime); // et (end time)
+
+    // Create today's shift times by copying time from shift to attendance date
+    const todayShiftStart = new Date(attendanceDate);
+    todayShiftStart.setHours(
+      shiftStart.getHours(),
+      shiftStart.getMinutes(),
+      0,
+      0
+    );
+
+    const todayHalfDayStart = halfDayStart ? new Date(attendanceDate) : null;
+    if (todayHalfDayStart && halfDayStart) {
+      todayHalfDayStart.setHours(
+        halfDayStart.getHours(),
+        halfDayStart.getMinutes(),
+        0,
+        0
+      );
+    }
+
+    const todayFullDayStart = fullDayStart ? new Date(attendanceDate) : null;
+    if (todayFullDayStart && fullDayStart) {
+      todayFullDayStart.setHours(
+        fullDayStart.getHours(),
+        fullDayStart.getMinutes(),
+        0,
+        0
+      );
+    }
+
+    const todayEarlyOut = earlyOut ? new Date(attendanceDate) : null;
+    if (todayEarlyOut && earlyOut) {
+      todayEarlyOut.setHours(earlyOut.getHours(), earlyOut.getMinutes(), 0, 0);
+    }
+
+    const todayShiftEnd = new Date(attendanceDate);
+    todayShiftEnd.setHours(shiftEnd.getHours(), shiftEnd.getMinutes(), 0, 0);
+
+    if (checkType === "check_in") {
+      const toa = checkTime; // Time of arrival
+
+      // On time arrival = toa < st
+      if (toa < todayShiftStart) {
+        return "ON_TIME_ARRIVAL";
+      }
+
+      // late = toa >= st && < hfs
+      if (
+        todayHalfDayStart &&
+        toa >= todayShiftStart &&
+        toa < todayHalfDayStart
+      ) {
+        return "LATE";
+      }
+
+      // half day leave = toa >= hfs && < fds (on basis of toa)
+      if (
+        todayHalfDayStart &&
+        todayFullDayStart &&
+        toa >= todayHalfDayStart &&
+        toa < todayFullDayStart
+      ) {
+        return "HALF_DAY_LEAVE";
+      }
+
+      // full day leave = toa >= fds (on basis of toa) - will be validated with checkout time
+      if (todayFullDayStart && toa >= todayFullDayStart) {
+        // This is a potential FULL_DAY_LEAVE, but we need to check checkout time
+        // The final status will be determined in the main processing logic
+        return "FULL_DAY_LEAVE_POTENTIAL";
+      }
+
+      // If no half day or full day start times defined, just check late
+      if (!todayHalfDayStart && toa >= todayShiftStart) {
+        return "LATE";
+      }
+    } else if (checkType === "check_out") {
+      const tol = checkTime; // Time of leave
+
+      // half day leave = tol >= fds && < eo (on basis of tol)
+      if (
+        todayFullDayStart &&
+        todayEarlyOut &&
+        tol >= todayFullDayStart &&
+        tol < todayEarlyOut
+      ) {
+        return "HALF_DAY_LEAVE";
+      }
+
+      // full day leave = tol < fds && > st (on basis of tol) - updated rule
+      if (
+        todayFullDayStart &&
+        todayShiftStart &&
+        tol < todayFullDayStart &&
+        tol > todayShiftStart
+      ) {
+        return "FULL_DAY_LEAVE";
+      }
+
+      // early out = tol < eo
+      if (todayEarlyOut && tol < todayEarlyOut) {
+        return "EARLY_OUT";
+      }
+
+      // On time leave = tol >= eo (normal end time or later)
+      if (todayEarlyOut && tol >= todayEarlyOut) {
+        return "ON_TIME_LEAVE";
+      }
+
+      // If no early out time defined, check against shift end
+      if (!todayEarlyOut && tol >= todayShiftEnd) {
+        return "ON_TIME_LEAVE";
+      }
+    }
+
+    return null; // No specific status determined
+  }
+
+  /**
    * Enhanced process attendance data with ZKTeco validation and new schema
    */
   public async processZKTecoAttendanceData(
@@ -773,7 +1631,7 @@ export class ZKTecoService {
     try {
       console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
 
-      // Step 1: Save raw ZKTeco record first
+      // Step 1: Save raw ZKTeco record first (without status calculation initially)
       const zktecoRecord = await prisma.zKTecoAttendanceRecord.create({
         data: {
           employeeId: attendanceData.employeeId,
@@ -788,13 +1646,16 @@ export class ZKTecoService {
 
       console.log(`📝 Raw ZKTeco record saved with ID: ${zktecoRecord.id}`);
 
-      // Step 2: Find employee by employeeId (ZKTeco internal ID)
+      // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
       const employee = await prisma.user.findFirst({
         where: {
           OR: [
             { employeeId: attendanceData.employeeId },
             { id: attendanceData.employeeId },
           ],
+        },
+        include: {
+          shift: true, // Include shift data for status calculation
         },
       });
 
@@ -803,6 +1664,7 @@ export class ZKTecoService {
           where: { id: zktecoRecord.id },
           data: {
             processingError: `Employee not found for ID: ${attendanceData.employeeId}`,
+            overallStatus: "ABSENT", // Mark as absent if employee not found
           },
         });
         console.warn(
@@ -811,15 +1673,273 @@ export class ZKTecoService {
         return false;
       }
 
-      // Step 3: Link the record to the user
+      // Step 3: Calculate precise attendance status based on shift rules
+      let calculatedStatus = this.calculatePreciseAttendanceStatus(
+        attendanceData.checkType,
+        attendanceData.timestamp,
+        employee.shift
+      );
+
+      // Special handling for FULL_DAY_LEAVE_POTENTIAL from check-in
+      if (calculatedStatus === "FULL_DAY_LEAVE_POTENTIAL") {
+        // Check if this is a check-in with potential for FULL_DAY_LEAVE
+        // We need to see if there's a corresponding check-out that meets the criteria
+        console.log(`🔍 Check-in has FULL_DAY_LEAVE_POTENTIAL status`);
+        // Temporarily use FULL_DAY_LEAVE to avoid database error
+        calculatedStatus = "FULL_DAY_LEAVE";
+      }
+
+      console.log(
+        `📊 Calculated status for ${employee.firstName} ${employee.lastName}: ${
+          calculatedStatus || "No specific status"
+        }`
+      );
+
+      // Step 4: Update the raw record with calculated status
       await prisma.zKTecoAttendanceRecord.update({
         where: { id: zktecoRecord.id },
-        data: { userId: employee.id },
+        data: {
+          userId: employee.id,
+          overallStatus: calculatedStatus as any, // Cast to any to avoid type issues until Prisma client is regenerated
+        },
       });
 
-      const attendanceDate = new Date(attendanceData.timestamp);
+      // Step 4.1: Validate FULL_DAY_LEAVE_POTENTIAL with checkout time
+      if (
+        calculatedStatus === "FULL_DAY_LEAVE_POTENTIAL" &&
+        attendanceData.checkType === "check_in"
+      ) {
+        // This is a check-in with potential for FULL_DAY_LEAVE
+        // We need to check if there's a corresponding check-out that meets the criteria
+        console.log(`🔍 Validating FULL_DAY_LEAVE_POTENTIAL for check-in`);
 
-      // Create date in UTC to avoid timezone issues
+        // The final status will be determined when the check-out record is processed
+        // For now, mark it as potential
+        calculatedStatus = "FULL_DAY_LEAVE_POTENTIAL";
+      }
+
+      // Step 4.1: Bidirectional FULL_DAY_LEAVE deduction tracking
+      const attendanceDate = new Date(attendanceData.timestamp);
+      const todayDateOnly = new Date(
+        Date.UTC(
+          attendanceDate.getUTCFullYear(),
+          attendanceDate.getUTCMonth(),
+          attendanceDate.getUTCDate()
+        )
+      );
+
+      if (attendanceData.checkType === "check_out") {
+        // Check if there's a check-in record for today with FULL_DAY_LEAVE_POTENTIAL or FULL_DAY_LEAVE status
+        const todayCheckIn = await prisma.zKTecoAttendanceRecord.findFirst({
+          where: {
+            userId: employee.id,
+            checkType: "check_in",
+            overallStatus: {
+              in: ["FULL_DAY_LEAVE", "FULL_DAY_LEAVE_POTENTIAL"],
+            },
+            timestamp: {
+              gte: new Date(todayDateOnly.getTime()),
+              lt: new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000),
+            },
+          },
+        });
+
+        // If check-in has FULL_DAY_LEAVE_POTENTIAL, validate the complete condition
+        if (
+          todayCheckIn?.overallStatus === "FULL_DAY_LEAVE_POTENTIAL" ||
+          todayCheckIn?.overallStatus === "FULL_DAY_LEAVE"
+        ) {
+          console.log(`🔍 Validating complete FULL_DAY_LEAVE condition`);
+
+          // Get shift times for validation
+          const shift = employee.shift;
+          if (shift) {
+            const checkInTime = new Date(todayCheckIn.timestamp);
+            const checkOutTime = new Date(attendanceData.timestamp);
+
+            // Create today's shift times
+            const todayShiftStart = new Date(todayDateOnly);
+            todayShiftStart.setHours(
+              new Date(shift.startTime).getHours(),
+              new Date(shift.startTime).getMinutes(),
+              0,
+              0
+            );
+
+            const todayFullDayStart = new Date(todayDateOnly);
+            if (shift.fullDayStart) {
+              todayFullDayStart.setHours(
+                new Date(shift.fullDayStart).getHours(),
+                new Date(shift.fullDayStart).getMinutes(),
+                0,
+                0
+              );
+            }
+
+            // Validate: toa >= fds AND tol < fds && > st
+            const toaValid = checkInTime >= todayFullDayStart;
+            const tolValid =
+              checkOutTime < todayFullDayStart &&
+              checkOutTime > todayShiftStart;
+
+            if (toaValid && tolValid) {
+              console.log(
+                `✅ FULL_DAY_LEAVE condition validated: toa >= fds AND tol < fds && > st`
+              );
+
+              // Update check-in record to confirmed FULL_DAY_LEAVE
+              await prisma.zKTecoAttendanceRecord.update({
+                where: { id: todayCheckIn.id },
+                data: {
+                  overallStatus: "FULL_DAY_LEAVE",
+                },
+              });
+
+              // Update current check-out record to confirmed FULL_DAY_LEAVE
+              await prisma.zKTecoAttendanceRecord.update({
+                where: { id: zktecoRecord.id },
+                data: {
+                  overallStatus: "FULL_DAY_LEAVE",
+                },
+              });
+
+              calculatedStatus = "FULL_DAY_LEAVE";
+            } else {
+              console.log(`❌ FULL_DAY_LEAVE condition not met:`, {
+                toaValid,
+                tolValid,
+                checkInTime: checkInTime.toISOString(),
+                checkOutTime: checkOutTime.toISOString(),
+                shiftStart: todayShiftStart.toISOString(),
+                fullDayStart: todayFullDayStart.toISOString(),
+              });
+
+              // Reset to normal status
+              calculatedStatus = "ON_TIME_LEAVE";
+            }
+          }
+        }
+
+        // NEW: Handle case where check-out itself has FULL_DAY_LEAVE status
+        if (
+          calculatedStatus === "FULL_DAY_LEAVE" &&
+          attendanceData.checkType === "check_out"
+        ) {
+          console.log(
+            `🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`
+          );
+
+          // Mark current check-out record as used for deduction
+          await prisma.zKTecoAttendanceRecord.update({
+            where: { id: zktecoRecord.id },
+            data: {
+              usedForDeduction: true,
+              deductionAppliedAt: new Date(),
+            },
+          });
+
+          // Mark corresponding check-in record as used for deduction
+          if (todayCheckIn) {
+            await prisma.zKTecoAttendanceRecord.update({
+              where: { id: todayCheckIn.id },
+              data: {
+                usedForDeduction: true,
+                deductionAppliedAt: new Date(),
+              },
+            });
+            console.log(
+              `✅ Marked check-in record ${todayCheckIn.id} as used for deduction`
+            );
+          } else {
+            console.log(`⚠️ No check-in record found to mark for deduction`);
+          }
+
+          console.log(
+            `✅ Both check-in and check-out records marked as used for deduction`
+          );
+        }
+
+        if (todayCheckIn) {
+          console.log(
+            `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`
+          );
+
+          // Mark this checkout record as null/invalid AND mark it as used for deduction
+          await prisma.zKTecoAttendanceRecord.update({
+            where: { id: zktecoRecord.id },
+            data: {
+              overallStatus: null,
+              processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE",
+              usedForDeduction: true, // Mark as used to ignore for deductions
+              deductionAppliedAt: new Date(),
+            },
+          });
+
+          // Also mark the check-in record as used for deduction to prevent it from contributing to progressive deductions
+          await prisma.zKTecoAttendanceRecord.update({
+            where: { id: todayCheckIn.id },
+            data: {
+              usedForDeduction: true,
+              deductionAppliedAt: new Date(),
+            },
+          });
+
+          console.log(
+            `🔒 Marked check-in record ${todayCheckIn.id} as used for deduction`
+          );
+
+          return true; // Still return success but don't process further
+        }
+      } else if (attendanceData.checkType === "check_in") {
+        // Check if there's a checkout record for today with FULL_DAY_LEAVE status
+        const todayCheckOut = await prisma.zKTecoAttendanceRecord.findFirst({
+          where: {
+            userId: employee.id,
+            checkType: "check_out",
+            overallStatus: "FULL_DAY_LEAVE",
+            timestamp: {
+              gte: new Date(todayDateOnly.getTime()),
+              lt: new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000),
+            },
+          },
+        });
+
+        if (todayCheckOut) {
+          console.log(
+            `🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`
+          );
+
+          // Mark this check-in record as null/invalid AND mark it as used for deduction
+          await prisma.zKTecoAttendanceRecord.update({
+            where: { id: zktecoRecord.id },
+            data: {
+              overallStatus: null,
+              processingError:
+                "Check-in blocked - Check-out was FULL_DAY_LEAVE",
+              usedForDeduction: true, // Mark as used to ignore for deductions
+              deductionAppliedAt: new Date(),
+            },
+          });
+
+          // Also mark the checkout record as used for deduction to prevent it from contributing to progressive deductions
+          await prisma.zKTecoAttendanceRecord.update({
+            where: { id: todayCheckOut.id },
+            data: {
+              usedForDeduction: true,
+              deductionAppliedAt: new Date(),
+            },
+          });
+
+          console.log(
+            `🔒 Marked checkout record ${todayCheckOut.id} as used for deduction`
+          );
+
+          return true; // Still return success but don't process further
+        }
+      }
+
+      // Step 5: Process daily attendance record
+      // Use the already declared attendanceDate and todayDateOnly variables
       const dateOnly = new Date(
         Date.UTC(
           attendanceDate.getUTCFullYear(),
@@ -829,6 +1949,13 @@ export class ZKTecoService {
       );
 
       // Step 4: Check existing attendance for validation
+      console.log(`🔍 Searching for attendance record...`);
+      console.log(
+        `🔍 Employee ID: ${employee.id}, Employee Number: ${employee.employeeId}`
+      );
+      console.log(`🔍 Date to search: ${dateOnly.toISOString()}`);
+      console.log(`🔍 Date object:`, dateOnly);
+
       let attendance = await prisma.attendance.findFirst({
         where: {
           employeeId: employee.id,
@@ -836,23 +1963,21 @@ export class ZKTecoService {
         },
       });
 
-      console.log(
-        `🔍 Employee ID: ${employee.id}, Employee Number: ${employee.employeeId}`
-      );
-      console.log(
-        `🔍 Looking for attendance on date: ${dateOnly.toISOString()}`
-      );
       console.log(`🔍 Found attendance:`, attendance);
+      if (attendance) {
+        console.log(`🔍 Attendance details:`, {
+          id: attendance.id,
+          date: attendance.date?.toISOString(),
+          checkIn: attendance.checkIn?.toISOString(),
+          checkOut: attendance.checkOut?.toISOString(),
+          deviceCheckIns: attendance.deviceCheckIns,
+          deviceCheckOuts: attendance.deviceCheckOuts,
+        });
+      }
 
       // Step 5: Validate check-in/out rules
       const today = new Date();
-      const todayDateOnly = new Date(
-        Date.UTC(
-          today.getUTCFullYear(),
-          today.getUTCMonth(),
-          today.getUTCDate()
-        )
-      );
+      // Use the already declared todayDateOnly variable from above
       const isToday = dateOnly.getTime() === todayDateOnly.getTime();
 
       console.log(
@@ -880,7 +2005,14 @@ export class ZKTecoService {
           return false;
         }
       } else if (attendanceData.checkType === "check_out") {
+        console.log(`🔍 Processing checkout for ${employee.employeeId}`);
+        console.log(`🔍 Attendance record exists: ${!!attendance}`);
+        console.log(`🔍 Has check-in: ${!!attendance?.checkIn}`);
+        console.log(`🔍 Has check-out: ${!!attendance?.checkOut}`);
+        console.log(`🔍 Is today: ${isToday}`);
+
         if (!attendance?.checkIn && isToday) {
+          console.warn(`🚫 Checkout blocked: No check-in found for today`);
           await prisma.zKTecoAttendanceRecord.update({
             where: { id: zktecoRecord.id },
             data: {
@@ -894,6 +2026,7 @@ export class ZKTecoService {
           return false;
         }
         if (attendance?.checkOut && isToday) {
+          console.warn(`🚫 Checkout blocked: Already checked out today`);
           await prisma.zKTecoAttendanceRecord.update({
             where: { id: zktecoRecord.id },
             data: {
@@ -906,10 +2039,23 @@ export class ZKTecoService {
           );
           return false;
         }
+
+        console.log(`✅ Checkout validation passed for ${employee.employeeId}`);
       }
 
       // Step 6: Create or update attendance record
       if (!attendance) {
+        console.log(
+          `📝 Creating new attendance record for ${
+            employee.employeeId
+          } on ${dateOnly.toISOString()}`
+        );
+        console.log(
+          `📝 Check type: ${
+            attendanceData.checkType
+          }, Timestamp: ${attendanceData.timestamp.toISOString()}`
+        );
+
         attendance = await prisma.attendance.create({
           data: {
             employeeId: employee.id,
@@ -929,7 +2075,31 @@ export class ZKTecoService {
             notes: `Recorded via ZKTeco device ${attendanceData.deviceId} (${deviceIp})`,
           },
         });
+
+        console.log(`✅ Created attendance record:`, {
+          id: attendance.id,
+          checkIn: attendance.checkIn?.toISOString(),
+          checkOut: attendance.checkOut?.toISOString(),
+          deviceCheckIns: attendance.deviceCheckIns,
+          deviceCheckOuts: attendance.deviceCheckOuts,
+        });
       } else {
+        console.log(
+          `📝 Updating existing attendance record for ${employee.employeeId}`
+        );
+        console.log(`📝 Current record:`, {
+          id: attendance.id,
+          checkIn: attendance.checkIn?.toISOString(),
+          checkOut: attendance.checkOut?.toISOString(),
+          deviceCheckIns: attendance.deviceCheckIns,
+          deviceCheckOuts: attendance.deviceCheckOuts,
+        });
+        console.log(
+          `📝 Processing: ${
+            attendanceData.checkType
+          } at ${attendanceData.timestamp.toISOString()}`
+        );
+
         const updateData: any = {
           status: "PRESENT",
           lastDeviceSync: new Date(),
@@ -939,9 +2109,15 @@ export class ZKTecoService {
         };
 
         if (attendanceData.checkType === "check_in" && !attendance.checkIn) {
+          console.log(
+            `📝 Adding check-in time: ${attendanceData.timestamp.toISOString()}`
+          );
           updateData.checkIn = attendanceData.timestamp;
           updateData.deviceCheckIns = (attendance.deviceCheckIns || 0) + 1;
         } else if (attendanceData.checkType === "check_out") {
+          console.log(
+            `📝 Adding check-out time: ${attendanceData.timestamp.toISOString()}`
+          );
           updateData.checkOut = attendanceData.timestamp;
           updateData.deviceCheckOuts = (attendance.deviceCheckOuts || 0) + 1;
 
@@ -950,12 +2126,30 @@ export class ZKTecoService {
               attendanceData.timestamp.getTime() - attendance.checkIn.getTime();
             const workingHours = workingMs / (1000 * 60 * 60);
             updateData.totalHours = Math.round(workingHours * 100) / 100;
+            console.log(
+              `📊 Calculated working hours: ${updateData.totalHours} hours`
+            );
+          } else {
+            console.warn(
+              `⚠️ No check-in time found for working hours calculation`
+            );
           }
         }
+
+        console.log(`📝 Update data:`, updateData);
 
         attendance = await prisma.attendance.update({
           where: { id: attendance.id },
           data: updateData,
+        });
+
+        console.log(`✅ Updated attendance record:`, {
+          id: attendance.id,
+          checkIn: attendance.checkIn?.toISOString(),
+          checkOut: attendance.checkOut?.toISOString(),
+          deviceCheckIns: attendance.deviceCheckIns,
+          deviceCheckOuts: attendance.deviceCheckOuts,
+          totalHours: attendance.totalHours,
         });
       }
 
@@ -975,6 +2169,9 @@ export class ZKTecoService {
 
       // Step 8: Emit real-time updates
       await this.emitAttendanceUpdate(employee, attendance, attendanceData);
+
+      // Step 9: Handle progressive deductions (3 late = 1 half day, 2 half day = 1 full day)
+      await this.handleProgressiveDeductions(employee.id, attendance.id);
 
       return true;
     } catch (error) {

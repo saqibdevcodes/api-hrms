@@ -182,6 +182,7 @@ export class EmployeeController {
         shiftId,
         leaveId,
         employmentTypeId,
+        employeeId, // New field for employee ID
 
         // Employee specific fields
         position,
@@ -250,38 +251,7 @@ export class EmployeeController {
         ? departmentCode.name.substring(0, 3).toUpperCase()
         : "GEN";
 
-      // Find the highest existing employee ID for this department
-      const existingEmployees = await prisma.user.findMany({
-        where: {
-          employeeId: {
-            startsWith: `IC-${deptPrefix}`,
-          },
-        },
-        select: { employeeId: true },
-        orderBy: { employeeId: "desc" },
-      });
-
-      let employeeId: string;
-      if (existingEmployees.length > 0) {
-        // Extract the numeric part and increment
-        const lastId = existingEmployees[0].employeeId;
-        const numericPart = parseInt(lastId?.split("-")[2] || "0");
-        const nextNumber = numericPart + 1;
-        employeeId = `IC-${deptPrefix}${nextNumber
-          .toString()
-          .padStart(3, "0")}`;
-      } else {
-        employeeId = `IC-${deptPrefix}001`;
-      }
-
       // Ensure uniqueness with timestamp if collision occurs
-      const existingId = await prisma.user.findUnique({
-        where: { employeeId },
-      });
-      if (existingId) {
-        const timestamp = Date.now().toString().slice(-4);
-        employeeId = `IC-${deptPrefix}${timestamp}`;
-      }
 
       // Create user in a transaction
       const result = await prisma.$transaction(async (tx) => {

@@ -1,0 +1,11 @@
+-- AlterTable
+ALTER TABLE `zkteco_attendance_records`
+ADD COLUMN `overallStatus` ENUM(
+    'ON_TIME_ARRIVAL',
+    'LATE',
+    'HALF_DAY_LEAVE',
+    'FULL_DAY_LEAVE',
+    'EARLY_OUT',
+    'ON_TIME_LEAVE',
+    'ABSENT'
+) NULL;

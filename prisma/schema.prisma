@@ -4,7 +4,7 @@
 generator client {
   provider      = "prisma-client-js"
   output        = "../src/generated/prisma"
-  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"] // if working in windows this is recommended
 }
 
 datasource db {
@@ -337,9 +337,16 @@ model ZKTecoAttendanceRecord {
   verifyType Int // 1=Fingerprint, 2=Password, 3=Card, etc.
   workCode   String? // Work code from device (optional)
 
+  // Calculated attendance status based on shift rules
+  overallStatus AttendanceStatusType?
+
   // Processing status
   processed       Boolean @default(false) // Whether this record has been processed into attendance
   processingError String? // Error message if processing failed
+
+  // Deduction tracking
+  usedForDeduction   Boolean   @default(false) // Whether this record has been used for progressive deductions
+  deductionAppliedAt DateTime? // When deduction was applied using this record
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -365,6 +372,18 @@ enum ZKTecoCheckType {
   break_in
   overtime_in
   overtime_out
+}
+
+// Enum for detailed attendance status based on shift rules
+enum AttendanceStatusType {
+  ON_TIME_ARRIVAL
+  LATE
+  HALF_DAY_LEAVE // Based on time of arrival (toa >= hfs && < fds) && Based on time of leave (tol >= fds && < eo)
+  FULL_DAY_LEAVE_POTENTIAL // Based on time of arrival (toa >= fds) - pending checkout validation
+  FULL_DAY_LEAVE // Based on time of arrival (toa >= fds) && Based on time of leave (tol < fds && > st)
+  EARLY_OUT
+  ON_TIME_LEAVE
+  ABSENT
 }
 
 model AttendanceReason {
@@ -407,6 +426,10 @@ model AttendanceDeduction {
   deductValue     Float
   leaveId         Int?
   datetime        DateTime
+
+  // Track which ZKTeco records triggered this deduction
+  zktecoRecordIds String? // JSON array of ZKTeco record IDs that triggered this deduction
+  deductionType   String? // "LATE_TO_HALF_DAY" or "HALF_DAY_TO_FULL_DAY"
 
   @@map("attendance_deductions")
 }
@@ -509,7 +532,7 @@ enum UserStatus {
 }
 
 enum UserRank {
-  DIRECTOR_LEVEL
+  DIRECTOR
   LINE_MANAGER
   EMPLOYEE
 }
