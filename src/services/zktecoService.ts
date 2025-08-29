@@ -899,6 +899,7 @@ export class ZKTecoService {
    * Handle progressive deductions and update employee leaves
    * 3 LATE = 1 HALF_DAY_LEAVE deduction
    * 2 HALF_DAY_LEAVE = 1 FULL_DAY_LEAVE deduction (from casual leaves)
+   * PLUS: Automatic deduction for FULL_DAY_LEAVE status
    */
   private async handleProgressiveDeductions(
     employeeId: string,
@@ -933,9 +934,71 @@ export class ZKTecoService {
         }
       );
 
-      console.log(
-        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}`
+      // NEW: Get today's FULL_DAY_LEAVE records for automatic deduction
+      const today = new Date();
+      const todayStart = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
       );
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      const todayFullDayLeaveRecords =
+        await prisma.zKTecoAttendanceRecord.findMany({
+          where: {
+            userId: employeeId,
+            overallStatus: "FULL_DAY_LEAVE",
+            timestamp: {
+              gte: todayStart,
+              lt: todayEnd,
+            },
+            usedForDeduction: false, // Only get records not used for deductions
+          },
+          select: {
+            id: true,
+            timestamp: true,
+            overallStatus: true,
+            checkType: true,
+          },
+          orderBy: { timestamp: "asc" },
+        });
+
+      console.log(
+        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`
+      );
+
+      // NEW: Automatic deduction for FULL_DAY_LEAVE status
+      if (todayFullDayLeaveRecords.length > 0) {
+        console.log(
+          `🚫 Processing automatic deduction for ${todayFullDayLeaveRecords.length} FULL_DAY_LEAVE record(s)`
+        );
+
+        for (const record of todayFullDayLeaveRecords) {
+          // Mark this record as used for deduction
+          await this.markRecordsAsUsedForDeduction([record.id]);
+
+          // Apply 1 day deduction from casual leaves
+          await this.deductFromLeavePolicy(
+            employeeId,
+            1.0,
+            "FULL_DAY_LEAVE_AUTOMATIC"
+          );
+
+          // Create deduction record
+          await this.createAttendanceDeduction(
+            attendanceId,
+            `Automatic deduction for FULL_DAY_LEAVE status (${record.checkType})`,
+            1.0, // Full day
+            employeeId,
+            [record.id],
+            "FULL_DAY_LEAVE_AUTOMATIC"
+          );
+
+          console.log(
+            `⚠️ Applied automatic FULL_DAY_LEAVE deduction for employee ${employeeId}. Record: ${record.id}`
+          );
+        }
+      }
 
       // Check for 3 LATE = 1 HALF_DAY_LEAVE deduction
       if (unusedLateRecords.length >= 3) {
@@ -1009,6 +1072,7 @@ export class ZKTecoService {
     deductionType: string
   ): Promise<void> {
     // Get employee's leave record ID
+
     const employeeLeave = await prisma.employeeLeave.findUnique({
       where: { userId: employeeId },
     });
@@ -1049,7 +1113,10 @@ export class ZKTecoService {
   private async deductFromLeavePolicy(
     employeeId: string,
     daysToDeduct: number,
-    violationType: "LATE_TO_HALF_DAY" | "HALF_DAY_TO_FULL_DAY"
+    violationType:
+      | "LATE_TO_HALF_DAY"
+      | "HALF_DAY_TO_FULL_DAY"
+      | "FULL_DAY_LEAVE_AUTOMATIC"
   ): Promise<void> {
     try {
       // Get employee's leave policy and current balances
@@ -1135,6 +1202,33 @@ export class ZKTecoService {
         } else {
           console.warn(
             `⚠️ Insufficient leave balance for deduction. Annual: ${employeeLeave.annualLeaves}, Casual: ${employeeLeave.casualLeaves}`
+          );
+          return;
+        }
+      } else if (violationType === "FULL_DAY_LEAVE_AUTOMATIC") {
+        // NEW: For FULL_DAY_LEAVE status, always deduct from casual leaves
+        if (employeeLeave.casualLeaves >= daysToDeduct) {
+          leaveCategory = "casualLeaves";
+          currentBalance = employeeLeave.casualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { casualLeaves: newBalance },
+          });
+        } else if (employeeLeave.annualLeaves >= daysToDeduct) {
+          // Fallback to annual leaves if casual leaves insufficient
+          leaveCategory = "annualLeaves";
+          currentBalance = employeeLeave.annualLeaves;
+          newBalance = Math.max(0, currentBalance - daysToDeduct);
+
+          await prisma.employeeLeave.update({
+            where: { userId: employeeId },
+            data: { annualLeaves: newBalance },
+          });
+        } else {
+          console.warn(
+            `⚠️ Insufficient leave balance for FULL_DAY_LEAVE deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`
           );
           return;
         }
@@ -1411,6 +1505,7 @@ export class ZKTecoService {
         datetime: "desc",
       },
     });
+    console.log("deductions", deductions);
 
     // Enhance with ZKTeco record details
     const enhancedDeductions = await Promise.all(
@@ -1489,21 +1584,28 @@ export class ZKTecoService {
     shift: any
   ): string | null {
     if (!shift) return null;
+    console.log("Calculating precise attendance status");
 
     const checkTime = new Date(timestamp);
+    console.log("checkTime", checkTime);
     const attendanceDate = new Date(timestamp);
+    console.log("attendanceDate", attendanceDate);
 
     // Extract times from shift (these are stored as full DateTime in DB)
     const shiftStart = new Date(shift.startTime); // st (start time)
+    console.log("shiftStart", shiftStart);
     const halfDayStart = shift.halfDayStart
       ? new Date(shift.halfDayStart)
       : null; // hfs
+    console.log("halfDayStart", halfDayStart);
     const fullDayStart = shift.fullDayStart
       ? new Date(shift.fullDayStart)
       : null; // fds
+    console.log("fullDayStart", fullDayStart);
     const earlyOut = shift.earlyOut ? new Date(shift.earlyOut) : null; // eo
+    console.log("earlyOut", earlyOut);
     const shiftEnd = new Date(shift.endTime); // et (end time)
-
+    console.log("shiftEnd", shiftEnd);
     // Create today's shift times by copying time from shift to attendance date
     const todayShiftStart = new Date(attendanceDate);
     todayShiftStart.setHours(
@@ -1512,7 +1614,7 @@ export class ZKTecoService {
       0,
       0
     );
-
+    console.log("todayShiftStart", todayShiftStart);
     const todayHalfDayStart = halfDayStart ? new Date(attendanceDate) : null;
     if (todayHalfDayStart && halfDayStart) {
       todayHalfDayStart.setHours(
@@ -1522,7 +1624,7 @@ export class ZKTecoService {
         0
       );
     }
-
+    console.log("todayHalfDayStart", todayHalfDayStart);
     const todayFullDayStart = fullDayStart ? new Date(attendanceDate) : null;
     if (todayFullDayStart && fullDayStart) {
       todayFullDayStart.setHours(
@@ -1532,30 +1634,30 @@ export class ZKTecoService {
         0
       );
     }
-
+    console.log("todayFullDayStart", todayFullDayStart);
     const todayEarlyOut = earlyOut ? new Date(attendanceDate) : null;
     if (todayEarlyOut && earlyOut) {
       todayEarlyOut.setHours(earlyOut.getHours(), earlyOut.getMinutes(), 0, 0);
     }
-
+    console.log("todayEarlyOut", todayEarlyOut);
     const todayShiftEnd = new Date(attendanceDate);
     todayShiftEnd.setHours(shiftEnd.getHours(), shiftEnd.getMinutes(), 0, 0);
-
+    console.log("todayShiftEnd", todayShiftEnd);
     if (checkType === "check_in") {
       const toa = checkTime; // Time of arrival
-
+      console.log("toa", toa);
       // On time arrival = toa < st
       if (toa < todayShiftStart) {
-        return "ON_TIME_ARRIVAL";
+        return "ON_TIME_ARRIVAL"; //ok
       }
-
+      console.log("toa < todayShiftStart", toa < todayShiftStart);
       // late = toa >= st && < hfs
       if (
         todayHalfDayStart &&
         toa >= todayShiftStart &&
         toa < todayHalfDayStart
       ) {
-        return "LATE";
+        return "LATE"; //ok
       }
 
       // half day leave = toa >= hfs && < fds (on basis of toa)
@@ -1565,9 +1667,9 @@ export class ZKTecoService {
         toa >= todayHalfDayStart &&
         toa < todayFullDayStart
       ) {
-        return "HALF_DAY_LEAVE";
+        return "HALF_DAY_LEAVE"; //ok
       }
-
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // full day leave = toa >= fds (on basis of toa) - will be validated with checkout time
       if (todayFullDayStart && toa >= todayFullDayStart) {
         // This is a potential FULL_DAY_LEAVE, but we need to check checkout time
@@ -1603,12 +1705,12 @@ export class ZKTecoService {
       }
 
       // early out = tol < eo
-      if (todayEarlyOut && tol < todayEarlyOut) {
+      if (todayEarlyOut && tol >= todayEarlyOut && tol < todayShiftEnd) {
         return "EARLY_OUT";
       }
 
       // On time leave = tol >= eo (normal end time or later)
-      if (todayEarlyOut && tol >= todayEarlyOut) {
+      if (todayEarlyOut && tol >= todayShiftEnd) {
         return "ON_TIME_LEAVE";
       }
 
@@ -1859,7 +1961,11 @@ export class ZKTecoService {
           );
         }
 
-        if (todayCheckIn) {
+        if (
+          todayCheckIn &&
+          todayCheckIn.overallStatus === "FULL_DAY_LEAVE" &&
+          calculatedStatus !== "FULL_DAY_LEAVE"
+        ) {
           console.log(
             `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`
           );
@@ -1868,7 +1974,7 @@ export class ZKTecoService {
           await prisma.zKTecoAttendanceRecord.update({
             where: { id: zktecoRecord.id },
             data: {
-              overallStatus: null,
+              overallStatus: todayCheckIn.overallStatus,
               processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE",
               usedForDeduction: true, // Mark as used to ignore for deductions
               deductionAppliedAt: new Date(),
@@ -1908,11 +2014,15 @@ export class ZKTecoService {
           console.log(
             `🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`
           );
-
+          console.log(
+            "todayCheckOut.overallStatus",
+            todayCheckOut.overallStatus
+          );
           // Mark this check-in record as null/invalid AND mark it as used for deduction
           await prisma.zKTecoAttendanceRecord.update({
             where: { id: zktecoRecord.id },
             data: {
+              // overallstatus should be a status according to the status of the check-out record
               overallStatus: null,
               processingError:
                 "Check-in blocked - Check-out was FULL_DAY_LEAVE",

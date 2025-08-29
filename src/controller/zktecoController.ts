@@ -340,13 +340,14 @@ export class ZKTecoController {
         status: string;
         lateMinutes?: number;
         earlyOutMinutes?: number;
-        workingHours?: number;
+        workingHours?: string;
       } => {
         console.log("record", record);
 
         if (!record.checkIn) {
           return { status: "ABSENT" };
         }
+        console.log("shift", shift);
 
         if (!shift) {
           return { status: "PRESENT" }; // Default status if no shift assigned
@@ -372,6 +373,7 @@ export class ZKTecoController {
           0,
           0
         );
+        console.log("todayShiftStart", todayShiftStart);
 
         const todayShiftEnd = new Date(attendanceDate);
         todayShiftEnd.setHours(
@@ -380,6 +382,7 @@ export class ZKTecoController {
           0,
           0
         );
+        console.log("todayShiftEnd", todayShiftEnd);
 
         // Calculate late arrival
         const lateMinutes =
@@ -389,11 +392,13 @@ export class ZKTecoController {
                   (1000 * 60)
               )
             : 0;
+        console.log("checkInTime", new Date(checkInTime).toLocaleTimeString());
+        console.log("checkOutTime", checkOutTime);
 
+        console.log("lateMinutes", lateMinutes);
         // Calculate early departure
         let earlyOutMinutes = 0;
-        let workingHours = 0;
-
+        let workingHours = "";
         if (checkOutTime) {
           earlyOutMinutes =
             checkOutTime < todayShiftEnd
@@ -402,15 +407,18 @@ export class ZKTecoController {
                     (1000 * 60)
                 )
               : 0;
+          console.log("earlyOutMinutes", earlyOutMinutes);
 
-          // Calculate working hours
-          workingHours =
-            (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60);
+          let workingSeconds =
+            (checkOutTime.getTime() - checkInTime.getTime()) / 1000;
+          if (workingSeconds < 0) workingSeconds = 0;
 
-          // Subtract break time if applicable
-          if (shift.breakTime) {
-            workingHours -= shift.breakTime / 60;
-          }
+          const hours = Math.floor(workingSeconds / 3600);
+          const minutes = Math.floor((workingSeconds % 3600) / 60);
+          const seconds = Math.floor(workingSeconds % 60);
+
+          workingHours = `${hours}h ${minutes}m ${seconds}s`;
+          console.log("workingHours", workingHours);
         }
 
         // Determine status based on timing
@@ -443,10 +451,9 @@ export class ZKTecoController {
 
         return {
           status,
-          lateMinutes: lateMinutes > 0 ? lateMinutes : undefined,
-          earlyOutMinutes: earlyOutMinutes > 0 ? earlyOutMinutes : undefined,
-          workingHours:
-            workingHours > 0 ? Math.round(workingHours * 100) / 100 : undefined,
+          lateMinutes: lateMinutes,
+          earlyOutMinutes: earlyOutMinutes,
+          workingHours: workingHours,
         };
       };
 
@@ -456,14 +463,19 @@ export class ZKTecoController {
           record,
           record.employee.shift
         );
+        console.log("record", record);
+        console.log("record.zktecoRecords", record.zktecoRecords);
 
         // Get the most relevant precise status from ZKTeco records
         const checkInRecord = record.zktecoRecords.find(
           (r) => r.checkType === "check_in"
         );
-        const checkOutRecord = record.zktecoRecords.find(
-          (r) => r.checkType === "check_out"
-        );
+        const checkOutRecord = record.zktecoRecords.find((r) => {
+          console.log("rur", r);
+          return r.checkType === "check_out";
+        });
+        console.log("checkInRecord", checkInRecord);
+        console.log("checkOutRecord", checkOutRecord);
 
         // Use the most significant status (prioritize leave types, then late, then normal)
         let preciseStatus = null;
@@ -485,6 +497,7 @@ export class ZKTecoController {
             break;
           }
         }
+        console.log("preciseStatus", preciseStatus);
 
         return {
           id: record.id,
@@ -493,6 +506,7 @@ export class ZKTecoController {
           checkOut: record.checkOut,
           status: preciseStatus || calculatedStatus.status, // Use precise status first, fallback to calculated
           originalStatus: record.status, // Keep original status for reference
+
           notes: record.notes,
 
           // Shift-based calculations
@@ -1235,6 +1249,8 @@ export class ZKTecoController {
         employeeId
       );
 
+      console.log("leaveBalance", leaveBalance);
+
       if (!leaveBalance) {
         return res.status(404).json({
           success: false,
@@ -1263,6 +1279,7 @@ export class ZKTecoController {
   static async validateRecordsForDeduction(req: Request, res: Response) {
     try {
       const { recordIds } = req.body;
+      console.log("recordIds", recordIds);
 
       if (!recordIds || !Array.isArray(recordIds)) {
         return res.status(400).json({
