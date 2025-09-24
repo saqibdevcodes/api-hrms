@@ -118,6 +118,8 @@ model User {
 
   // Employee leave back-reference
   employeeLeave EmployeeLeave?
+  Loan          Loan[]
+  AdvanceSalary AdvanceSalary[]
 
   @@map("users")
 }
@@ -520,6 +522,37 @@ model Notification {
   @@map("notifications")
 }
 
+model Loan {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Decimal
+  interest     Decimal?
+  totalAmount  Decimal?
+  installments Int?
+  tenure       Int? // in months
+  reason       String?
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("loans")
+}
+
+model AdvanceSalary {
+  id         String   @id @default(cuid())
+  userId     String
+  daysCount  Int
+  reason     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Status     String?
+  ApprovedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 // Enums
 enum Role {
   ADMIN
@@ -532,7 +565,7 @@ enum UserStatus {
 }
 
 enum UserRank {
-  DIRECTOR
+  DIRECTOR_LEVEL
   LINE_MANAGER
   EMPLOYEE
 }

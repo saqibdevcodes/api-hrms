@@ -185,6 +185,7 @@ app.use((req, res) => {
         `${config.API_PREFIX}/dashboard`,
         `${config.API_PREFIX}/company/info`,
         `${config.API_PREFIX}/employees`,
+        `${config.API_PREFIX}/advanceSalary`,
       ],
     },
     meta: {

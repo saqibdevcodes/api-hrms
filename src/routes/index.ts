@@ -14,6 +14,8 @@ import offDaysRoutes from "./offDays";
 import zktecoRoutes from "./zktecoRoutes";
 import { authenticate, adminOnly, hrAndAdmin } from "../middleware/auth";
 import { AuthenticatedRequest } from "../types/auth";
+import loanRoutes from "./loans";
+import ASRoutes from "./advanceSalaryRoutes";
 
 const router = Router();
 
@@ -55,6 +57,12 @@ router.use("/off-days", offDaysRoutes);
 
 // ZKTeco device management routes (protected)
 router.use("/zkteco", zktecoRoutes);
+
+// Loan management routes (protected)
+router.use("/loans", loanRoutes);
+
+// Advancae Salary management routes (protected)
+router.use("/advanceSalary", ASRoutes);
 
 // Example protected routes (for demonstration)
 /**
