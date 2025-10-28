@@ -334,6 +334,144 @@ async function main() {
     },
   });
 
+
+
+ 
+
+
+  console.log("Creating Normal Employee user...");
+  const lineManagerUser = await prisma.user.create({
+    data: {
+      // Basic info
+      email: "wasif@iriscommunications.com.pk",
+      firstName: "Wasif",
+      lastName: "Zia",
+      fatherHusbandName: "Muhammad Zia",
+      cnic: "42101-7654321-4",
+      cnicExpiry: new Date("2028-06-30"),
+      maritalStatus: MaritalStatus.MARRIED,
+      dateOfBirth: new Date("1990-08-22"),
+      bloodGroup: BloodGroup.B_POSITIVE,
+      gender: Gender.MALE,
+
+      // Education
+      education: EducationLevel.BACHELORS,
+      educationInstitute: "Lahore University of Management Sciences",
+      educationGrade: "B+",
+
+      // Contact
+      personalEmail: "wasif.personal@gmail.com",
+      personalMobile: "+92-301-7654323",
+      officialMobile: "+92-301-2229223",
+      officialEmail: "wasif@iriscommunications.com",
+      phone: "+92-42-7654323",
+
+      // Address
+      personalAddress: "456 Oak Avenue, Karachi, Pakistan",
+      address: "Iris Communications Office, Gulberg III, Lahore",
+      city: "Karachi",
+      state: "Sindh",
+      zipCode: "75000",
+      country: "Pakistan",
+
+      // Employment
+      employeeId: "IC-EMP009",
+      userRank: UserRank.LINE_MANAGER,
+      password: await bcrypt.hash("emp123123", 10),
+      role: Role.EMPLOYEE,
+      position: "Software Engineer",
+      department: "Engineering",
+      manager: "Sn",
+      salary: 50000,
+      currency: "PKR",
+      dateOfJoining: new Date("2022-02-15"),
+      hireDate: new Date("2022-02-15"),
+      employmentTypeId: fullTimeType.id,
+
+      // Emergency contact
+      emergencyDetailId: hrEmergencyContact.id,
+
+      // Relations
+      departmentId: hrDept.id,
+      contractTypeId: permanentContract.id,
+      designationId: hrManagerDesignation.id,
+      shiftId: morningShift.id,
+      leaveId: standardLeavePolicy.id,
+
+      // System fields
+      status: UserStatus.ACTIVE,
+      isActive: true,
+    },
+  });
+
+
+  console.log("Creating Normal Employee user...");
+  const employeeUser = await prisma.user.create({
+    data: {
+      // Basic info
+      email: "shaheen@iris-communications.com.pk",
+      firstName: "Shaheen",
+      lastName: "Khan",
+      fatherHusbandName: "Muhammad Khan",
+      cnic: "42101-7654321-3",
+      cnicExpiry: new Date("2029-06-30"),
+      maritalStatus: MaritalStatus.SINGLE,
+      dateOfBirth: new Date("1990-03-22"),
+      bloodGroup: BloodGroup.B_POSITIVE,
+      gender: Gender.MALE,
+
+      // Education
+      education: EducationLevel.BACHELORS,
+      educationInstitute: "Lahore University of Management Sciences",
+      educationGrade: "B+",
+
+      // Contact
+      personalEmail: "shaheen.personal@gmail.com",
+      personalMobile: "+92-301-7654322",
+      officialMobile: "+92-301-2222223",
+      officialEmail: "shaheen@iris-communications.com",
+      phone: "+92-42-7654322",
+
+      // Address
+      personalAddress: "456 Oak Avenue, Karachi, Pakistan",
+      address: "Iris Communications Office, Gulberg III, Lahore",
+      city: "Karachi",
+      state: "Sindh",
+      zipCode: "75000",
+      country: "Pakistan",
+
+      // Employment
+      employeeId: "IC-EMP001",
+      userRank: UserRank.EMPLOYEE,
+      password: await bcrypt.hash("emp123123", 10),
+      role: Role.EMPLOYEE,
+      position: "Software Engineer",
+      department: "Engineering",
+      manager: lineManagerUser.id,
+      salary: 50000,
+      currency: "PKR",
+      dateOfJoining: new Date("2022-02-15"),
+      hireDate: new Date("2022-02-15"),
+      employmentTypeId: fullTimeType.id,
+
+      // Emergency contact
+      emergencyDetailId: hrEmergencyContact.id,
+
+      // Relations
+      departmentId: hrDept.id,
+      contractTypeId: permanentContract.id,
+      designationId: hrManagerDesignation.id,
+      shiftId: morningShift.id,
+      leaveId: standardLeavePolicy.id,
+
+      // System fields
+      status: UserStatus.ACTIVE,
+      isActive: true,
+    },
+  });
+
+
+
   console.log("✅ Database seeded successfully!");
   // Create employee leave records for testing progressive deductions
   console.log("Creating employee leave records...");

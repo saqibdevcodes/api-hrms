@@ -1,5 +1,5 @@
 import { Request } from "express";
-import { Role } from "../generated/prisma";
+import { Role, UserRank } from "../generated/prisma";
 
 // Authentication Types
 export interface LoginRequest {
@@ -20,6 +20,7 @@ export interface UserProfile {
   id: string;
   email: string;
   role: Role;
+  userRank?: UserRank;
   employee?: EmployeeInfo;
 }
 
