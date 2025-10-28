@@ -68,6 +68,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         userD: user,
+        userRank: user.userRank || undefined,
         employee: user.employeeId
           ? {
               id: user.id,
@@ -162,6 +163,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         userD: user,
+        userRank: user.userRank || undefined,
         employee: user.employeeId
           ? {
               id: user.id,

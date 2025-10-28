@@ -16,8 +16,12 @@ import { authenticate, adminOnly, hrAndAdmin } from "../middleware/auth";
 import { AuthenticatedRequest } from "../types/auth";
 import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
+import pdrRoutes from "./pdrRoutes";
 
 const router = Router();
+
+
+router.use("/pdr", pdrRoutes);
 
 // Authentication routes (public)
 router.use("/auth", authRoutes);
