@@ -23,6 +23,7 @@ export class AuthService {
       if (!email || !password) {
         throw new AuthenticationError("Email and password are required");
       }
+      console.log("loginData= ", loginData);
 
       // Find user by email with employee data
       const user = await prisma.user.findUnique({
@@ -31,6 +32,7 @@ export class AuthService {
           isActive: true,
         },
       });
+      console.log("user fetched= ", user);
 
       if (!user) {
         throw new AuthenticationError("Invalid email or password");
@@ -50,12 +52,22 @@ export class AuthService {
         where: { id: user.id },
         data: { lastLogin: new Date() },
       });
+      console.log("user= ", user);
+
+      const designation = await prisma.designation.findUnique({
+        where: { id: user.designationId || "" },
+      });
+
+      if (designation) {
+        console.log("designation= ", designation.title);
+      }
 
       // Create user profile
       const userProfile: UserProfile = {
         id: user.id,
         email: user.email,
         role: user.role,
+        userD: user,
         employee: user.employeeId
           ? {
               id: user.id,
@@ -64,6 +76,10 @@ export class AuthService {
               lastName: user.lastName,
               position: user.position,
               department: user.department,
+              designation: designation ? designation.title : undefined,
+              userRank: user.userRank,
+              phone: user.phone,
+              personalMobile: user.personalMobile,
             }
           : undefined,
       };
@@ -145,6 +161,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        userD: user,
         employee: user.employeeId
           ? {
               id: user.id,
@@ -211,7 +228,70 @@ export class AuthService {
       (user) => user.email === email.toLowerCase() && user.password === password
     );
 
-    return demoUser ? demoUser.profile : null;
+    return demoUser
+      ? {
+          ...demoUser.profile,
+          userD: {
+            id: demoUser.profile.id,
+            email: demoUser.profile.email,
+            firstName: demoUser.profile.employee.firstName,
+            lastName: demoUser.profile.employee.lastName,
+            role: demoUser.profile.role,
+            employeeId: demoUser.profile.employee.employeeId,
+            // 👇 fill the rest with defaults or nulls
+            fatherHusbandName: "",
+            cnic: "",
+            cnicExpiry: new Date(),
+            maritalStatus: "",
+            dateOfBirth: new Date(),
+            bloodGroup: "",
+            gender: "",
+            education: "",
+            educationInstitute: "",
+            educationGrade: "",
+            personalEmail: "",
+            personalMobile: "",
+            officialMobile: "",
+            officialEmail: demoUser.profile.email,
+            phone: "",
+            personalAddress: "",
+            address: "",
+            city: "",
+            state: "",
+            zipCode: "",
+            country: "",
+            userRank: "",
+            password: "",
+            status: "ACTIVE",
+            position: demoUser.profile.employee.position,
+            department: demoUser.profile.employee.department,
+            manager: "",
+            salary: 0,
+            currency: "PKR",
+            dateOfJoining: new Date(),
+            dateOfExit: null,
+            hireDate: new Date(),
+            endDate: null,
+            employmentTypeId: "",
+            degreePicture: null,
+            cnicPictureFront: null,
+            cnicPictureBack: null,
+            isActive: true,
+            lastLogin: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            emergencyDetailId: "",
+            departmentId: "",
+            contractTypeId: "",
+            designationId: "",
+            shiftId: "",
+            leaveId: "",
+            createdBy: null,
+            updatedBy: null,
+            educationalDetailId: null,
+          },
+        }
+      : null;
   }
 
   /**
@@ -276,7 +356,7 @@ export class AuthService {
     targetEmployeeId: string
   ): boolean {
     // Admins and HR can access all employee data
-    if (["ADMIN", "HR"].includes(currentUser.role)) {
+    if (["ADMIN", "HR", "SUPERADMIN"].includes(currentUser.role)) {
       return true;
     }
 

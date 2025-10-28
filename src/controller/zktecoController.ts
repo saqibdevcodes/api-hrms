@@ -286,6 +286,13 @@ export class ZKTecoController {
       // If deviceId filter is needed, we can add a deviceId field to attendance records
       // For now, we'll get all attendance records
 
+      // Add 3-day delay filter
+      const today = new Date();
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(today.getDate() - 3);
+      where.createdAt = {
+        lte: threeDaysAgo,
+      };
       const [attendanceRecords, total] = await Promise.all([
         prisma.attendance.findMany({
           where,
@@ -589,6 +596,7 @@ export class ZKTecoController {
    * @param req - Authenticated request with deviceId, employeeId, cardNumber
    * @param res - Express response object
    * @returns JSON with upload success status and employee data
+   * 
    */
   static async uploadEmployeeToDevice(
     req: AuthenticatedRequest,

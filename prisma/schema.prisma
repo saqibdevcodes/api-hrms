@@ -557,6 +557,7 @@ model AdvanceSalary {
 enum Role {
   ADMIN
   EMPLOYEE
+  SUPERADMIN
 }
 
 enum UserStatus {

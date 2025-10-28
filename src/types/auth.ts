@@ -16,10 +16,70 @@ export interface LoginResponse {
   refreshToken?: string;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fatherHusbandName: string;
+  cnic: string;
+  cnicExpiry: Date;
+  maritalStatus: string;
+  dateOfBirth: Date;
+  bloodGroup: string;
+  gender: string;
+  education: string;
+  educationInstitute: string;
+  educationGrade: string;
+  personalEmail: string;
+  personalMobile: string;
+  officialMobile: string;
+  officialEmail: string;
+  phone: string;
+  personalAddress: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  employeeId: string;
+  userRank: string;
+  password: string;
+  status: string;
+  role: string;
+  position: string;
+  department: string;
+  manager: string;
+  salary: number;
+  currency: string;
+  dateOfJoining: Date;
+  dateOfExit: Date | null;
+  hireDate: Date;
+  endDate: Date | null;
+  employmentTypeId: string;
+  degreePicture: string | null;
+  cnicPictureFront: string | null;
+  cnicPictureBack: string | null;
+  isActive: boolean;
+  lastLogin: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  emergencyDetailId: string;
+  departmentId: string;
+  contractTypeId: string;
+  designationId: string;
+  shiftId: string;
+  leaveId: string;
+  createdBy: string | null;
+  updatedBy: string | null;
+  educationalDetailId: string | null;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   role: Role;
+  userD: User;
   employee?: EmployeeInfo;
 }
 
@@ -31,6 +91,10 @@ export interface EmployeeInfo {
   position: string;
   department: string;
   avatar?: string;
+  designation?: string;
+  userRank?: string;
+  phone?: string;
+  personalMobile?: string;
 }
 
 export interface JwtPayload {
@@ -166,4 +230,3 @@ export interface TokenPair {
   expiresIn: number;
   tokenType: "Bearer";
 }
- 

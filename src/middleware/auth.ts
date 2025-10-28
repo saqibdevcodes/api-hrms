@@ -135,6 +135,7 @@ export const authorize = (allowedRoles: Role[]) => {
       if (!req.user) {
         throw new AuthenticationError("User not authenticated");
       }
+      console.log("User Role:", req.user.role, "Allowed Roles:", allowedRoles);
 
       const hasPermission = AuthService.hasRole(req.user.role, allowedRoles);
 
@@ -302,12 +303,17 @@ export const optionalAuth = async (
 /**
  * Admin-only middleware
  */
-export const adminOnly = authorize(["ADMIN"]);
+export const SuperAdmin = authorize(["SUPERADMIN"]);
+
+/**
+ * Admin-only middleware
+ */
+export const adminOnly = authorize(["ADMIN", "SUPERADMIN"]);
 
 /**
  * HR and Admin middleware
  */
-export const hrAndAdmin = authorize(["ADMIN"]);
+export const hrAndAdmin = authorize(["ADMIN", "SUPERADMIN"]);
 
 /**
  * Manager and above middleware
