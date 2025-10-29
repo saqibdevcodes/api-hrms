@@ -493,7 +493,7 @@ async function main() {
       country: "Pakistan",
 
       // Employment
-      employeeId: "IC-EMP001",
+      employeeId: "IC-EMP002",
       userRank: UserRank.EMPLOYEE,
       password: await bcrypt.hash("Saqib123123", 10),
       role: Role.EMPLOYEE,

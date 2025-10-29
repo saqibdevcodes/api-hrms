@@ -681,132 +681,132 @@ enum NotificationPriority {
 
 // Individual role status (for emp_status, linemanager_status, etc.)
 enum PdrStatus {
-  PENDING          // Not started yet
-  IN_PROGRESS      // Currently filling
-  SUBMITTED        // Submitted to next party
-  APPROVED         // Approved by reviewer
-  REVERTED         // Sent back for rework
-  ACKNOWLEDGED     // Acknowledged (employee only)
-  COMPLETED        // Final completion
+  PENDING // Not started yet
+  IN_PROGRESS // Currently filling
+  SUBMITTED // Submitted to next party
+  APPROVED // Approved by reviewer
+  REVERTED // Sent back for rework
+  ACKNOWLEDGED // Acknowledged (employee only)
+  COMPLETED // Final completion
 }
 
 // Overall PDR lifecycle status (19-step flow)
 enum PdrOverallStatus {
   // 1. Creation
-  CREATED_BY_HR                         // 1: HR creates PDR
-  
+  CREATED_BY_HR // 1: HR creates PDR
+
   // 2-5. Employee Fill & Submit (with potential HR loop)
-  EMPLOYEE_FILLING                      // 2: Employee is filling
-  EMPLOYEE_SUBMITTED_TO_HR              // 3: Employee submitted to HR for review
-  HR_REVIEWING_EMPLOYEE                 // 4: HR reviewing employee's part
-  HR_REVERTED_TO_EMPLOYEE               // 5: HR sent back to employee (loops back to 2)
-  HR_APPROVED_EMPLOYEE                  // 6: HR approved employee's part
-  
+  EMPLOYEE_FILLING // 2: Employee is filling
+  EMPLOYEE_SUBMITTED_TO_HR // 3: Employee submitted to HR for review
+  HR_REVIEWING_EMPLOYEE // 4: HR reviewing employee's part
+  HR_REVERTED_TO_EMPLOYEE // 5: HR sent back to employee (loops back to 2)
+  HR_APPROVED_EMPLOYEE // 6: HR approved employee's part
+
   // 7-11. Manager Fill & Submit (with potential HR loop)
-  MANAGER_FILLING                       // 7: Manager is filling
-  MANAGER_SUBMITTED_TO_HR               // 8: Manager submitted to HR
-  HR_REVIEWING_MANAGER                  // 9: HR reviewing manager's part
-  HR_REVERTED_TO_MANAGER                // 10: HR sent back to manager (loops back to 7)
-  HR_APPROVED_MANAGER                   // 11: HR approved manager's part
-  
+  MANAGER_FILLING // 7: Manager is filling
+  MANAGER_SUBMITTED_TO_HR // 8: Manager submitted to HR
+  HR_REVIEWING_MANAGER // 9: HR reviewing manager's part
+  HR_REVERTED_TO_MANAGER // 10: HR sent back to manager (loops back to 7)
+  HR_APPROVED_MANAGER // 11: HR approved manager's part
+
   // 12-15. Employee Acknowledgment (with potential revert loop)
-  EMPLOYEE_ACKNOWLEDGING                // 12: Employee reviewing for acknowledgment
-  EMPLOYEE_DISAGREED                    // 13: Employee disagreed with manager assessment
-  EMPLOYEE_REVERT_TO_MANAGER            // 14: Employee requested changes from manager
-  MANAGER_REVISING                      // 15: Manager revising (loops back)
-  EMPLOYEE_ACKNOWLEDGED                 // 16: Employee acknowledged
-  
+  EMPLOYEE_ACKNOWLEDGING // 12: Employee reviewing for acknowledgment
+  EMPLOYEE_DISAGREED // 13: Employee disagreed with manager assessment
+  EMPLOYEE_REVERT_TO_MANAGER // 14: Employee requested changes from manager
+  MANAGER_REVISING // 15: Manager revising (loops back)
+  EMPLOYEE_ACKNOWLEDGED // 16: Employee acknowledged
+
   // 17-19. Director Review & Completion
-  DIRECTOR_REVIEWING                    // 17: Director reviewing final PDR
-  DIRECTOR_REVIEWED                     // 18: Director completed review
-  COMPLETED                             // 19: PDR fully completed and locked
+  DIRECTOR_REVIEWING // 17: Director reviewing final PDR
+  DIRECTOR_REVIEWED // 18: Director completed review
+  COMPLETED // 19: PDR fully completed and locked
 }
 
 //PDR Management
 
 model Pdr {
-  id                 Int              @id @default(autoincrement())
-  user               User             @relation("PdrEmployee", fields: [userId], references: [id])
-  userId             String
-  creation_date      DateTime         @default(now())
-  pdr_cycle          String?          @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
-  pdr_timeline       String?
-  
+  id            Int      @id @default(autoincrement())
+  user          User     @relation("PdrEmployee", fields: [userId], references: [id])
+  userId        String
+  creation_date DateTime @default(now())
+  pdr_cycle     String?  @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
+  pdr_timeline  String?
+
   // Relations to other users
-  linemanager        User?            @relation("PdrLineManager", fields: [linemanager_id], references: [id])
-  linemanager_id     String?
-  director           User?            @relation("PdrDirector", fields: [director_id], references: [id])
-  director_id        String?
-  
+  linemanager    User?   @relation("PdrLineManager", fields: [linemanager_id], references: [id])
+  linemanager_id String?
+  director       User?   @relation("PdrDirector", fields: [director_id], references: [id])
+  director_id    String?
+
   // Overall PDR Status (follows 19-step flow)
-  overallStatus      PdrOverallStatus @default(CREATED_BY_HR)
-  
+  overallStatus PdrOverallStatus @default(CREATED_BY_HR)
+
   // Individual role statuses (for granular tracking)
-  emp_status         PdrStatus        @default(PENDING)
-  linemanager_status PdrStatus        @default(PENDING)
-  director_status    PdrStatus        @default(PENDING)
-  hr_status          PdrStatus        @default(PENDING)
-  
+  emp_status         PdrStatus @default(PENDING)
+  linemanager_status PdrStatus @default(PENDING)
+  director_status    PdrStatus @default(PENDING)
+  hr_status          PdrStatus @default(PENDING)
+
   // Tracking fields
-  isCompleted        Boolean          @default(false)
-  completedAt        DateTime?
-  lastModifiedBy     String? // User ID who last modified
-  lastModifiedAt     DateTime         @default(now()) @updatedAt
-  
+  isCompleted    Boolean   @default(false)
+  completedAt    DateTime?
+  lastModifiedBy String? // User ID who last modified
+  lastModifiedAt DateTime  @default(now()) @updatedAt
+
   // Manager recommendations (visible to HR and Manager only, NOT to employee)
-  training_required  Boolean?         @default(false)
-  training_description String?        @db.Text
-  promotion_recommended Boolean?      @default(false)
-  promotion_description String?       @db.Text
-  
+  training_required     Boolean? @default(false)
+  training_description  String?  @db.Text
+  promotion_recommended Boolean? @default(false)
+  promotion_description String?  @db.Text
+
   // Director's overall PDR comment
-  director_overall_comment String?    @db.Text
-  
+  director_overall_comment String? @db.Text
+
   // Metadata
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @default(now()) @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   // Relations to PDR components
-  comments           PdrComment[]
-  personalQualities  PdrPersonalQuality[]
-  goalsTasks         PdrGoalsTask[]
-  overallComments    PdrOverallComment[]
-  transitions        PdrStatusTransition[]
-  
+  comments          PdrComment[]
+  personalQualities PdrPersonalQuality[]
+  goalsTasks        PdrGoalsTask[]
+  overallComments   PdrOverallComment[]
+  transitions       PdrStatusTransition[]
+
   @@unique([userId, pdr_cycle]) // Prevent duplicate PDRs per cycle
   @@map("pdr")
 }
 
 // Track status transitions for audit trail
 model PdrStatusTransition {
-  id              Int              @id @default(autoincrement())
-  pdr             Pdr              @relation(fields: [pdrId], references: [id], onDelete: Cascade)
-  pdrId           Int
-  fromStatus      PdrOverallStatus
-  toStatus        PdrOverallStatus
-  changedBy       String // User ID
-  changedByRole   String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
-  comment         String?
-  createdAt       DateTime         @default(now())
-  
+  id            Int              @id @default(autoincrement())
+  pdr           Pdr              @relation(fields: [pdrId], references: [id], onDelete: Cascade)
+  pdrId         Int
+  fromStatus    PdrOverallStatus
+  toStatus      PdrOverallStatus
+  changedBy     String // User ID
+  changedByRole String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
+  comment       String?
+  createdAt     DateTime         @default(now())
+
   @@map("pdr_status_transitions")
 }
 
 model PdrComment {
-  id              Int       @id @default(autoincrement())
-  pdr             Pdr       @relation(fields: [pdr_id], references: [id])
+  id              Int      @id @default(autoincrement())
+  pdr             Pdr      @relation(fields: [pdr_id], references: [id])
   pdr_id          Int
-  employee_type   String    // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
-  pdr_status_type String    // Status when comment was made
-  description     String    @db.Text
-  datetime        DateTime  @default(now())
-  
+  employee_type   String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
+  pdr_status_type String // Status when comment was made
+  description     String   @db.Text
+  datetime        DateTime @default(now())
+
   // Extended fields for revert messages
-  commentType     String?   @default("GENERAL") // "GENERAL", "REVERT", "APPROVAL", "FEEDBACK"
-  sentTo          String?   // Who this message is for (for REVERT type)
-  isResolved      Boolean   @default(false) // For REVERT messages
-  resolvedAt      DateTime?
-  
+  commentType String?   @default("GENERAL") // "GENERAL", "REVERT", "APPROVAL", "FEEDBACK"
+  sentTo      String? // Who this message is for (for REVERT type)
+  isResolved  Boolean   @default(false) // For REVERT messages
+  resolvedAt  DateTime?
+
   @@map("pdr_comments")
 }
 
@@ -830,6 +830,8 @@ model PdrPersonalQuality {
   leadership                Int
   comment                   String
   datetime                  DateTime
+
+  @@map("pdrpersonalquality")
 }
 
 model PdrGoalsTask {
@@ -840,6 +842,8 @@ model PdrGoalsTask {
   employee_self_rating Int
   linemanager_rating   Int
   datetime             DateTime
+
+  @@map("pdrgoalstask")
 }
 
 model PdrOverallComment {
@@ -849,4 +853,6 @@ model PdrOverallComment {
   employee_type String
   comment       String
   datetime      DateTime
+
+  @@map("pdroverallcomment")
 }
