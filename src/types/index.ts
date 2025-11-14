@@ -4,7 +4,6 @@ export * from "./auth";
 // Re-export Prisma types
 export type {
   User,
-  Employee,
   Department,
   Attendance,
   LeaveRequest,
@@ -20,4 +19,14 @@ export type {
   RequestStatus,
   PayrollStatus,
   ReviewStatus,
+  UserStatus,
+  UserRank,
+  BloodGroup,
+  EducationLevel,
+  ZKTecoCheckType,
+  AttendanceStatusType,
+  NotificationType,
+  NotificationPriority,
+  PdrStatus,
+  PdrOverallStatus,
 } from "../generated/prisma";
