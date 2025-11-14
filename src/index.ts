@@ -324,5 +324,22 @@ const startServer = async () => {
 // Export socket manager for use in controllers
 export const getSocketManager = (): SocketManager => socketManager;
 
-// Initialize server
-startServer();
+// Initialize database connection for Vercel serverless
+if (process.env.VERCEL === "1") {
+  // Connect to database in serverless environment
+  DatabaseConnection.connect()
+    .then(() => {
+      console.log("✅ Database connected for Vercel serverless");
+    })
+    .catch((error) => {
+      console.error("❌ Database connection failed:", error);
+    });
+}
+
+// Export the Express app for Vercel serverless
+export default app;
+
+// Initialize server only if not in Vercel environment
+if (process.env.VERCEL !== "1") {
+  startServer();
+}
