@@ -65,7 +65,7 @@ const getEnvBoolean = (key: string, defaultValue?: boolean): boolean => {
 
 export const config: EnvConfig = {
   // Server Configuration
-  PORT: getEnvNumber("PORT", 3001),
+  PORT: getEnvNumber("PORT", 3000),
   NODE_ENV: getEnvVar("NODE_ENV", "development"),
   API_PREFIX: getEnvVar("API_PREFIX", "/api/v1"),
 
@@ -120,4 +120,3 @@ export const validateConfig = (): void => {
 };
 
 export default config;
- 
