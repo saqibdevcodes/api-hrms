@@ -47,6 +47,7 @@ app.use(
       "http://localhost:3000",
       "https://iriscommunications.com",
       "https://www.iriscommunications.com",
+      "https://hr.iriscommunications.cloud",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
