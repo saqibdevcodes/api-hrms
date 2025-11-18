@@ -492,7 +492,26 @@ export class EmployeeController {
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
 
-      const updateData: any = { ...req.body };
+      // Extract relational IDs from body
+      const {
+        departmentId,
+        contractTypeId,
+        designationId,
+        shiftId,
+        leaveId,
+        employmentTypeId,
+        supervisorId,
+        supervisorIds,
+        emergencyContactName,
+        emergencyContactPhone,
+        emergencyContactEmail,
+        emergencyContactRelation,
+        emergencyContactAddress,
+        emergencyContactAlternatePhone,
+        ...restData
+      } = req.body;
+
+      const updateData: any = { ...restData };
 
       // Handle file updates
       if (cnicFrontFile) {
@@ -524,6 +543,94 @@ export class EmployeeController {
       // Hash password if provided
       if (updateData.password) {
         updateData.password = await bcrypt.hash(updateData.password, 10);
+      } else {
+        // Remove password field if not provided (don't update it)
+        delete updateData.password;
+      }
+
+      // Handle relational updates using connect syntax
+      if (departmentId) {
+        updateData.departmentEntity = { connect: { id: departmentId } };
+        // Also update the department name field
+        const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+        if (dept) {
+          updateData.department = dept.name;
+        }
+      }
+
+      if (contractTypeId) {
+        updateData.contractType = { connect: { id: contractTypeId } };
+      }
+
+      if (designationId) {
+        updateData.designation = { connect: { id: designationId } };
+      }
+
+      if (shiftId) {
+        updateData.shift = { connect: { id: shiftId } };
+      }
+
+      if (leaveId) {
+        updateData.leavePolicy = { connect: { id: leaveId } };
+      }
+
+      if (employmentTypeId) {
+        updateData.employmentType = { connect: { id: employmentTypeId } };
+      }
+
+      // Handle supervisor updates based on rank
+      if (updateData.userRank === "LINE_MANAGER" && supervisorIds && Array.isArray(supervisorIds)) {
+        // For line managers with multiple supervisors, store as JSON
+        const supervisors = await prisma.user.findMany({
+          where: { id: { in: supervisorIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        });
+        updateData.manager = JSON.stringify(supervisors);
+      } else if (updateData.userRank === "EMPLOYEE" && supervisorId) {
+        // For employees with single supervisor
+        const supervisor = await prisma.user.findUnique({
+          where: { id: supervisorId },
+          select: { firstName: true, lastName: true, email: true },
+        });
+        if (supervisor) {
+          updateData.manager = `${supervisor.firstName} ${supervisor.lastName}`;
+        }
+      }
+
+      // Handle emergency contact updates
+      if (emergencyContactName || emergencyContactPhone) {
+        if (existingUser.emergencyDetailId) {
+          // Update existing emergency detail
+          await prisma.emergencyDetail.update({
+            where: { id: existingUser.emergencyDetailId },
+            data: {
+              contactName: emergencyContactName || undefined,
+              contactPhone: emergencyContactPhone || undefined,
+              contactEmail: emergencyContactEmail || null,
+              relationship: emergencyContactRelation || undefined,
+              contactAddress: emergencyContactAddress || null,
+              alternatePhone: emergencyContactAlternatePhone || null,
+            },
+          });
+        } else {
+          // Create new emergency detail
+          const emergencyDetail = await prisma.emergencyDetail.create({
+            data: {
+              contactName: emergencyContactName,
+              contactPhone: emergencyContactPhone,
+              contactEmail: emergencyContactEmail || null,
+              relationship: emergencyContactRelation || "Emergency Contact",
+              contactAddress: emergencyContactAddress || null,
+              alternatePhone: emergencyContactAlternatePhone || null,
+            },
+          });
+          updateData.emergencyDetailId = emergencyDetail.id;
+        }
       }
 
       updateData.updatedBy = req.user?.id;
