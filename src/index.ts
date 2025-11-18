@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import fs from "fs";
 import { createServer } from "http";
 import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
@@ -62,8 +63,15 @@ app.use(
   })
 );
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("✅ Created uploads directory");
+}
+
 // Static file serving for uploads
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/uploads", express.static(uploadsDir));
 
 // Global rate limiting
 const globalRateLimit = rateLimit({

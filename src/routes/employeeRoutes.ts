@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { EmployeeController } from "../controller/employeeController";
 import {
   createEmployeeValidation,
@@ -15,6 +16,9 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     // Create uploads directory if it doesn't exist
     const uploadPath = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
@@ -27,12 +31,16 @@ const storage = multer.diskStorage({
 
 // File filter for allowed file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
-  // Allow images for CNIC files
-  if (file.fieldname === "cnicFrontFile" || file.fieldname === "cnicBackFile") {
+  // Allow images for CNIC files and insurance card
+  if (
+    file.fieldname === "cnicFrontFile" ||
+    file.fieldname === "cnicBackFile" ||
+    file.fieldname === "insuranceCardFile"
+  ) {
     if (file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error("CNIC files must be images"), false);
+      cb(new Error("CNIC and insurance card files must be images"), false);
     }
   }
   // Allow documents (PDF, images, docs) for general documents
@@ -69,6 +77,7 @@ const uploadFields = upload.fields([
   { name: "cnicFrontFile", maxCount: 1 },
   { name: "cnicBackFile", maxCount: 1 },
   { name: "documentFile", maxCount: 1 },
+  { name: "insuranceCardFile", maxCount: 1 },
 ]);
 
 // GET /api/employees/form-data - Get dropdown data for employee form
