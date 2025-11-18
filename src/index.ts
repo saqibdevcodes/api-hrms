@@ -63,14 +63,26 @@ app.use(
   })
 );
 
-// Create uploads directory for local storage (if Cloudinary not configured)
-const uploadsDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log("✅ Created local uploads directory");
+// Create uploads directory for local storage (only if Cloudinary not configured)
+// Skip in serverless environments (Vercel) as filesystem is read-only
+const isCloudinaryConfigured = config.CLOUDINARY_CLOUD_NAME && config.CLOUDINARY_API_KEY && config.CLOUDINARY_API_SECRET;
+const isVercel = process.env.VERCEL === "1";
+
+if (!isCloudinaryConfigured && !isVercel) {
+  try {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log("✅ Created local uploads directory");
+    }
+    // Serve static files from uploads directory
+    app.use("/uploads", express.static(uploadsDir));
+  } catch (error) {
+    console.warn("⚠️  Could not create uploads directory:", error);
+  }
+} else if (isCloudinaryConfigured) {
+  console.log("✅ Using Cloudinary for file storage (no local uploads directory needed)");
 }
-// Serve static files from uploads directory
-app.use("/uploads", express.static(uploadsDir));
 
 // Global rate limiting
 const globalRateLimit = rateLimit({
