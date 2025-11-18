@@ -151,6 +151,7 @@ export class EmployeeController {
       const cnicFrontFile = files?.cnicFrontFile?.[0];
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
+      const insuranceCardFile = files?.insuranceCardFile?.[0];
 
       const {
         // User fields
@@ -346,15 +347,19 @@ export class EmployeeController {
             shiftId,
             leaveId,
 
-            // File paths
-            cnicPictureFront: cnicFrontFile?.filename
-              ? `/uploads/${cnicFrontFile.filename}`
+            // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
+            cnicPictureFront: cnicFrontFile
+              ? cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`
               : null,
-            cnicPictureBack: cnicBackFile?.filename
-              ? `/uploads/${cnicBackFile.filename}`
+            cnicPictureBack: cnicBackFile
+              ? cnicBackFile.path || `/uploads/${cnicBackFile.filename}`
               : null,
-            degreePicture: documentFile?.filename
-              ? `/uploads/${documentFile.filename}`
+            degreePicture: documentFile
+              ? documentFile.path || `/uploads/${documentFile.filename}`
+              : null,
+            insuranceCardPicture: insuranceCardFile
+              ? insuranceCardFile.path ||
+                `/uploads/${insuranceCardFile.filename}`
               : null,
 
             // System fields
@@ -491,6 +496,7 @@ export class EmployeeController {
       const cnicFrontFile = files?.cnicFrontFile?.[0];
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
+      const insuranceCardFile = files?.insuranceCardFile?.[0];
 
       // Extract relational IDs from body
       const {
@@ -514,14 +520,22 @@ export class EmployeeController {
       const updateData: any = { ...restData };
 
       // Handle file updates
+      // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
       if (cnicFrontFile) {
-        updateData.cnicPictureFront = `/uploads/${cnicFrontFile.filename}`;
+        updateData.cnicPictureFront =
+          cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`;
       }
       if (cnicBackFile) {
-        updateData.cnicPictureBack = `/uploads/${cnicBackFile.filename}`;
+        updateData.cnicPictureBack =
+          cnicBackFile.path || `/uploads/${cnicBackFile.filename}`;
       }
       if (documentFile) {
-        updateData.degreePicture = `/uploads/${documentFile.filename}`;
+        updateData.degreePicture =
+          documentFile.path || `/uploads/${documentFile.filename}`;
+      }
+      if (insuranceCardFile) {
+        updateData.insuranceCardPicture =
+          insuranceCardFile.path || `/uploads/${insuranceCardFile.filename}`;
       }
 
       // Convert date strings to Date objects
@@ -552,7 +566,9 @@ export class EmployeeController {
       if (departmentId) {
         updateData.departmentEntity = { connect: { id: departmentId } };
         // Also update the department name field
-        const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+        const dept = await prisma.department.findUnique({
+          where: { id: departmentId },
+        });
         if (dept) {
           updateData.department = dept.name;
         }
@@ -579,7 +595,11 @@ export class EmployeeController {
       }
 
       // Handle supervisor updates based on rank
-      if (updateData.userRank === "LINE_MANAGER" && supervisorIds && Array.isArray(supervisorIds)) {
+      if (
+        updateData.userRank === "LINE_MANAGER" &&
+        supervisorIds &&
+        Array.isArray(supervisorIds)
+      ) {
         // For line managers with multiple supervisors, store as JSON
         const supervisors = await prisma.user.findMany({
           where: { id: { in: supervisorIds } },

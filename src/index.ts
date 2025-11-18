@@ -63,14 +63,13 @@ app.use(
   })
 );
 
-// Create uploads directory if it doesn't exist
+// Create uploads directory for local storage (if Cloudinary not configured)
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log("✅ Created uploads directory");
+  console.log("✅ Created local uploads directory");
 }
-
-// Static file serving for uploads
+// Serve static files from uploads directory
 app.use("/uploads", express.static(uploadsDir));
 
 // Global rate limiting

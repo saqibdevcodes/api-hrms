@@ -76,6 +76,19 @@ model User {
   cnicPictureFront String?
   cnicPictureBack  String?
 
+  // Insurance Policy fields
+  hasInsurance                  Boolean?  @default(false)
+  insuranceCardNo               String?
+  insuranceInsuredName          String?
+  insuranceEmployeeNo           String?
+  insuranceValidUpto            DateTime?
+  insuranceSpouseChildren       String?
+  insuranceHospitalization      String?
+  insuranceRoomLimit            String?
+  insuranceNormalDelivery       String?
+  insuranceComplicatedDelivery  String?
+  insuranceCardPicture          String?
+
   // System fields
   isActive  Boolean   @default(true)
   lastLogin DateTime?
