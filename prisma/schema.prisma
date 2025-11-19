@@ -72,6 +72,7 @@ model User {
   employmentTypeId String?
 
   // Document Pictures (stored as file paths)
+  profilePicture   String?
   degreePicture    String?
   cnicPictureFront String?
   cnicPictureBack  String?

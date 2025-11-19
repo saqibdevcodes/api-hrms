@@ -37,6 +37,7 @@ app.use(
       },
     },
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
   })
 );
 
@@ -65,7 +66,10 @@ app.use(
 
 // Create uploads directory for local storage (only if Cloudinary not configured)
 // Skip in serverless environments (Vercel) as filesystem is read-only
-const isCloudinaryConfigured = config.CLOUDINARY_CLOUD_NAME && config.CLOUDINARY_API_KEY && config.CLOUDINARY_API_SECRET;
+const isCloudinaryConfigured =
+  config.CLOUDINARY_CLOUD_NAME &&
+  config.CLOUDINARY_API_KEY &&
+  config.CLOUDINARY_API_SECRET;
 const isVercel = process.env.VERCEL === "1";
 
 if (!isCloudinaryConfigured && !isVercel) {
@@ -75,13 +79,23 @@ if (!isCloudinaryConfigured && !isVercel) {
       fs.mkdirSync(uploadsDir, { recursive: true });
       console.log("✅ Created local uploads directory");
     }
-    // Serve static files from uploads directory
-    app.use("/uploads", express.static(uploadsDir));
+    // Serve static files from uploads directory with CORS headers
+    app.use(
+      "/uploads",
+      (req, res, next) => {
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        next();
+      },
+      express.static(uploadsDir)
+    );
   } catch (error) {
     console.warn("⚠️  Could not create uploads directory:", error);
   }
 } else if (isCloudinaryConfigured) {
-  console.log("✅ Using Cloudinary for file storage (no local uploads directory needed)");
+  console.log(
+    "✅ Using Cloudinary for file storage (no local uploads directory needed)"
+  );
 }
 
 // Global rate limiting

@@ -152,6 +152,7 @@ export class EmployeeController {
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
       const insuranceCardFile = files?.insuranceCardFile?.[0];
+      const profilePictureFile = files?.profilePictureFile?.[0];
 
       const {
         // User fields
@@ -348,6 +349,9 @@ export class EmployeeController {
             leaveId,
 
             // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
+            profilePicture: profilePictureFile
+              ? profilePictureFile.path || `/uploads/${profilePictureFile.filename}`
+              : null,
             cnicPictureFront: cnicFrontFile
               ? cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`
               : null,
@@ -497,6 +501,7 @@ export class EmployeeController {
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
       const insuranceCardFile = files?.insuranceCardFile?.[0];
+      const profilePictureFile = files?.profilePictureFile?.[0];
 
       // Extract relational IDs from body
       const {
@@ -521,6 +526,10 @@ export class EmployeeController {
 
       // Handle file updates
       // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
+      if (profilePictureFile) {
+        updateData.profilePicture =
+          profilePictureFile.path || `/uploads/${profilePictureFile.filename}`;
+      }
       if (cnicFrontFile) {
         updateData.cnicPictureFront =
           cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`;

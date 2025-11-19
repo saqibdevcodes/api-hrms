@@ -51,16 +51,17 @@ const storage = isCloudinaryConfigured
 
 // File filter for allowed file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
-  // Allow images for CNIC files and insurance card
+  // Allow images for CNIC files, insurance card, and profile picture
   if (
     file.fieldname === "cnicFrontFile" ||
     file.fieldname === "cnicBackFile" ||
-    file.fieldname === "insuranceCardFile"
+    file.fieldname === "insuranceCardFile" ||
+    file.fieldname === "profilePictureFile"
   ) {
     if (file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error("CNIC and insurance card files must be images"), false);
+      cb(new Error("CNIC, insurance card, and profile picture files must be images"), false);
     }
   }
   // Allow documents (PDF, images, docs) for general documents
@@ -98,6 +99,7 @@ const uploadFields = upload.fields([
   { name: "cnicBackFile", maxCount: 1 },
   { name: "documentFile", maxCount: 1 },
   { name: "insuranceCardFile", maxCount: 1 },
+  { name: "profilePictureFile", maxCount: 1 },
 ]);
 
 // GET /api/employees/form-data - Get dropdown data for employee form
