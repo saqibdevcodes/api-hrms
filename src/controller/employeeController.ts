@@ -73,7 +73,7 @@ export class EmployeeController {
     try {
       const {
         page = 1,
-        limit = 10,
+        limit = 100, // Increased default limit
         search = "",
         department = "",
         status = "",
@@ -84,9 +84,35 @@ export class EmployeeController {
       const skip = (Number(page) - 1) * Number(limit);
       const take = Number(limit);
 
-      // Get all users, then filter for employees on the application side for now
-      const [allUsers, total] = await Promise.all([
+      // Build where clause to filter only employees
+      const where: any = {
+        employeeId: { not: null }, // Only get users with employeeId (employees)
+      };
+
+      // Add search filter
+      if (search) {
+        where.OR = [
+          { firstName: { contains: search as string, mode: "insensitive" } },
+          { lastName: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+          { employeeId: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      // Add department filter
+      if (department) {
+        where.departmentId = department as string;
+      }
+
+      // Add status filter
+      if (status) {
+        where.status = status as string;
+      }
+
+      // Get employees with proper filtering BEFORE pagination
+      const [employees, total] = await Promise.all([
         prisma.user.findMany({
+          where,
           skip,
           take,
           include: {
@@ -99,11 +125,8 @@ export class EmployeeController {
             [sortBy as string]: sortOrder,
           },
         }),
-        prisma.user.count(),
+        prisma.user.count({ where }),
       ]);
-
-      // Filter for employees (users with employeeId)
-      const employees = allUsers.filter((user) => user.employeeId !== null);
 
       res.json({
         success: true,
@@ -113,8 +136,8 @@ export class EmployeeController {
           pagination: {
             page: Number(page),
             limit: Number(limit),
-            total: employees.length,
-            pages: Math.ceil(employees.length / Number(limit)),
+            total: total,
+            pages: Math.ceil(total / Number(limit)),
           },
         },
       });
@@ -210,6 +233,18 @@ export class EmployeeController {
         emergencyContactRelation,
         emergencyContactAddress,
         emergencyContactAlternatePhone,
+
+        // Insurance fields
+        hasInsurance,
+        insuranceCardNo,
+        insuranceInsuredName,
+        insuranceEmployeeNo,
+        insuranceValidUpto,
+        insuranceSpouseChildren,
+        insuranceHospitalization,
+        insuranceRoomLimit,
+        insuranceNormalDelivery,
+        insuranceComplicatedDelivery,
       } = req.body;
 
       // Check if user already exists
@@ -348,23 +383,46 @@ export class EmployeeController {
             shiftId,
             leaveId,
 
-            // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
+            // File paths - Cloudinary provides full URLs, local storage uses relative paths
             profilePicture: profilePictureFile
-              ? profilePictureFile.path || `/uploads/${profilePictureFile.filename}`
+              ? profilePictureFile.path?.startsWith("http")
+                ? profilePictureFile.path
+                : `/uploads/${profilePictureFile.filename}`
               : null,
             cnicPictureFront: cnicFrontFile
-              ? cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`
+              ? cnicFrontFile.path?.startsWith("http")
+                ? cnicFrontFile.path
+                : `/uploads/${cnicFrontFile.filename}`
               : null,
             cnicPictureBack: cnicBackFile
-              ? cnicBackFile.path || `/uploads/${cnicBackFile.filename}`
+              ? cnicBackFile.path?.startsWith("http")
+                ? cnicBackFile.path
+                : `/uploads/${cnicBackFile.filename}`
               : null,
             degreePicture: documentFile
-              ? documentFile.path || `/uploads/${documentFile.filename}`
+              ? documentFile.path?.startsWith("http")
+                ? documentFile.path
+                : `/uploads/${documentFile.filename}`
               : null,
             insuranceCardPicture: insuranceCardFile
-              ? insuranceCardFile.path ||
-                `/uploads/${insuranceCardFile.filename}`
+              ? insuranceCardFile.path?.startsWith("http")
+                ? insuranceCardFile.path
+                : `/uploads/${insuranceCardFile.filename}`
               : null,
+
+            // Insurance fields
+            hasInsurance: hasInsurance === "true" || hasInsurance === true,
+            insuranceCardNo: insuranceCardNo || null,
+            insuranceInsuredName: insuranceInsuredName || null,
+            insuranceEmployeeNo: insuranceEmployeeNo || null,
+            insuranceValidUpto: insuranceValidUpto
+              ? new Date(insuranceValidUpto)
+              : null,
+            insuranceSpouseChildren: insuranceSpouseChildren || null,
+            insuranceHospitalization: insuranceHospitalization || null,
+            insuranceRoomLimit: insuranceRoomLimit || null,
+            insuranceNormalDelivery: insuranceNormalDelivery || null,
+            insuranceComplicatedDelivery: insuranceComplicatedDelivery || null,
 
             // System fields
             createdBy: req.user?.id,
@@ -525,26 +583,33 @@ export class EmployeeController {
       const updateData: any = { ...restData };
 
       // Handle file updates
-      // File paths - Cloudinary provides full URLs in file.path, local storage uses filename
+      // File paths - Cloudinary provides full URLs, local storage uses relative paths
       if (profilePictureFile) {
-        updateData.profilePicture =
-          profilePictureFile.path || `/uploads/${profilePictureFile.filename}`;
+        updateData.profilePicture = profilePictureFile.path?.startsWith("http")
+          ? profilePictureFile.path
+          : `/uploads/${profilePictureFile.filename}`;
       }
       if (cnicFrontFile) {
-        updateData.cnicPictureFront =
-          cnicFrontFile.path || `/uploads/${cnicFrontFile.filename}`;
+        updateData.cnicPictureFront = cnicFrontFile.path?.startsWith("http")
+          ? cnicFrontFile.path
+          : `/uploads/${cnicFrontFile.filename}`;
       }
       if (cnicBackFile) {
-        updateData.cnicPictureBack =
-          cnicBackFile.path || `/uploads/${cnicBackFile.filename}`;
+        updateData.cnicPictureBack = cnicBackFile.path?.startsWith("http")
+          ? cnicBackFile.path
+          : `/uploads/${cnicBackFile.filename}`;
       }
       if (documentFile) {
-        updateData.degreePicture =
-          documentFile.path || `/uploads/${documentFile.filename}`;
+        updateData.degreePicture = documentFile.path?.startsWith("http")
+          ? documentFile.path
+          : `/uploads/${documentFile.filename}`;
       }
       if (insuranceCardFile) {
-        updateData.insuranceCardPicture =
-          insuranceCardFile.path || `/uploads/${insuranceCardFile.filename}`;
+        updateData.insuranceCardPicture = insuranceCardFile.path?.startsWith(
+          "http"
+        )
+          ? insuranceCardFile.path
+          : `/uploads/${insuranceCardFile.filename}`;
       }
 
       // Convert date strings to Date objects
@@ -561,6 +626,16 @@ export class EmployeeController {
       if (updateData.dateOfExit) {
         updateData.dateOfExit = new Date(updateData.dateOfExit);
         updateData.endDate = updateData.dateOfExit; // Keep both in sync
+      }
+      if (updateData.insuranceValidUpto) {
+        updateData.insuranceValidUpto = new Date(updateData.insuranceValidUpto);
+      }
+
+      // Convert hasInsurance string to boolean
+      if (updateData.hasInsurance !== undefined) {
+        updateData.hasInsurance =
+          updateData.hasInsurance === "true" ||
+          updateData.hasInsurance === true;
       }
 
       // Hash password if provided
