@@ -14,17 +14,48 @@ Warnings:
 
 -- Normalize PDR table names to lowercase for consistency with Prisma mappings
 -- These renames ensure subsequent statements referencing lowercase tables work
-RENAME TABLE `Pdr` TO `pdr`;
+-- Only rename if the old table exists and new table doesn't exist
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'Pdr');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdr');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `Pdr` TO `pdr`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-RENAME TABLE `PdrComment` TO `pdrcomment`;
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'PdrComment');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdrcomment');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `PdrComment` TO `pdrcomment`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-RENAME TABLE `PdrGoalsTask` TO `pdrgoalstask`;
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'PdrGoalsTask');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdrgoalstask');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `PdrGoalsTask` TO `pdrgoalstask`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-RENAME TABLE `PdrGoalsTasksComment` TO `pdrgoalstaskscomment`;
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'PdrGoalsTasksComment');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdrgoalstaskscomment');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `PdrGoalsTasksComment` TO `pdrgoalstaskscomment`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-RENAME TABLE `PdrPersonalQuality` TO `pdrpersonalquality`;
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'PdrPersonalQuality');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdrpersonalquality');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `PdrPersonalQuality` TO `pdrpersonalquality`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-RENAME TABLE `PdrOverallComment` TO `pdroverallcomment`;
+SET @table_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'PdrOverallComment');
+SET @lowercase_exists = (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pdroverallcomment');
+SET @sql = IF(@table_exists > 0 AND @lowercase_exists = 0, 'RENAME TABLE `PdrOverallComment` TO `pdroverallcomment`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 -- DropForeignKeys
 ALTER TABLE `AdvanceSalary`
 DROP FOREIGN KEY `AdvanceSalary_userId_fkey`;

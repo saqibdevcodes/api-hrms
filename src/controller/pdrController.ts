@@ -20,12 +20,13 @@ export class PdrController {
       const limit = parseInt((req.query.limit as string) || "10", 10);
       const status = req.query.status as PdrOverallStatus | undefined;
       const cycle = req.query.cycle as string | undefined;
+      const section = req.query.section as 'mine' | 'team' | 'all' | undefined; // New section parameter
 
       const result = await PdrService.getPdrsForUser(
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle }
+        { page, limit, status, cycle, section }
       );
 
       res.status(200).json(result);
@@ -188,15 +189,18 @@ export class PdrController {
 
       // Determine effective role: if user is the PDR owner, they act as EMPLOYEE
       // Otherwise, use their actual role/rank
+      // HR with LINE_MANAGER rank can fill manager sections (use LINE_MANAGER)
       let effectiveRole: string;
       if (pdr.userId === req.user.id) {
         // User is filling their own PDR - they are the EMPLOYEE
         effectiveRole = "EMPLOYEE";
-      } else if (pdr.linemanager_id === req.user.id) {
-        // User is the line manager - use their rank or role
-        effectiveRole = req.user.userRank || req.user.role;
+      } else if (pdr.linemanager_id === req.user.id || 
+                 (req.user.role === "HR" && req.user.userRank === "LINE_MANAGER" && targetStatus === PdrOverallStatus.MANAGER_FILLING)) {
+        // User is the line manager OR HR with LINE_MANAGER rank filling manager section
+        // Use LINE_MANAGER for filling manager sections
+        effectiveRole = "LINE_MANAGER";
       } else {
-        // User is director or admin
+        // User is director or admin/HR
         effectiveRole = req.user.userRank || req.user.role;
       }
 
@@ -205,6 +209,7 @@ export class PdrController {
           pdrId,
           userId: req.user.id,
           userRole: effectiveRole,
+          userRank: req.user.userRank || undefined,
           comment,
         },
         targetStatus
@@ -261,11 +266,14 @@ export class PdrController {
       }
 
       // Determine effective role: if user is the PDR owner, they act as EMPLOYEE
+      // HR with LINE_MANAGER rank submitting manager section uses LINE_MANAGER role
       let effectiveRole: string;
       if (pdr.userId === req.user.id) {
         effectiveRole = "EMPLOYEE";
-      } else if (pdr.linemanager_id === req.user.id) {
-        effectiveRole = req.user.userRank || req.user.role;
+      } else if (pdr.linemanager_id === req.user.id || 
+                 (req.user.role === "HR" && req.user.userRank === "LINE_MANAGER" && targetStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)) {
+        // User is the line manager OR HR with LINE_MANAGER rank submitting manager section
+        effectiveRole = "LINE_MANAGER";
       } else {
         effectiveRole = req.user.userRank || req.user.role;
       }
@@ -275,6 +283,7 @@ export class PdrController {
           pdrId,
           userId: req.user.id,
           userRole: effectiveRole,
+          userRank: req.user.userRank || undefined,
           comment,
         },
         targetStatus
@@ -324,7 +333,8 @@ export class PdrController {
           {
             pdrId,
             userId: req.user.id,
-            userRole: req.user.role,
+            userRole: req.user.role === "HR" ? "HR" : req.user.role,
+            userRank: req.user.userRank || undefined,
             comment: "Starting review",
           },
           PdrOverallStatus.HR_REVIEWING_EMPLOYEE
@@ -337,7 +347,8 @@ export class PdrController {
           {
             pdrId,
             userId: req.user.id,
-            userRole: req.user.role,
+            userRole: req.user.role === "HR" ? "HR" : req.user.role,
+            userRank: req.user.userRank || undefined,
             comment: "Starting review",
           },
           PdrOverallStatus.HR_REVIEWING_MANAGER
@@ -354,11 +365,14 @@ export class PdrController {
         });
       }
 
+      // Use HR role for HR tasks (approve, revert, complete)
+      // HR role is used regardless of userRank for HR operations
       const updatedPdr = await PdrService.transitionStatus(
         {
           pdrId,
           userId: req.user.id,
-          userRole: req.user.role,
+          userRole: req.user.role === "HR" ? "HR" : req.user.role, // Ensure HR role is used for HR tasks
+          userRank: req.user.userRank || undefined,
           comment,
         },
         targetStatus
@@ -435,11 +449,13 @@ export class PdrController {
       );
 
       // Transition status
+      // Use HR role for revert operations
       const updatedPdr = await PdrService.transitionStatus(
         {
           pdrId,
           userId: req.user.id,
-          userRole: req.user.role,
+          userRole: req.user.role === "HR" ? "HR" : req.user.role,
+          userRank: req.user.userRank || undefined,
           comment: comment || `Reverted with message: ${message}`,
         },
         targetStatus
@@ -495,17 +511,19 @@ export class PdrController {
         });
       }
 
+      // Employee acknowledges - use EMPLOYEE role regardless of actual role
       const updatedPdr = await PdrService.transitionStatus(
         {
           pdrId,
           userId: req.user.id,
-          userRole: req.user.role,
+          userRole: "EMPLOYEE", // Employee acknowledgment always uses EMPLOYEE role
+          userRank: req.user.userRank || undefined,
           comment,
         },
         targetStatus
       );
 
-          res.status(200).json({
+      res.status(200).json({
         success: true,
         message: disagree
           ? "Disagreement recorded"
@@ -528,6 +546,14 @@ export class PdrController {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // ADMIN cannot perform director review (read-only role)
+      if (req.user.role === "ADMIN") {
+        return res.status(403).json({
+          success: false,
+          message: "ADMIN role cannot perform director review. This is a read-only role.",
+        });
       }
 
       const pdrId = parseInt(req.params.id, 10);
@@ -560,6 +586,7 @@ export class PdrController {
           pdrId,
           userId: req.user.id,
           userRole: req.user.userRank || req.user.role,
+          userRank: req.user.userRank || undefined,
           comment,
         },
         targetStatus

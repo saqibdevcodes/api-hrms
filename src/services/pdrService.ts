@@ -15,6 +15,7 @@ export interface PdrTransitionData {
   pdrId: number;
   userId: string;
   userRole: string;
+  userRank?: string; // Add userRank to interface
   comment?: string;
 }
 
@@ -27,54 +28,54 @@ export class PdrService {
     { nextStatus: PdrOverallStatus; allowedRoles: string[] }[]
   > = {
     CREATED_BY_HR: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_FILLING, allowedRoles: ["EMPLOYEE", "ADMIN"] },
+      { nextStatus: PdrOverallStatus.EMPLOYEE_FILLING, allowedRoles: ["EMPLOYEE", "HR"] },
     ],
     EMPLOYEE_FILLING: [
       { nextStatus: PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR, allowedRoles: ["EMPLOYEE"] },
     ],
     EMPLOYEE_SUBMITTED_TO_HR: [
-      { nextStatus: PdrOverallStatus.HR_REVIEWING_EMPLOYEE, allowedRoles: ["ADMIN"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.HR_REVIEWING_EMPLOYEE, allowedRoles: ["HR"] },
+      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["HR"] },
     ],
     HR_REVIEWING_EMPLOYEE: [
-      { nextStatus: PdrOverallStatus.HR_APPROVED_EMPLOYEE, allowedRoles: ["ADMIN"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.HR_APPROVED_EMPLOYEE, allowedRoles: ["HR"] },
+      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["HR"] },
     ],
     HR_REVERTED_TO_EMPLOYEE: [
       { nextStatus: PdrOverallStatus.EMPLOYEE_FILLING, allowedRoles: ["EMPLOYEE"] },
     ],
     HR_APPROVED_EMPLOYEE: [
-      { nextStatus: PdrOverallStatus.MANAGER_FILLING, allowedRoles: ["LINE_MANAGER", "ADMIN"] },
+      { nextStatus: PdrOverallStatus.MANAGER_FILLING, allowedRoles: ["LINE_MANAGER", "HR"] },
     ],
     MANAGER_FILLING: [
       { nextStatus: PdrOverallStatus.MANAGER_SUBMITTED_TO_HR, allowedRoles: ["LINE_MANAGER"] },
     ],
     MANAGER_SUBMITTED_TO_HR: [
-      { nextStatus: PdrOverallStatus.HR_REVIEWING_MANAGER, allowedRoles: ["ADMIN"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.HR_REVIEWING_MANAGER, allowedRoles: ["HR"] },
+      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["HR"] },
     ],
     HR_REVIEWING_MANAGER: [
-      { nextStatus: PdrOverallStatus.HR_APPROVED_MANAGER, allowedRoles: ["ADMIN"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.HR_APPROVED_MANAGER, allowedRoles: ["HR"] },
+      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["HR"] },
     ],
     HR_REVERTED_TO_MANAGER: [
       { nextStatus: PdrOverallStatus.MANAGER_FILLING, allowedRoles: ["LINE_MANAGER"] },
     ],
     HR_APPROVED_MANAGER: [
-      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWING, allowedRoles: ["DIRECTOR_LEVEL", "ADMIN"] },
+      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWING, allowedRoles: ["DIRECTOR_LEVEL", "HR"] },
     ],
     DIRECTOR_REVIEWING: [
-      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWED, allowedRoles: ["DIRECTOR_LEVEL", "ADMIN"] },
+      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWED, allowedRoles: ["DIRECTOR_LEVEL", "HR"] },
     ],
     DIRECTOR_REVIEWED: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["EMPLOYEE", "ADMIN"] },
+      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["EMPLOYEE", "HR"] },
     ],
     EMPLOYEE_ACKNOWLEDGING: [
       { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED, allowedRoles: ["EMPLOYEE"] },
       { nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED, allowedRoles: ["EMPLOYEE"] },
     ],
     EMPLOYEE_DISAGREED: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER, allowedRoles: ["HR"] },
     ],
     EMPLOYEE_REVERT_TO_MANAGER: [
       { nextStatus: PdrOverallStatus.MANAGER_REVISING, allowedRoles: ["LINE_MANAGER"] },
@@ -83,7 +84,7 @@ export class PdrService {
       { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["LINE_MANAGER"] },
     ],
     EMPLOYEE_ACKNOWLEDGED: [
-      { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["ADMIN"] },
+      { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["HR"] },
     ],
     COMPLETED: [], // No transitions from completed state
   };
@@ -256,6 +257,23 @@ export class PdrService {
     if (!validTransition) return false;
 
     // Check if user's role or rank is allowed
+    // HR role is allowed for HR tasks
+    // HR with LINE_MANAGER rank is also allowed for LINE_MANAGER tasks
+    const isHR = userRole === "HR" || userRole === "ADMIN"; // Backward compatibility
+    
+    // Check if transition requires HR role
+    const requiresHR = validTransition.allowedRoles.includes("HR");
+    if (requiresHR && isHR) {
+      return true;
+    }
+    
+    // Check if transition requires LINE_MANAGER and user has LINE_MANAGER rank (even if HR)
+    const requiresManager = validTransition.allowedRoles.includes("LINE_MANAGER");
+    if (requiresManager && userRank === "LINE_MANAGER") {
+      return true;
+    }
+    
+    // Check other roles
     return validTransition.allowedRoles.some(
       (role) => role === userRole || role === userRank
     );
@@ -283,7 +301,7 @@ export class PdrService {
       pdr.overallStatus,
       targetStatus,
       data.userRole,
-      data.userRole // This could be enhanced to use userRank separately
+      data.userRank // Pass userRank separately
     );
 
     if (!canTransition) {
@@ -388,6 +406,7 @@ export class PdrService {
       limit?: number;
       status?: PdrOverallStatus;
       cycle?: string;
+      section?: 'mine' | 'team' | 'all'; // Section filter for HR users
     }
   ) {
     const page = filters?.page || 1;
@@ -395,25 +414,62 @@ export class PdrService {
     const skip = (page - 1) * limit;
 
     let whereClause: any = {};
+    const isHR = userRole === Role.HR; // HR role only
+    const isAdmin = userRole === Role.ADMIN; // ADMIN role
 
-    // Role-based filtering
-    if (userRole === Role.EMPLOYEE && userRank !== UserRank.LINE_MANAGER && userRank !== UserRank.DIRECTOR_LEVEL) {
-      // Regular employees see only their own PDRs
-      whereClause.userId = userId;
-    } else if (userRank === UserRank.LINE_MANAGER) {
-      // Managers see BOTH their own PDRs AND subordinate PDRs
-      whereClause.OR = [
-        { userId: userId }, // Their own PDRs
-        { linemanager_id: userId }, // PDRs where they are the line manager
-      ];
-    } else if (userRank === UserRank.DIRECTOR_LEVEL) {
-      // Directors see their own PDRs AND PDRs where they are the director
-      whereClause.OR = [
-        { userId: userId }, // Their own PDRs
-        { director_id: userId }, // PDRs where they are the director
-      ];
+    // Section-based filtering for HR users
+    if (isHR && filters?.section) {
+      if (filters.section === 'mine') {
+        // Section 1: My PDRs (HR's own PDRs)
+        whereClause.userId = userId;
+      } else if (filters.section === 'team' && userRank === UserRank.LINE_MANAGER) {
+        // Section 2: Team PDRs (Only for HR with LINE_MANAGER rank)
+        // PDRs where HR is the line manager, but exclude HR's own PDRs
+        whereClause.AND = [
+          { linemanager_id: userId },
+          { userId: { not: userId } }
+        ];
+      } else if (filters.section === 'all') {
+        // Section 3: All Employee PDRs (HR role functionality)
+        // No filter - shows all PDRs
+      }
+    } else if (isAdmin) {
+      // ADMIN can only view all employee PDRs (excluding their own)
+      whereClause.userId = { not: userId };
+    } else {
+      // Non-HR users or HR without section filter - use role-based filtering
+      if (userRole === Role.EMPLOYEE && userRank !== UserRank.LINE_MANAGER && userRank !== UserRank.DIRECTOR_LEVEL) {
+        // Regular employees see only their own PDRs
+        whereClause.userId = userId;
+      } else if (userRank === UserRank.LINE_MANAGER) {
+        // Managers see BOTH their own PDRs AND subordinate PDRs
+        if (userRole === Role.EMPLOYEE) {
+          // Regular manager (not HR)
+          whereClause.OR = [
+            { userId: userId }, // Their own PDRs
+            { linemanager_id: userId }, // PDRs where they are the line manager
+          ];
+        } else if (isHR) {
+          // HR with LINE_MANAGER rank: by default show all (unless section specified)
+          // No filter - shows all PDRs
+        }
+      } else if (userRank === UserRank.DIRECTOR_LEVEL) {
+        // Directors see their own PDRs AND PDRs where they are the director
+        if (userRole === Role.EMPLOYEE) {
+          // Regular director (not HR)
+          whereClause.OR = [
+            { userId: userId }, // Their own PDRs
+            { director_id: userId }, // PDRs where they are the director
+          ];
+        } else if (isHR) {
+          // HR with DIRECTOR_LEVEL rank: by default show all
+          // No filter - shows all PDRs
+        }
+      } else if (isHR) {
+        // HR role (regardless of rank) sees all PDRs (no additional filter)
+        // No filter applied
+      }
     }
-    // ADMIN sees all PDRs (no additional filter)
 
     // Additional filters
     if (filters?.status) {
@@ -513,8 +569,11 @@ export class PdrService {
     }
 
     // Check access permissions
+    // HR has access to all PDRs (can do HR tasks)
+    // Also check if user is the owner, manager, or director
     const hasAccess =
-      userRole === Role.ADMIN ||
+      userRole === Role.ADMIN || // Keep for backward compatibility
+      userRole === "HR" || // HR role has access to all PDRs
       pdr.userId === userId ||
       pdr.linemanager_id === userId ||
       pdr.director_id === userId;

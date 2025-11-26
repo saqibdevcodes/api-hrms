@@ -311,9 +311,9 @@ export const SuperAdmin = authorize(["SUPERADMIN"]);
 export const adminOnly = authorize(["ADMIN", "SUPERADMIN"]);
 
 /**
- * HR and Admin middleware
+ * HR and Admin middleware (HR role can do HR tasks, ADMIN retained for backward compatibility)
  */
-export const hrAndAdmin = authorize(["ADMIN", "SUPERADMIN"]);
+export const hrAndAdmin = authorize(["HR", "ADMIN", "SUPERADMIN"]);
 
 /**
  * Manager and above middleware
