@@ -286,13 +286,32 @@ export class ZKTecoController {
       // If deviceId filter is needed, we can add a deviceId field to attendance records
       // For now, we'll get all attendance records
 
-      // Add 3-day delay filter
-      const today = new Date();
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(today.getDate() - 3);
-      where.createdAt = {
-        lte: threeDaysAgo,
-      };
+      // Add 3-day delay filter (unless forceFetch is enabled by SuperAdmin)
+      const forceFetch = req.query.forceFetch === 'true';
+      
+      // Security: Only SuperAdmin can use forceFetch
+      if (forceFetch && currentUser.role !== 'SUPERADMIN') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only SuperAdmin can force fetch attendance data',
+          error: 'Insufficient permissions',
+        });
+      }
+      
+      if (!forceFetch) {
+        // Normal mode: Only show records created 3+ days ago
+        const today = new Date();
+        const threeDaysAgo = new Date();
+        threeDaysAgo.setDate(today.getDate() - 3);
+        where.createdAt = {
+          lte: threeDaysAgo,
+        };
+        console.log('📅 Applying 3-day delay filter for attendance data');
+      } else {
+        // Force fetch mode: Show all records (SuperAdmin only)
+        console.log('⚡ Force fetch enabled by SuperAdmin - showing all attendance records');
+      }
+
       const [attendanceRecords, total] = await Promise.all([
         prisma.attendance.findMany({
           where,

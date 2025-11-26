@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import fs from "fs";
 import { createServer } from "http";
 import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
@@ -36,6 +37,7 @@ app.use(
       },
     },
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
   })
 );
 
@@ -47,6 +49,7 @@ app.use(
       "http://localhost:3000",
       "https://iriscommunications.com",
       "https://www.iriscommunications.com",
+      "https://hr.iriscommunications.cloud",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -61,8 +64,39 @@ app.use(
   })
 );
 
-// Static file serving for uploads
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+// Create uploads directory for local storage (only if Cloudinary not configured)
+// Skip in serverless environments (Vercel) as filesystem is read-only
+const isCloudinaryConfigured =
+  config.CLOUDINARY_CLOUD_NAME &&
+  config.CLOUDINARY_API_KEY &&
+  config.CLOUDINARY_API_SECRET;
+const isVercel = process.env.VERCEL === "1";
+
+if (!isCloudinaryConfigured && !isVercel) {
+  try {
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log("✅ Created local uploads directory");
+    }
+    // Serve static files from uploads directory with CORS headers
+    app.use(
+      "/uploads",
+      (req, res, next) => {
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        next();
+      },
+      express.static(uploadsDir)
+    );
+  } catch (error) {
+    console.warn("⚠️  Could not create uploads directory:", error);
+  }
+} else if (isCloudinaryConfigured) {
+  console.log(
+    "✅ Using Cloudinary for file storage (no local uploads directory needed)"
+  );
+}
 
 // Global rate limiting
 const globalRateLimit = rateLimit({
@@ -297,7 +331,7 @@ const startServer = async () => {
       );
       console.log(`🏥 Health Check: http://localhost:${config.PORT}/health`);
       console.log(`🔔 Socket.IO: Notifications enabled`);
-      console.log(`🏭 ZKTeco: iClock HTTP Server running on port 3001`);
+      console.log(`🏭 ZKTeco: iClock HTTP Server running on port 3000`);
       console.log("🎉 ======================================");
       console.log("");
       console.log("📋 Available Demo Credentials:");
@@ -324,5 +358,22 @@ const startServer = async () => {
 // Export socket manager for use in controllers
 export const getSocketManager = (): SocketManager => socketManager;
 
-// Initialize server
-startServer();
+// Initialize database connection for Vercel serverless
+if (process.env.VERCEL === "1") {
+  // Connect to database in serverless environment
+  DatabaseConnection.connect()
+    .then(() => {
+      console.log("✅ Database connected for Vercel serverless");
+    })
+    .catch((error) => {
+      console.error("❌ Database connection failed:", error);
+    });
+}
+
+// Export the Express app for Vercel serverless
+export default app;
+
+// Initialize server only if not in Vercel environment
+if (process.env.VERCEL !== "1") {
+  startServer();
+}

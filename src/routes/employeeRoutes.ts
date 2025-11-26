@@ -1,6 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import path from "path";
+import fs from "fs";
+import cloudinary from "../config/cloudinary";
+import { config } from "../config/env";
 import { EmployeeController } from "../controller/employeeController";
 import {
   createEmployeeValidation,
@@ -10,29 +14,54 @@ import { authenticate, hrAndAdmin, validateRequest } from "../middleware/auth";
 
 const router = Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Create uploads directory if it doesn't exist
-    const uploadPath = path.join(process.cwd(), "uploads");
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const extension = path.extname(file.originalname);
-    cb(null, file.fieldname + "-" + uniqueSuffix + extension);
-  },
-});
+// Determine if Cloudinary is configured
+const isCloudinaryConfigured = !!(
+  config.CLOUDINARY_CLOUD_NAME &&
+  config.CLOUDINARY_API_KEY &&
+  config.CLOUDINARY_API_SECRET
+);
+
+// Configure storage based on environment
+const storage = isCloudinaryConfigured
+  ? new CloudinaryStorage({
+      cloudinary: cloudinary,
+      params: async (req, file) => {
+        return {
+          folder: "hrms/employees",
+          allowed_formats: ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"],
+          public_id: `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+          resource_type: file.mimetype.startsWith("image/") ? "image" : "raw",
+        };
+      },
+    })
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = path.join(process.cwd(), "uploads");
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const extension = path.extname(file.originalname);
+        cb(null, file.fieldname + "-" + uniqueSuffix + extension);
+      },
+    });
 
 // File filter for allowed file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
-  // Allow images for CNIC files
-  if (file.fieldname === "cnicFrontFile" || file.fieldname === "cnicBackFile") {
+  // Allow images for CNIC files, insurance card, and profile picture
+  if (
+    file.fieldname === "cnicFrontFile" ||
+    file.fieldname === "cnicBackFile" ||
+    file.fieldname === "insuranceCardFile" ||
+    file.fieldname === "profilePictureFile"
+  ) {
     if (file.mimetype.startsWith("image/")) {
       cb(null, true);
     } else {
-      cb(new Error("CNIC files must be images"), false);
+      cb(new Error("CNIC, insurance card, and profile picture files must be images"), false);
     }
   }
   // Allow documents (PDF, images, docs) for general documents
@@ -69,6 +98,8 @@ const uploadFields = upload.fields([
   { name: "cnicFrontFile", maxCount: 1 },
   { name: "cnicBackFile", maxCount: 1 },
   { name: "documentFile", maxCount: 1 },
+  { name: "insuranceCardFile", maxCount: 1 },
+  { name: "profilePictureFile", maxCount: 1 },
 ]);
 
 // GET /api/employees/form-data - Get dropdown data for employee form

@@ -73,7 +73,7 @@ export class EmployeeController {
     try {
       const {
         page = 1,
-        limit = 10,
+        limit = 100, // Increased default limit
         search = "",
         department = "",
         status = "",
@@ -84,9 +84,35 @@ export class EmployeeController {
       const skip = (Number(page) - 1) * Number(limit);
       const take = Number(limit);
 
-      // Get all users, then filter for employees on the application side for now
-      const [allUsers, total] = await Promise.all([
+      // Build where clause to filter only employees
+      const where: any = {
+        employeeId: { not: null }, // Only get users with employeeId (employees)
+      };
+
+      // Add search filter
+      if (search) {
+        where.OR = [
+          { firstName: { contains: search as string, mode: "insensitive" } },
+          { lastName: { contains: search as string, mode: "insensitive" } },
+          { email: { contains: search as string, mode: "insensitive" } },
+          { employeeId: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      // Add department filter
+      if (department) {
+        where.departmentId = department as string;
+      }
+
+      // Add status filter
+      if (status) {
+        where.status = status as string;
+      }
+
+      // Get employees with proper filtering BEFORE pagination
+      const [employees, total] = await Promise.all([
         prisma.user.findMany({
+          where,
           skip,
           take,
           include: {
@@ -99,11 +125,8 @@ export class EmployeeController {
             [sortBy as string]: sortOrder,
           },
         }),
-        prisma.user.count(),
+        prisma.user.count({ where }),
       ]);
-
-      // Filter for employees (users with employeeId)
-      const employees = allUsers.filter((user) => user.employeeId !== null);
 
       res.json({
         success: true,
@@ -113,8 +136,8 @@ export class EmployeeController {
           pagination: {
             page: Number(page),
             limit: Number(limit),
-            total: employees.length,
-            pages: Math.ceil(employees.length / Number(limit)),
+            total: total,
+            pages: Math.ceil(total / Number(limit)),
           },
         },
       });
@@ -151,6 +174,8 @@ export class EmployeeController {
       const cnicFrontFile = files?.cnicFrontFile?.[0];
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
+      const insuranceCardFile = files?.insuranceCardFile?.[0];
+      const profilePictureFile = files?.profilePictureFile?.[0];
 
       const {
         // User fields
@@ -208,6 +233,18 @@ export class EmployeeController {
         emergencyContactRelation,
         emergencyContactAddress,
         emergencyContactAlternatePhone,
+
+        // Insurance fields
+        hasInsurance,
+        insuranceCardNo,
+        insuranceInsuredName,
+        insuranceEmployeeNo,
+        insuranceValidUpto,
+        insuranceSpouseChildren,
+        insuranceHospitalization,
+        insuranceRoomLimit,
+        insuranceNormalDelivery,
+        insuranceComplicatedDelivery,
       } = req.body;
 
       // Check if user already exists
@@ -346,16 +383,46 @@ export class EmployeeController {
             shiftId,
             leaveId,
 
-            // File paths
-            cnicPictureFront: cnicFrontFile?.filename
-              ? `/uploads/${cnicFrontFile.filename}`
+            // File paths - Cloudinary provides full URLs, local storage uses relative paths
+            profilePicture: profilePictureFile
+              ? profilePictureFile.path?.startsWith("http")
+                ? profilePictureFile.path
+                : `/uploads/${profilePictureFile.filename}`
               : null,
-            cnicPictureBack: cnicBackFile?.filename
-              ? `/uploads/${cnicBackFile.filename}`
+            cnicPictureFront: cnicFrontFile
+              ? cnicFrontFile.path?.startsWith("http")
+                ? cnicFrontFile.path
+                : `/uploads/${cnicFrontFile.filename}`
               : null,
-            degreePicture: documentFile?.filename
-              ? `/uploads/${documentFile.filename}`
+            cnicPictureBack: cnicBackFile
+              ? cnicBackFile.path?.startsWith("http")
+                ? cnicBackFile.path
+                : `/uploads/${cnicBackFile.filename}`
               : null,
+            degreePicture: documentFile
+              ? documentFile.path?.startsWith("http")
+                ? documentFile.path
+                : `/uploads/${documentFile.filename}`
+              : null,
+            insuranceCardPicture: insuranceCardFile
+              ? insuranceCardFile.path?.startsWith("http")
+                ? insuranceCardFile.path
+                : `/uploads/${insuranceCardFile.filename}`
+              : null,
+
+            // Insurance fields
+            hasInsurance: hasInsurance === "true" || hasInsurance === true,
+            insuranceCardNo: insuranceCardNo || null,
+            insuranceInsuredName: insuranceInsuredName || null,
+            insuranceEmployeeNo: insuranceEmployeeNo || null,
+            insuranceValidUpto: insuranceValidUpto
+              ? new Date(insuranceValidUpto)
+              : null,
+            insuranceSpouseChildren: insuranceSpouseChildren || null,
+            insuranceHospitalization: insuranceHospitalization || null,
+            insuranceRoomLimit: insuranceRoomLimit || null,
+            insuranceNormalDelivery: insuranceNormalDelivery || null,
+            insuranceComplicatedDelivery: insuranceComplicatedDelivery || null,
 
             // System fields
             createdBy: req.user?.id,
@@ -409,10 +476,64 @@ export class EmployeeController {
       });
     } catch (error: any) {
       console.error("Error creating employee:", error);
-      res.status(500).json({
+
+      // Provide specific error messages based on error type
+      let statusCode = 500;
+      let errorMessage = "Failed to create employee";
+      let errorDetails =
+        error instanceof Error ? error.message : "Unknown error";
+
+      // Handle Prisma-specific errors
+      if (error.code) {
+        switch (error.code) {
+          case "P2002":
+            // Unique constraint violation
+            const field = error.meta?.target?.[0] || "field";
+            statusCode = 400;
+            errorMessage = `A user with this ${field} already exists`;
+            errorDetails = `Duplicate value for ${field}`;
+            break;
+          case "P2003":
+            // Foreign key constraint violation
+            statusCode = 400;
+            errorMessage = "Invalid reference to related data";
+            errorDetails = "One or more selected options are invalid";
+            break;
+          case "P2025":
+            // Record not found
+            statusCode = 404;
+            errorMessage = "Related record not found";
+            errorDetails = error.meta?.cause || "Required data not found";
+            break;
+          default:
+            errorMessage = "Database error occurred";
+            errorDetails = error.message;
+        }
+      }
+
+      // Handle validation errors
+      if (error.message?.includes("validation")) {
+        statusCode = 400;
+        errorMessage = "Validation error";
+      }
+
+      // Handle file upload errors
+      if (
+        error.message?.includes("file") ||
+        error.message?.includes("upload")
+      ) {
+        statusCode = 400;
+        errorMessage = "File upload error";
+      }
+
+      res.status(statusCode).json({
         success: false,
-        message: "Failed to create employee",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: errorMessage,
+        error: errorDetails,
+        meta: {
+          code: error.code,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   }
@@ -491,18 +612,58 @@ export class EmployeeController {
       const cnicFrontFile = files?.cnicFrontFile?.[0];
       const cnicBackFile = files?.cnicBackFile?.[0];
       const documentFile = files?.documentFile?.[0];
+      const insuranceCardFile = files?.insuranceCardFile?.[0];
+      const profilePictureFile = files?.profilePictureFile?.[0];
 
-      const updateData: any = { ...req.body };
+      // Extract relational IDs from body
+      const {
+        departmentId,
+        contractTypeId,
+        designationId,
+        shiftId,
+        leaveId,
+        employmentTypeId,
+        supervisorId,
+        supervisorIds,
+        emergencyContactName,
+        emergencyContactPhone,
+        emergencyContactEmail,
+        emergencyContactRelation,
+        emergencyContactAddress,
+        emergencyContactAlternatePhone,
+        ...restData
+      } = req.body;
+
+      const updateData: any = { ...restData };
 
       // Handle file updates
+      // File paths - Cloudinary provides full URLs, local storage uses relative paths
+      if (profilePictureFile) {
+        updateData.profilePicture = profilePictureFile.path?.startsWith("http")
+          ? profilePictureFile.path
+          : `/uploads/${profilePictureFile.filename}`;
+      }
       if (cnicFrontFile) {
-        updateData.cnicPictureFront = `/uploads/${cnicFrontFile.filename}`;
+        updateData.cnicPictureFront = cnicFrontFile.path?.startsWith("http")
+          ? cnicFrontFile.path
+          : `/uploads/${cnicFrontFile.filename}`;
       }
       if (cnicBackFile) {
-        updateData.cnicPictureBack = `/uploads/${cnicBackFile.filename}`;
+        updateData.cnicPictureBack = cnicBackFile.path?.startsWith("http")
+          ? cnicBackFile.path
+          : `/uploads/${cnicBackFile.filename}`;
       }
       if (documentFile) {
-        updateData.degreePicture = `/uploads/${documentFile.filename}`;
+        updateData.degreePicture = documentFile.path?.startsWith("http")
+          ? documentFile.path
+          : `/uploads/${documentFile.filename}`;
+      }
+      if (insuranceCardFile) {
+        updateData.insuranceCardPicture = insuranceCardFile.path?.startsWith(
+          "http"
+        )
+          ? insuranceCardFile.path
+          : `/uploads/${insuranceCardFile.filename}`;
       }
 
       // Convert date strings to Date objects
@@ -520,10 +681,114 @@ export class EmployeeController {
         updateData.dateOfExit = new Date(updateData.dateOfExit);
         updateData.endDate = updateData.dateOfExit; // Keep both in sync
       }
+      if (updateData.insuranceValidUpto) {
+        updateData.insuranceValidUpto = new Date(updateData.insuranceValidUpto);
+      }
+
+      // Convert hasInsurance string to boolean
+      if (updateData.hasInsurance !== undefined) {
+        updateData.hasInsurance =
+          updateData.hasInsurance === "true" ||
+          updateData.hasInsurance === true;
+      }
 
       // Hash password if provided
       if (updateData.password) {
         updateData.password = await bcrypt.hash(updateData.password, 10);
+      } else {
+        // Remove password field if not provided (don't update it)
+        delete updateData.password;
+      }
+
+      // Handle relational updates using connect syntax
+      if (departmentId) {
+        updateData.departmentEntity = { connect: { id: departmentId } };
+        // Also update the department name field
+        const dept = await prisma.department.findUnique({
+          where: { id: departmentId },
+        });
+        if (dept) {
+          updateData.department = dept.name;
+        }
+      }
+
+      if (contractTypeId) {
+        updateData.contractType = { connect: { id: contractTypeId } };
+      }
+
+      if (designationId) {
+        updateData.designation = { connect: { id: designationId } };
+      }
+
+      if (shiftId) {
+        updateData.shift = { connect: { id: shiftId } };
+      }
+
+      if (leaveId) {
+        updateData.leavePolicy = { connect: { id: leaveId } };
+      }
+
+      if (employmentTypeId) {
+        updateData.employmentType = { connect: { id: employmentTypeId } };
+      }
+
+      // Handle supervisor updates based on rank
+      if (
+        updateData.userRank === "LINE_MANAGER" &&
+        supervisorIds &&
+        Array.isArray(supervisorIds)
+      ) {
+        // For line managers with multiple supervisors, store as JSON
+        const supervisors = await prisma.user.findMany({
+          where: { id: { in: supervisorIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        });
+        updateData.manager = JSON.stringify(supervisors);
+      } else if (updateData.userRank === "EMPLOYEE" && supervisorId) {
+        // For employees with single supervisor
+        const supervisor = await prisma.user.findUnique({
+          where: { id: supervisorId },
+          select: { firstName: true, lastName: true, email: true },
+        });
+        if (supervisor) {
+          updateData.manager = `${supervisor.firstName} ${supervisor.lastName}`;
+        }
+      }
+
+      // Handle emergency contact updates
+      if (emergencyContactName || emergencyContactPhone) {
+        if (existingUser.emergencyDetailId) {
+          // Update existing emergency detail
+          await prisma.emergencyDetail.update({
+            where: { id: existingUser.emergencyDetailId },
+            data: {
+              contactName: emergencyContactName || undefined,
+              contactPhone: emergencyContactPhone || undefined,
+              contactEmail: emergencyContactEmail || null,
+              relationship: emergencyContactRelation || undefined,
+              contactAddress: emergencyContactAddress || null,
+              alternatePhone: emergencyContactAlternatePhone || null,
+            },
+          });
+        } else {
+          // Create new emergency detail
+          const emergencyDetail = await prisma.emergencyDetail.create({
+            data: {
+              contactName: emergencyContactName,
+              contactPhone: emergencyContactPhone,
+              contactEmail: emergencyContactEmail || null,
+              relationship: emergencyContactRelation || "Emergency Contact",
+              contactAddress: emergencyContactAddress || null,
+              alternatePhone: emergencyContactAlternatePhone || null,
+            },
+          });
+          updateData.emergencyDetailId = emergencyDetail.id;
+        }
       }
 
       updateData.updatedBy = req.user?.id;
@@ -550,12 +815,68 @@ export class EmployeeController {
         message: "Employee updated successfully",
         data: userWithoutPassword,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating employee:", error);
-      res.status(500).json({
+
+      // Provide specific error messages based on error type
+      let statusCode = 500;
+      let errorMessage = "Failed to update employee";
+      let errorDetails =
+        error instanceof Error ? error.message : "Unknown error";
+
+      // Handle Prisma-specific errors
+      if (error.code) {
+        switch (error.code) {
+          case "P2002":
+            // Unique constraint violation
+            const field = error.meta?.target?.[0] || "field";
+            statusCode = 400;
+            errorMessage = `Another user with this ${field} already exists`;
+            errorDetails = `Duplicate value for ${field}`;
+            break;
+          case "P2003":
+            // Foreign key constraint violation
+            statusCode = 400;
+            errorMessage = "Invalid reference to related data";
+            errorDetails = "One or more selected options are invalid";
+            break;
+          case "P2025":
+            // Record not found
+            statusCode = 404;
+            errorMessage = "Employee not found";
+            errorDetails =
+              error.meta?.cause ||
+              "The employee you're trying to update doesn't exist";
+            break;
+          default:
+            errorMessage = "Database error occurred";
+            errorDetails = error.message;
+        }
+      }
+
+      // Handle validation errors
+      if (error.message?.includes("validation")) {
+        statusCode = 400;
+        errorMessage = "Validation error";
+      }
+
+      // Handle file upload errors
+      if (
+        error.message?.includes("file") ||
+        error.message?.includes("upload")
+      ) {
+        statusCode = 400;
+        errorMessage = "File upload error";
+      }
+
+      res.status(statusCode).json({
         success: false,
-        message: "Failed to update employee",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: errorMessage,
+        error: errorDetails,
+        meta: {
+          code: error.code,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   }
