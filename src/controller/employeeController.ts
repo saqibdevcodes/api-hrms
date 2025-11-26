@@ -476,10 +476,64 @@ export class EmployeeController {
       });
     } catch (error: any) {
       console.error("Error creating employee:", error);
-      res.status(500).json({
+
+      // Provide specific error messages based on error type
+      let statusCode = 500;
+      let errorMessage = "Failed to create employee";
+      let errorDetails =
+        error instanceof Error ? error.message : "Unknown error";
+
+      // Handle Prisma-specific errors
+      if (error.code) {
+        switch (error.code) {
+          case "P2002":
+            // Unique constraint violation
+            const field = error.meta?.target?.[0] || "field";
+            statusCode = 400;
+            errorMessage = `A user with this ${field} already exists`;
+            errorDetails = `Duplicate value for ${field}`;
+            break;
+          case "P2003":
+            // Foreign key constraint violation
+            statusCode = 400;
+            errorMessage = "Invalid reference to related data";
+            errorDetails = "One or more selected options are invalid";
+            break;
+          case "P2025":
+            // Record not found
+            statusCode = 404;
+            errorMessage = "Related record not found";
+            errorDetails = error.meta?.cause || "Required data not found";
+            break;
+          default:
+            errorMessage = "Database error occurred";
+            errorDetails = error.message;
+        }
+      }
+
+      // Handle validation errors
+      if (error.message?.includes("validation")) {
+        statusCode = 400;
+        errorMessage = "Validation error";
+      }
+
+      // Handle file upload errors
+      if (
+        error.message?.includes("file") ||
+        error.message?.includes("upload")
+      ) {
+        statusCode = 400;
+        errorMessage = "File upload error";
+      }
+
+      res.status(statusCode).json({
         success: false,
-        message: "Failed to create employee",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: errorMessage,
+        error: errorDetails,
+        meta: {
+          code: error.code,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   }
@@ -761,12 +815,68 @@ export class EmployeeController {
         message: "Employee updated successfully",
         data: userWithoutPassword,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating employee:", error);
-      res.status(500).json({
+
+      // Provide specific error messages based on error type
+      let statusCode = 500;
+      let errorMessage = "Failed to update employee";
+      let errorDetails =
+        error instanceof Error ? error.message : "Unknown error";
+
+      // Handle Prisma-specific errors
+      if (error.code) {
+        switch (error.code) {
+          case "P2002":
+            // Unique constraint violation
+            const field = error.meta?.target?.[0] || "field";
+            statusCode = 400;
+            errorMessage = `Another user with this ${field} already exists`;
+            errorDetails = `Duplicate value for ${field}`;
+            break;
+          case "P2003":
+            // Foreign key constraint violation
+            statusCode = 400;
+            errorMessage = "Invalid reference to related data";
+            errorDetails = "One or more selected options are invalid";
+            break;
+          case "P2025":
+            // Record not found
+            statusCode = 404;
+            errorMessage = "Employee not found";
+            errorDetails =
+              error.meta?.cause ||
+              "The employee you're trying to update doesn't exist";
+            break;
+          default:
+            errorMessage = "Database error occurred";
+            errorDetails = error.message;
+        }
+      }
+
+      // Handle validation errors
+      if (error.message?.includes("validation")) {
+        statusCode = 400;
+        errorMessage = "Validation error";
+      }
+
+      // Handle file upload errors
+      if (
+        error.message?.includes("file") ||
+        error.message?.includes("upload")
+      ) {
+        statusCode = 400;
+        errorMessage = "File upload error";
+      }
+
+      res.status(statusCode).json({
         success: false,
-        message: "Failed to update employee",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: errorMessage,
+        error: errorDetails,
+        meta: {
+          code: error.code,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   }

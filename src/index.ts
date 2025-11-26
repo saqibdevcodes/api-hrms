@@ -331,7 +331,7 @@ const startServer = async () => {
       );
       console.log(`🏥 Health Check: http://localhost:${config.PORT}/health`);
       console.log(`🔔 Socket.IO: Notifications enabled`);
-      console.log(`🏭 ZKTeco: iClock HTTP Server running on port 3001`);
+      console.log(`🏭 ZKTeco: iClock HTTP Server running on port 3000`);
       console.log("🎉 ======================================");
       console.log("");
       console.log("📋 Available Demo Credentials:");

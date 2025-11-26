@@ -85,7 +85,7 @@ export class ZKTecoService {
       // Note: iClock protocol uses HTTP, not UDP
       console.log("iClock HTTP server will be started via Express routes");
       console.log(
-        "Device should be configured to push to: http://192.168.2.85:3001/api/v1/zkteco/iclock/"
+        "Device should be configured to push to: http://192.168.2.85:3000/api/v1/zkteco/iclock/"
       );
     } catch (error) {
       console.error("Failed to start ADMS server:", error);
@@ -657,10 +657,10 @@ export class ZKTecoService {
           `🔍 Device ${sn} is online - waiting for attendance data...`
         );
         console.log(
-          `📡 Device should push to: http://192.168.2.85:3001/api/v1/zkteco/iclock/`
+          `📡 Device should push to: http://192.168.2.85:3000/api/v1/zkteco/iclock/`
         );
         console.log(
-          `💡 Check device configuration: ADMS Server = 192.168.2.85, Port = 3001`
+          `💡 Check device configuration: ADMS Server = 192.168.2.85, Port = 3000`
         );
       } catch (error) {
         console.error(`Error auto-syncing device ${sn}:`, error);

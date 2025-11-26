@@ -114,12 +114,13 @@ model User {
   employmentType   EmploymentType?  @relation(fields: [employmentTypeId], references: [id])
 
   // Employee-related relations (moved from Employee model)
-  attendances        Attendance[]
-  zktecoRecords      ZKTecoAttendanceRecord[]
-  leaveRequests      LeaveRequest[]
-  payrollRecords     PayrollRecord[]
-  performanceReviews PerformanceReview[]
-  notifications      Notification[]
+  attendances             Attendance[]
+  zktecoStagingRecords    ZKTecoAttendanceStaging[] @relation("StagingAttendance")
+  zktecoRecords           ZKTecoAttendanceRecord[]  @relation("FinalAttendance")
+  leaveRequests           LeaveRequest[]
+  payrollRecords          PayrollRecord[]
+  performanceReviews      PerformanceReview[]
+  notifications           Notification[]
 
   createdBy           String?
   updatedBy           String?
@@ -341,7 +342,48 @@ model Attendance {
   @@map("attendances")
 }
 
-// New model for storing raw ZKTeco device records
+// STAGING TABLE: Raw ZKTeco device records (real-time data from devices)
+// This table holds unverified attendance data for 3 days before finalization
+model ZKTecoAttendanceStaging {
+  id String @id @default(cuid())
+
+  // ZKTeco device data
+  employeeId String // User ID from ZKTeco device (e.g., "100074")
+  deviceId   String // Device serial number (e.g., "AF4C211360469")
+  timestamp  DateTime // Exact punch time from device
+  checkType  ZKTecoCheckType // check_in or check_out
+  verifyType Int // 1=Fingerprint, 2=Password, 3=Card, etc.
+  workCode   String? // Work code from device (optional)
+
+  // Calculated attendance status based on shift rules
+  overallStatus AttendanceStatusType?
+
+  // Processing status
+  processed       Boolean @default(false) // Whether this record has been processed
+  processingError String? // Error message if processing failed
+
+  // Finalization tracking
+  isFinalized      Boolean   @default(false) // Whether moved to final table
+  finalizedAt      DateTime? // When moved to final table
+  finalizedBy      String? // User ID who forced finalization (if manual)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  User   User?   @relation("StagingAttendance", fields: [userId], references: [id])
+  userId String? // Link to actual user (after ID mapping)
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([timestamp])
+  @@index([isFinalized])
+  @@index([createdAt]) // For 3-day filter
+  @@map("zkteco_attendance_staging")
+}
+
+// FINAL TABLE: Verified ZKTeco attendance records (finalized after 3 days)
+// This table holds verified attendance data that HR/Admin can see
 model ZKTecoAttendanceRecord {
   id String @id @default(cuid())
 
@@ -364,11 +406,16 @@ model ZKTecoAttendanceRecord {
   usedForDeduction   Boolean   @default(false) // Whether this record has been used for progressive deductions
   deductionAppliedAt DateTime? // When deduction was applied using this record
 
+  // Finalization metadata
+  finalizedFrom String? // Staging record ID this was created from
+  finalizedAt   DateTime? // When moved from staging
+  finalizedBy   String? // User ID who forced finalization (if manual)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  User         User?       @relation(fields: [userId], references: [id])
+  User         User?       @relation("FinalAttendance", fields: [userId], references: [id])
   userId       String? // Link to actual user (after ID mapping)
   attendance   Attendance? @relation(fields: [attendanceId], references: [id])
   attendanceId String? // Link to daily attendance record
