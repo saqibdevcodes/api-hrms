@@ -620,7 +620,6 @@ enum Role {
   EMPLOYEE
   HR
   SUPERADMIN
-  HR
 }
 
 enum UserStatus {
