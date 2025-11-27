@@ -78,17 +78,17 @@ model User {
   cnicPictureBack  String?
 
   // Insurance Policy fields
-  hasInsurance                  Boolean?  @default(false)
-  insuranceCardNo               String?
-  insuranceInsuredName          String?
-  insuranceEmployeeNo           String?
-  insuranceValidUpto            DateTime?
-  insuranceSpouseChildren       String?
-  insuranceHospitalization      String?
-  insuranceRoomLimit            String?
-  insuranceNormalDelivery       String?
-  insuranceComplicatedDelivery  String?
-  insuranceCardPicture          String?
+  hasInsurance                 Boolean?  @default(false)
+  insuranceCardNo              String?
+  insuranceInsuredName         String?
+  insuranceEmployeeNo          String?
+  insuranceValidUpto           DateTime?
+  insuranceSpouseChildren      String?
+  insuranceHospitalization     String?
+  insuranceRoomLimit           String?
+  insuranceNormalDelivery      String?
+  insuranceComplicatedDelivery String?
+  insuranceCardPicture         String?
 
   // System fields
   isActive  Boolean   @default(true)
@@ -114,13 +114,13 @@ model User {
   employmentType   EmploymentType?  @relation(fields: [employmentTypeId], references: [id])
 
   // Employee-related relations (moved from Employee model)
-  attendances             Attendance[]
-  zktecoStagingRecords    ZKTecoAttendanceStaging[] @relation("StagingAttendance")
-  zktecoRecords           ZKTecoAttendanceRecord[]  @relation("FinalAttendance")
-  leaveRequests           LeaveRequest[]
-  payrollRecords          PayrollRecord[]
-  performanceReviews      PerformanceReview[]
-  notifications           Notification[]
+  attendances          Attendance[]
+  zktecoStagingRecords ZKTecoAttendanceStaging[] @relation("StagingAttendance")
+  zktecoRecords        ZKTecoAttendanceRecord[]  @relation("FinalAttendance")
+  leaveRequests        LeaveRequest[]
+  payrollRecords       PayrollRecord[]
+  performanceReviews   PerformanceReview[]
+  notifications        Notification[]
 
   createdBy           String?
   updatedBy           String?
@@ -363,10 +363,10 @@ model ZKTecoAttendanceStaging {
   processingError String? // Error message if processing failed
 
   // Finalization tracking
-  isFinalized      Boolean   @default(false) // Whether moved to final table
-  finalizedAt      DateTime? // When moved to final table
-  finalizedBy      String? // User ID who forced finalization (if manual)
-  
+  isFinalized Boolean   @default(false) // Whether moved to final table
+  finalizedAt DateTime? // When moved to final table
+  finalizedBy String? // User ID who forced finalization (if manual)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -620,6 +620,7 @@ enum Role {
   EMPLOYEE
   HR
   SUPERADMIN
+  HR
 }
 
 enum UserStatus {
