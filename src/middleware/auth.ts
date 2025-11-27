@@ -313,7 +313,7 @@ export const adminOnly = authorize(["ADMIN", "SUPERADMIN"]);
 /**
  * HR and Admin middleware
  */
-export const hrAndAdmin = authorize(["ADMIN", "SUPERADMIN"]);
+export const hrAndAdmin = authorize(["HR", "ADMIN", "SUPERADMIN"]);
 
 /**
  * Manager and above middleware
