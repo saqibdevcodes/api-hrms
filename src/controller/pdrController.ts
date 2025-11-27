@@ -498,12 +498,14 @@ export class PdrController {
 
       let targetStatus: PdrOverallStatus;
 
-      if (pdr.overallStatus === PdrOverallStatus.HR_APPROVED_MANAGER) {
-        targetStatus = PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING;
-      } else if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING) {
+      if (
+        pdr.overallStatus === PdrOverallStatus.DIRECTOR_REVIEWED ||
+        pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING ||
+        pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED
+      ) {
         targetStatus = disagree
           ? PdrOverallStatus.EMPLOYEE_DISAGREED
-          : PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED;
+          : PdrOverallStatus.COMPLETED;
       } else {
         return res.status(400).json({
           success: false,
@@ -548,11 +550,14 @@ export class PdrController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // ADMIN cannot perform director review (read-only role)
-      if (req.user.role === "ADMIN") {
+      const isDirectorLevelAdmin =
+        req.user.role === "ADMIN" && req.user.userRank === "DIRECTOR_LEVEL";
+
+      // ADMIN can only perform director review if they hold DIRECTOR_LEVEL rank
+      if (req.user.role === "ADMIN" && !isDirectorLevelAdmin) {
         return res.status(403).json({
           success: false,
-          message: "ADMIN role cannot perform director review. This is a read-only role.",
+          message: "ADMIN users without DIRECTOR_LEVEL rank cannot perform director review.",
         });
       }
 
@@ -570,7 +575,7 @@ export class PdrController {
 
       let targetStatus: PdrOverallStatus;
 
-      if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED) {
+      if (pdr.overallStatus === PdrOverallStatus.HR_APPROVED_MANAGER) {
         targetStatus = PdrOverallStatus.DIRECTOR_REVIEWING;
       } else if (pdr.overallStatus === PdrOverallStatus.DIRECTOR_REVIEWING) {
         targetStatus = PdrOverallStatus.DIRECTOR_REVIEWED;
@@ -578,6 +583,18 @@ export class PdrController {
         return res.status(400).json({
           success: false,
           message: "Invalid status for director review",
+        });
+      }
+
+      // Persist director overall comment if provided
+      if (comment && comment.trim()) {
+        await prisma.pdr.update({
+          where: { id: pdrId },
+          data: {
+            director_overall_comment: comment.trim(),
+            lastModifiedBy: req.user.id,
+            lastModifiedAt: new Date(),
+          },
         });
       }
 

@@ -300,7 +300,7 @@ async function main() {
 
       // Employment
       employeeId: "IC-ADM001",
-      userRank: UserRank.DIRECTOR_LEVEL,
+      userRank: UserRank.EMPLOYEE,
       password: await bcrypt.hash("admin123", 10),
       role: Role.ADMIN,
       position: "System Administrator",
@@ -368,7 +368,7 @@ async function main() {
       employeeId: "IC-HR001",
       userRank: UserRank.LINE_MANAGER,
       password: await bcrypt.hash("hr123123", 10),
-      role: Role.ADMIN,
+      role: Role.HR,
       position: "HR Manager",
       department: "Human Resources",
       manager: "Admin User",
@@ -430,7 +430,7 @@ async function main() {
 
       // Employment
       employeeId: "IC-SUPERADMIN001",
-      userRank: UserRank.DIRECTOR_LEVEL,
+      userRank: UserRank.EMPLOYEE,
       password: await bcrypt.hash("superadmin123", 10),
       role: Role.SUPERADMIN,
       position: "Super Admin",
@@ -458,69 +458,7 @@ async function main() {
     },
   });
 
-  const testEmployee = await prisma.user.create({
-    data: {
-      // Basic info
-      email: "saqibirisco@gmail.com",
-      firstName: "Saqib",
-      lastName: "Javaid",
-      fatherHusbandName: "Saqib Javaid",
-      cnic: "35201-1839367-7",
-      cnicExpiry: new Date("2026-11-26"),
-      maritalStatus: MaritalStatus.MARRIED,
-      dateOfBirth: new Date("1998-11-18"),
-      bloodGroup: BloodGroup.B_POSITIVE,
-      gender: Gender.MALE,
-
-      // Education
-      education: EducationLevel.BACHELORS,
-      educationInstitute: "University of Central Punjab",
-      educationGrade: "3.2",
-
-      // Contact
-      personalEmail: "sjmugha@gmail.com",
-      personalMobile: "+92-302-4955797",
-      officialMobile: "+92-302-4955797",
-      officialEmail: "saqib.javaid@iriscommunications.com",
-      phone: "+92-42-7654321",
-
-      // Address
-      personalAddress: "117B block tajpura Scheme, Lahore, Pakistan",
-      address: "Iris Communications Office, DHA Phase III, Lahore",
-      city: "Lahore",
-      state: "Punjab",
-      zipCode: "54000",
-      country: "Pakistan",
-
-      // Employment
-      employeeId: "IC-EMP002",
-      userRank: UserRank.EMPLOYEE,
-      password: await bcrypt.hash("Saqib123123", 10),
-      role: Role.EMPLOYEE,
-      position: "Software Developer",
-      department: "Information Technology",
-      manager: "Wasif Zia",
-      salary: 50000,
-      currency: "PKR",
-      dateOfJoining: new Date("2023-02-15"),
-      hireDate: new Date("2023-02-15"),
-      employmentTypeId: fullTimeType.id,
-
-      // Emergency contact
-      emergencyDetailId: testEmployeeEmergencyContact.id,
-
-      // Relations
-      departmentId: testEmployeeDept.id,
-      contractTypeId: permanentContract.id,
-      designationId: softwareEngineerDesignation.id,
-      shiftId: morningShift.id,
-      leaveId: standardLeavePolicy.id,
-
-      // System fields
-      status: UserStatus.ACTIVE,
-      isActive: true,
-    },
-  });
+  
 
 
 
@@ -592,6 +530,71 @@ async function main() {
     },
   });
 
+  const testEmployee = await prisma.user.create({
+    data: {
+      // Basic info
+      email: "saqibirisco@gmail.com",
+      firstName: "Saqib",
+      lastName: "Javaid",
+      fatherHusbandName: "Saqib Javaid",
+      cnic: "35201-1839367-7",
+      cnicExpiry: new Date("2026-11-26"),
+      maritalStatus: MaritalStatus.MARRIED,
+      dateOfBirth: new Date("1998-11-18"),
+      bloodGroup: BloodGroup.B_POSITIVE,
+      gender: Gender.MALE,
+
+      // Education
+      education: EducationLevel.BACHELORS,
+      educationInstitute: "University of Central Punjab",
+      educationGrade: "3.2",
+
+      // Contact
+      personalEmail: "sjmugha@gmail.com",
+      personalMobile: "+92-302-4955797",
+      officialMobile: "+92-302-4955797",
+      officialEmail: "saqib.javaid@iriscommunications.com",
+      phone: "+92-42-7654321",
+
+      // Address
+      personalAddress: "117B block tajpura Scheme, Lahore, Pakistan",
+      address: "Iris Communications Office, DHA Phase III, Lahore",
+      city: "Lahore",
+      state: "Punjab",
+      zipCode: "54000",
+      country: "Pakistan",
+
+      // Employment
+      employeeId: "IC-EMP002",
+      userRank: UserRank.EMPLOYEE,
+      password: await bcrypt.hash("Saqib123123", 10),
+      role: Role.EMPLOYEE,
+      position: "Software Developer",
+      department: "Information Technology",
+      manager: lineManagerUser.id,
+      salary: 50000,
+      currency: "PKR",
+      dateOfJoining: new Date("2023-02-15"),
+      hireDate: new Date("2023-02-15"),
+      employmentTypeId: fullTimeType.id,
+
+      // Emergency contact
+      emergencyDetailId: testEmployeeEmergencyContact.id,
+
+      // Relations
+      departmentId: testEmployeeDept.id,
+      contractTypeId: permanentContract.id,
+      designationId: softwareEngineerDesignation.id,
+      shiftId: morningShift.id,
+      leaveId: standardLeavePolicy.id,
+
+      // System fields
+      status: UserStatus.ACTIVE,
+      isActive: true,
+    },
+  });
+
+
 
   console.log("Creating Normal Employee user...");
   const employeeUser = await prisma.user.create({
@@ -657,6 +660,74 @@ async function main() {
       isActive: true,
     },
   });
+
+
+
+  const directorUser = await prisma.user.create({
+    data: {
+      // Basic info
+      email: "director@iris-communications.com.pk",
+      firstName: "Director",
+      lastName: "Director",
+      fatherHusbandName: "Director",
+      cnic: "42101-7694321-7",
+      cnicExpiry: new Date("2029-06-30"),
+      maritalStatus: MaritalStatus.MARRIED,
+      dateOfBirth: new Date("1990-03-22"),
+      bloodGroup: BloodGroup.B_POSITIVE,
+      gender: Gender.MALE,
+
+      // Education
+      education: EducationLevel.BACHELORS,
+      educationInstitute: "Lahore University of Management Sciences",
+      educationGrade: "B+",
+
+      // Contact
+      personalEmail: "director.personal@gmail.com",
+      personalMobile: "+92-301-7654322",
+      officialMobile: "+92-301-2222223",
+      officialEmail: "director@iris-communications.com",
+      phone: "+92-42-7654322",
+
+      // Address
+      personalAddress: "456 Oak Avenue, Karachi, Pakistan",
+      address: "Iris Communications Office, Gulberg III, Lahore",
+      city: "Karachi",
+      state: "Sindh",
+      zipCode: "75000",
+      country: "Pakistan",
+
+      // Employment
+      employeeId: "IC-DIRECTOR001",
+      userRank: UserRank.DIRECTOR_LEVEL,
+      password: await bcrypt.hash("dir123123", 10),
+      role: Role.ADMIN,
+      position: "Director",
+      department: "Engineering",
+      manager: "No Manager",
+      salary: 50000,
+      currency: "PKR",
+      dateOfJoining: new Date("2022-02-15"),
+      hireDate: new Date("2022-02-15"),
+      employmentTypeId: fullTimeType.id,
+
+      // Emergency contact
+      emergencyDetailId: hrEmergencyContact.id,
+
+      // Relations
+      departmentId: hrDept.id,
+      contractTypeId: permanentContract.id,
+      designationId: hrManagerDesignation.id,
+      shiftId: morningShift.id,
+      leaveId: standardLeavePolicy.id,
+
+      // System fields
+      status: UserStatus.ACTIVE,
+      isActive: true,
+    },
+  });
+
+
 
 
 

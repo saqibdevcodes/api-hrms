@@ -68,10 +68,13 @@ export class PdrService {
       { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWED, allowedRoles: ["DIRECTOR_LEVEL", "HR"] },
     ],
     DIRECTOR_REVIEWED: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["EMPLOYEE", "HR"] },
+      { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE", "HR"] },
+      { nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED, allowedRoles: ["EMPLOYEE", "HR"] },
+      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["HR"] }, // legacy support
+      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED, allowedRoles: ["HR"] }, // legacy support
     ],
     EMPLOYEE_ACKNOWLEDGING: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED, allowedRoles: ["EMPLOYEE"] },
+      { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE"] },
       { nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED, allowedRoles: ["EMPLOYEE"] },
     ],
     EMPLOYEE_DISAGREED: [
