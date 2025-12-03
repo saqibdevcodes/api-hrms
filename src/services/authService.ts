@@ -1,6 +1,8 @@
 import { prisma } from "../config/database";
 import { JwtUtils } from "../utils/jwt";
 import { PasswordUtils } from "../utils/password";
+import { EmailService } from "../utils/emailService";
+import crypto from "crypto";
 import {
   LoginRequest,
   LoginResponse,
@@ -107,6 +109,85 @@ export class AuthService {
 
       console.error("Login error:", error);
       throw new AuthenticationError("Login failed");
+    }
+  }
+
+  /**
+   * Request password reset
+   */
+  static async forgotPassword(email: string): Promise<boolean> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+      });
+
+      if (!user) {
+        // Don't reveal that user doesn't exist
+        return true;
+      }
+
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+
+      // Save token to user
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: resetToken,
+          resetPasswordExpires,
+        },
+      });
+
+      // Send email
+      await EmailService.sendPasswordResetEmail(user.email, resetToken);
+
+      return true;
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      throw new Error("Failed to process password reset request");
+    }
+  }
+
+  /**
+   * Reset password with token
+   */
+  static async resetPassword(token: string, password: string): Promise<boolean> {
+    try {
+      // Find user with valid token
+      const user = await prisma.user.findFirst({
+        where: {
+          resetPasswordToken: token,
+          resetPasswordExpires: {
+            gt: new Date(),
+          },
+        },
+      });
+
+      if (!user) {
+        throw new AuthenticationError("Invalid or expired reset token");
+      }
+
+      // Hash new password
+      const hashedPassword = await PasswordUtils.hashPassword(password);
+
+      // Update user password and clear token
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashedPassword,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+        },
+      });
+
+      return true;
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        throw error;
+      }
+      console.error("Reset password error:", error);
+      throw new Error("Failed to reset password");
     }
   }
 

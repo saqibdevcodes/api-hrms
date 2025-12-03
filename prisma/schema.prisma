@@ -93,6 +93,11 @@ model User {
   // System fields
   isActive  Boolean   @default(true)
   lastLogin DateTime?
+  
+  // Password Reset
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

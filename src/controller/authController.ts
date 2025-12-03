@@ -12,6 +12,76 @@ import { config } from "../config/env";
 
 export class AuthController {
   /**
+   * Request password reset
+   */
+  static async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        res.status(400).json({
+          success: false,
+          message: "Email is required",
+        });
+        return;
+      }
+
+      await AuthService.forgotPassword(email);
+
+      res.status(200).json({
+        success: true,
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
+      });
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to process request",
+      });
+    }
+  }
+
+  /**
+   * Reset password
+   */
+  static async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, password } = req.body;
+
+      if (!token || !password) {
+        res.status(400).json({
+          success: false,
+          message: "Token and password are required",
+        });
+        return;
+      }
+
+      await AuthService.resetPassword(token, password);
+
+      res.status(200).json({
+        success: true,
+        message: "Password reset successful",
+      });
+    } catch (error) {
+      console.error("Reset password error:", error);
+
+      if (error instanceof AuthenticationError) {
+        res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to reset password",
+      });
+    }
+  }
+
+  /**
    * User login endpoint
    */
   static async login(req: Request, res: Response): Promise<void> {

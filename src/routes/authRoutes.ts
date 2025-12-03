@@ -76,6 +76,20 @@ router.post(
 );
 
 /**
+ * @route   POST /api/v1/auth/forgot-password
+ * @desc    Request password reset email
+ * @access  Public
+ */
+router.post("/forgot-password", authRateLimit, AuthController.forgotPassword);
+
+/**
+ * @route   POST /api/v1/auth/reset-password
+ * @desc    Reset password using token
+ * @access  Public
+ */
+router.post("/reset-password", authRateLimit, AuthController.resetPassword);
+
+/**
  * @route   GET /api/v1/auth/profile
  * @desc    Get current user profile
  * @access  Private
@@ -117,4 +131,3 @@ router.get("/me", optionalAuth, (req: AuthenticatedRequest, res) => {
 });
 
 export default router;
- 

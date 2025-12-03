@@ -101,12 +101,14 @@ export const config: EnvConfig = {
   COMPANY_DOMAIN: getEnvVar("COMPANY_DOMAIN", "iriscommunications.com"),
 
   // Email Configuration (Optional)
-  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_HOST: process.env.SMTP_HOST || process.env.MAIL_HOST,
   SMTP_PORT: process.env.SMTP_PORT
     ? parseInt(process.env.SMTP_PORT, 10)
+    : process.env.MAIL_PORT
+    ? parseInt(process.env.MAIL_PORT, 10)
     : undefined,
-  SMTP_USER: process.env.SMTP_USER,
-  SMTP_PASS: process.env.SMTP_PASS,
+  SMTP_USER: process.env.SMTP_USER || process.env.MAIL_USERNAME,
+  SMTP_PASS: process.env.SMTP_PASS || process.env.MAIL_PASSWORD,
 
   // Cloudinary Configuration (Optional for local development)
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
