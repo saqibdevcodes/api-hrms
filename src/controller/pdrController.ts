@@ -718,12 +718,22 @@ export class PdrController {
    */
   static async savePdrFormData(req: AuthenticatedRequest, res: Response) {
     try {
+
+
+      console.log("🔵 Incoming PDR Save Request:");
+      console.log("Params:", req.params);
+      console.log("User:", req.user);
+      console.log("Body:", req.body);
+
+
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
       const pdrId = parseInt(req.params.id, 10);
-      const { employeeType, part1, part2 } = req.body;
+      // const { employeeType, part1, part2, managerRecommendations, directorOverallComment } = req.body;
+      const { employeeType, part1, part2, managerRecommendations, directorOverallComment, pdr_timeline } = req.body;
+
 
       const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
 
@@ -751,6 +761,9 @@ export class PdrController {
         employeeType: actualEmployeeType,
         part1,
         part2,
+        managerRecommendations,
+        directorOverallComment,
+        pdr_timeline,
       });
 
       res.status(200).json({

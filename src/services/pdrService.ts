@@ -883,12 +883,19 @@ export class PdrService {
     };
     // Director's overall PDR comment
     directorOverallComment?: string;
+    // PDR timeline (employee selectable)
+    pdr_timeline?: string;
   }) {
     // Prepare update data
     const updateData: any = {
       lastModifiedBy: data.userId,
       lastModifiedAt: new Date(),
     };
+
+    // Add timeline if provided (only employee can set this)
+    if (data.pdr_timeline !== undefined && data.employeeType === "EMPLOYEE") {
+      updateData.pdr_timeline = data.pdr_timeline;
+    }
 
     // Add manager recommendations if provided
     if (data.managerRecommendations) {
