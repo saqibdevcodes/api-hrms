@@ -117,14 +117,18 @@ export class AuthService {
    */
   static async forgotPassword(email: string): Promise<boolean> {
     try {
+      console.log(`Attempting password reset for: ${email}`);
       const user = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },
       });
 
       if (!user) {
+        console.log(`User not found for email: ${email}`);
         // Don't reveal that user doesn't exist
         return true;
       }
+
+      console.log(`User found: ${user.id}. Generating reset token...`);
 
       // Generate reset token
       const resetToken = crypto.randomBytes(32).toString("hex");
@@ -139,8 +143,10 @@ export class AuthService {
         },
       });
 
+      console.log(`Sending reset email to ${user.email}...`);
       // Send email
       await EmailService.sendPasswordResetEmail(user.email, resetToken);
+      console.log("Reset email sent successfully.");
 
       return true;
     } catch (error) {
@@ -152,7 +158,10 @@ export class AuthService {
   /**
    * Reset password with token
    */
-  static async resetPassword(token: string, password: string): Promise<boolean> {
+  static async resetPassword(
+    token: string,
+    password: string
+  ): Promise<boolean> {
     try {
       // Find user with valid token
       const user = await prisma.user.findFirst({
