@@ -257,18 +257,26 @@ export class ZKTecoController {
       let where: any = {};
 
       // 👥 ROLE-BASED ACCESS CONTROL: Filter data based on user role
-      if (currentUser.role === "EMPLOYEE") {
-        // 🔒 EMPLOYEE VIEW: Can only see their own attendance records
-        where.employeeId = currentUser.id;
-        console.log(
-          `👤 Employee ${currentUser.email} viewing their own attendance`
-        );
-      } else if (currentUser.role === "ADMIN") {
-        // 🔓 ADMIN VIEW: Can see all records, optionally filtered by employeeId
+      // Define roles that can view ALL records
+      const canViewAllRecords = ["ADMIN", "HR", "SUPERADMIN"].includes(
+        currentUser.role
+      );
+
+      if (canViewAllRecords) {
+        // 🔓 PRIVILEGED ACCESS: Can see all records, optionally filtered by employeeId
         if (employeeId) {
           where.employeeId = employeeId as string;
         }
-        console.log(`👥 Admin ${currentUser.email} viewing attendance records`);
+        console.log(
+          `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`
+        );
+      } else {
+        // 🔒 DEFAULT/EMPLOYEE ACCESS: STRICTLY restrict to own records
+        // If user role is EMPLOYEE or any other unhandled role, they see ONLY their own data
+        where.employeeId = currentUser.id;
+        console.log(
+          `👤 User ${currentUser.email} (${currentUser.role}) viewing their own attendance`
+        );
       }
 
       // 📅 DATE FILTERING: Apply date range if specified
@@ -290,8 +298,8 @@ export class ZKTecoController {
       // Once data is in the attendance table, it's already been finalized
       // (either auto-finalized after 3 days OR force-finalized by SuperAdmin)
       // So we show ALL attendance records immediately!
-      
-      console.log('📊 Fetching attendance records (all finalized data)');
+
+      console.log("📊 Fetching attendance records (all finalized data)");
       console.log(`   User: ${currentUser.email} (${currentUser.role})`);
       console.log(`   Filters:`, JSON.stringify(where));
 
@@ -598,7 +606,7 @@ export class ZKTecoController {
    * @param req - Authenticated request with deviceId, employeeId, cardNumber
    * @param res - Express response object
    * @returns JSON with upload success status and employee data
-   * 
+   *
    */
   static async uploadEmployeeToDevice(
     req: AuthenticatedRequest,
@@ -1901,7 +1909,7 @@ export class ZKTecoController {
 
   /**
    * Force finalize all staging records (SuperAdmin only)
-   * 
+   *
    * This endpoint allows SuperAdmin to immediately finalize all staging records
    * without waiting for the 3-day delay
    */
@@ -1919,10 +1927,16 @@ export class ZKTecoController {
         return;
       }
 
-      console.log(`🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`);
+      console.log(
+        `🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`
+      );
 
-      const { finalizationService } = await import("../services/finalizationService");
-      const result = await finalizationService.forceFinalizeAllStagingRecords(currentUser.id);
+      const { finalizationService } = await import(
+        "../services/finalizationService"
+      );
+      const result = await finalizationService.forceFinalizeAllStagingRecords(
+        currentUser.id
+      );
 
       res.json({
         success: result.success,
@@ -1959,9 +1973,13 @@ export class ZKTecoController {
         return;
       }
 
-      console.log(`🔐 SuperAdmin ${currentUser.email} running finalization cron manually`);
+      console.log(
+        `🔐 SuperAdmin ${currentUser.email} running finalization cron manually`
+      );
 
-      const { finalizationService } = await import("../services/finalizationService");
+      const { finalizationService } = await import(
+        "../services/finalizationService"
+      );
       const result = await finalizationService.finalizeStagingRecords();
 
       res.json({

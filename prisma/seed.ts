@@ -458,13 +458,6 @@ async function main() {
     },
   });
 
-  
-
-
-
- 
-
-
   console.log("Creating Normal Employee user...");
   const lineManagerUser = await prisma.user.create({
     data: {
@@ -594,8 +587,6 @@ async function main() {
     },
   });
 
-
-
   console.log("Creating Normal Employee user...");
   const employeeUser = await prisma.user.create({
     data: {
@@ -661,8 +652,6 @@ async function main() {
     },
   });
 
-
-
   const directorUser = await prisma.user.create({
     data: {
       // Basic info
@@ -726,10 +715,6 @@ async function main() {
       isActive: true,
     },
   });
-
-
-
-
 
   console.log("✅ Database seeded successfully!");
   // Create employee leave records for testing progressive deductions
