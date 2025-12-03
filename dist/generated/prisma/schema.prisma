@@ -1,0 +1,920 @@
+// Iris Communications HRMS Database Schema
+// This schema defines the database structure for the HRMS portal
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"] // if working in windows this is recommended
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Authentication and User Management
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+
+  // Name fields
+  firstName String
+  lastName  String
+
+  // Family Details
+  fatherHusbandName String?
+
+  // CNIC Details
+  cnic       String?   @unique
+  cnicExpiry DateTime?
+
+  // Personal Information
+  maritalStatus MaritalStatus?
+  dateOfBirth   DateTime?
+  bloodGroup    BloodGroup?
+  gender        Gender?
+
+  // Education
+  education          EducationLevel?
+  educationInstitute String?
+  educationGrade     String?
+
+  // Contact Information
+  personalEmail  String?
+  personalMobile String?
+  officialMobile String?
+  officialEmail  String?
+  phone          String? // Alternative phone
+
+  // Address Information
+  personalAddress String?
+  address         String? // Work address
+  city            String?
+  state           String?
+  zipCode         String?
+  country         String  @default("Pakistan")
+
+  // Employment Information
+  employeeId       String?    @unique // IC-EMP001, IC-ADM001, etc.
+  userRank         UserRank?
+  password         String
+  status           UserStatus @default(ACTIVE)
+  role             Role       @default(EMPLOYEE)
+  position         String?
+  department       String? // Department name as text
+  manager          String?
+  salary           Decimal?
+  currency         String     @default("PKR")
+  dateOfJoining    DateTime?
+  dateOfExit       DateTime?
+  hireDate         DateTime? // Same as dateOfJoining, kept for compatibility
+  endDate          DateTime? // Same as dateOfExit, kept for compatibility
+  employmentTypeId String?
+
+  // Document Pictures (stored as file paths)
+  profilePicture   String?
+  degreePicture    String?
+  cnicPictureFront String?
+  cnicPictureBack  String?
+
+  // Insurance Policy fields
+  hasInsurance                 Boolean?  @default(false)
+  insuranceCardNo              String?
+  insuranceInsuredName         String?
+  insuranceEmployeeNo          String?
+  insuranceValidUpto           DateTime?
+  insuranceSpouseChildren      String?
+  insuranceHospitalization     String?
+  insuranceRoomLimit           String?
+  insuranceNormalDelivery      String?
+  insuranceComplicatedDelivery String?
+  insuranceCardPicture         String?
+
+  // System fields
+  isActive  Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Foreign Key Relations
+  emergencyDetailId String?
+  departmentId      String?
+  contractTypeId    String?
+  designationId     String?
+  shiftId           String?
+  leaveId           String?
+
+  // Relations
+  emergencyDetail  EmergencyDetail? @relation(fields: [emergencyDetailId], references: [id])
+  departmentEntity Department?      @relation(fields: [departmentId], references: [id])
+  contractType     ContractType?    @relation(fields: [contractTypeId], references: [id])
+  designation      Designation?     @relation(fields: [designationId], references: [id])
+  shift            Shift?           @relation(fields: [shiftId], references: [id])
+  leavePolicy      LeavePolicy?     @relation(fields: [leaveId], references: [id])
+  employmentType   EmploymentType?  @relation(fields: [employmentTypeId], references: [id])
+
+  // Employee-related relations (moved from Employee model)
+  attendances          Attendance[]
+  zktecoStagingRecords ZKTecoAttendanceStaging[] @relation("StagingAttendance")
+  zktecoRecords        ZKTecoAttendanceRecord[]  @relation("FinalAttendance")
+  leaveRequests        LeaveRequest[]
+  payrollRecords       PayrollRecord[]
+  performanceReviews   PerformanceReview[]
+  notifications        Notification[]
+
+  createdBy           String?
+  updatedBy           String?
+  EducationalDetail   EducationalDetail? @relation(fields: [educationalDetailId], references: [id])
+  educationalDetailId Int?
+
+  pdrs           Pdr[] @relation("PdrEmployee")
+  pdrLineManager Pdr[] @relation("PdrLineManager")
+  pdrDirector    Pdr[] @relation("PdrDirector")
+
+  // Employee leave back-reference
+  employeeLeave EmployeeLeave?
+  Loan          Loan[]
+  AdvanceSalary AdvanceSalary[]
+
+  @@map("users")
+}
+
+// Emergency Contact Details
+model EmergencyDetail {
+  id             String   @id @default(cuid())
+  contactName    String
+  contactPhone   String
+  contactEmail   String?
+  relationship   String
+  contactAddress String?
+  alternatePhone String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("emergency_details")
+}
+
+// Contract Types
+model ContractType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  duration    Int? // Duration in months
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("contract_types")
+}
+
+// Designations/Job Titles
+model Designation {
+  id          String   @id @default(cuid())
+  title       String   @unique
+  description String?
+  level       Int? // Hierarchy level
+  department  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("designations")
+}
+
+// Work Shifts
+model Shift {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  startTime    DateTime
+  endTime      DateTime
+  breakTime    Int? // Break duration in minutes
+  halfDayStart DateTime?
+  fullDayStart DateTime?
+  earlyOut     DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("shifts")
+}
+
+model OffDay {
+  id        String   @id @default(cuid())
+  date      DateTime
+  reason    String
+  datetime  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("off_days")
+}
+
+// Leave Policies
+model LeavePolicy {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  annualLeaves    Int      @default(21)
+  sickLeaves      Int      @default(10)
+  casualLeaves    Int      @default(5)
+  maternityLeaves Int      @default(90)
+  paternityLeaves Int      @default(15)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  users         User[]
+  EmployeeLeave EmployeeLeave[]
+
+  @@map("leave_policies")
+}
+
+model EmployeeLeave {
+  id                 Int          @id @default(autoincrement())
+  userId             String       @unique
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  annualLeaves       Int
+  sickLeaves         Int
+  casualLeaves       Int
+  compensatoryLeaves Int
+  maternityLeaves    Int
+  paternityLeaves    Int
+  leavePolicyId      String?
+  leavePolicy        LeavePolicy? @relation(fields: [leavePolicyId], references: [id])
+  datetime           DateTime
+
+  @@map("employee_leaves")
+}
+
+//this is the users leaves table which is used to store the leaves of the users
+
+// Employment Types
+model EmploymentType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("employment_types")
+}
+
+model EducationalDetail {
+  id       Int      @id @default(autoincrement())
+  user     User[]
+  userId   String
+  name     String
+  type     String
+  picture  String?
+  datetime DateTime
+
+  @@map("educational_details")
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  manager     String?
+  budget      Decimal?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  users User[]
+
+  @@map("departments")
+}
+
+// Attendance Management
+// Enhanced Attendance model to support ZKTeco device data
+model Attendance {
+  id       String           @id @default(cuid())
+  date     DateTime         @db.Date // Date only (YYYY-MM-DD)
+  checkIn  DateTime? // First check-in time of the day
+  checkOut DateTime? // Last check-out time of the day
+  status   AttendanceStatus @default(PRESENT)
+  reason   String?
+  notes    String?
+
+  // ZKTeco device integration fields
+  deviceCheckIns  Int       @default(0) // Count of check-ins from device
+  deviceCheckOuts Int       @default(0) // Count of check-outs from device
+  lastDeviceSync  DateTime? // Last time device data was synced
+
+  // Working hours calculation
+  totalHours    Decimal? @db.Decimal(5, 2) // Total working hours for the day
+  overtimeHours Decimal? @db.Decimal(5, 2) // Overtime hours
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  employee              User                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId            String
+  AttendanceReason      AttendanceReason?    @relation(fields: [attendanceReasonId], references: [id])
+  attendanceReasonId    String?
+  AttendanceDeduction   AttendanceDeduction? @relation(fields: [attendanceDeductionId], references: [id])
+  attendanceDeductionId String?
+
+  // Relation to ZKTeco records
+  zktecoRecords ZKTecoAttendanceRecord[]
+
+  @@unique([employeeId, date])
+  @@map("attendances")
+}
+
+// STAGING TABLE: Raw ZKTeco device records (real-time data from devices)
+// This table holds unverified attendance data for 3 days before finalization
+model ZKTecoAttendanceStaging {
+  id String @id @default(cuid())
+
+  // ZKTeco device data
+  employeeId String // User ID from ZKTeco device (e.g., "100074")
+  deviceId   String // Device serial number (e.g., "AF4C211360469")
+  timestamp  DateTime // Exact punch time from device
+  checkType  ZKTecoCheckType // check_in or check_out
+  verifyType Int // 1=Fingerprint, 2=Password, 3=Card, etc.
+  workCode   String? // Work code from device (optional)
+
+  // Calculated attendance status based on shift rules
+  overallStatus AttendanceStatusType?
+
+  // Processing status
+  processed       Boolean @default(false) // Whether this record has been processed
+  processingError String? // Error message if processing failed
+
+  // Finalization tracking
+  isFinalized Boolean   @default(false) // Whether moved to final table
+  finalizedAt DateTime? // When moved to final table
+  finalizedBy String? // User ID who forced finalization (if manual)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  User   User?   @relation("StagingAttendance", fields: [userId], references: [id])
+  userId String? // Link to actual user (after ID mapping)
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([timestamp])
+  @@index([isFinalized])
+  @@index([createdAt]) // For 3-day filter
+  @@map("zkteco_attendance_staging")
+}
+
+// FINAL TABLE: Verified ZKTeco attendance records (finalized after 3 days)
+// This table holds verified attendance data that HR/Admin can see
+model ZKTecoAttendanceRecord {
+  id String @id @default(cuid())
+
+  // ZKTeco device data
+  employeeId String // User ID from ZKTeco device (e.g., "100074")
+  deviceId   String // Device serial number (e.g., "AF4C211360469")
+  timestamp  DateTime // Exact punch time from device
+  checkType  ZKTecoCheckType // check_in or check_out
+  verifyType Int // 1=Fingerprint, 2=Password, 3=Card, etc.
+  workCode   String? // Work code from device (optional)
+
+  // Calculated attendance status based on shift rules
+  overallStatus AttendanceStatusType?
+
+  // Processing status
+  processed       Boolean @default(false) // Whether this record has been processed into attendance
+  processingError String? // Error message if processing failed
+
+  // Deduction tracking
+  usedForDeduction   Boolean   @default(false) // Whether this record has been used for progressive deductions
+  deductionAppliedAt DateTime? // When deduction was applied using this record
+
+  // Finalization metadata
+  finalizedFrom String? // Staging record ID this was created from
+  finalizedAt   DateTime? // When moved from staging
+  finalizedBy   String? // User ID who forced finalization (if manual)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  User         User?       @relation("FinalAttendance", fields: [userId], references: [id])
+  userId       String? // Link to actual user (after ID mapping)
+  attendance   Attendance? @relation(fields: [attendanceId], references: [id])
+  attendanceId String? // Link to daily attendance record
+
+  @@index([employeeId])
+  @@index([deviceId])
+  @@index([timestamp])
+  @@index([processed])
+  @@map("zkteco_attendance_records")
+}
+
+// Enum for ZKTeco check types
+enum ZKTecoCheckType {
+  check_in
+  check_out
+  break_out
+  break_in
+  overtime_in
+  overtime_out
+}
+
+// Enum for detailed attendance status based on shift rules
+enum AttendanceStatusType {
+  ON_TIME_ARRIVAL
+  LATE
+  HALF_DAY_LEAVE // Based on time of arrival (toa >= hfs && < fds) && Based on time of leave (tol >= fds && < eo)
+  FULL_DAY_LEAVE_POTENTIAL // Based on time of arrival (toa >= fds) - pending checkout validation
+  FULL_DAY_LEAVE // Based on time of arrival (toa >= fds) && Based on time of leave (tol < fds && > st)
+  EARLY_OUT
+  ON_TIME_LEAVE
+  ABSENT
+}
+
+model AttendanceReason {
+  id                String       @id @default(cuid())
+  attendanceId      String
+  attendance        Attendance[]
+  reason            String?
+  reasonDetails     String?
+  projectName       String?
+  projectManager    String?
+  projectDepartment String?
+  taskAsignedBy     String?
+  taskDetail        String?
+  fieldAddress      String?
+  reasonComment     String?
+  status            String? //approved, rejected, pending
+  datetime          DateTime
+
+  attachments AttendanceReasonAttachment[]
+
+  @@map("attendance_reasons")
+}
+
+model AttendanceReasonAttachment {
+  id                 String           @id @default(cuid())
+  attendanceReasonId String
+  attendanceReason   AttendanceReason @relation(fields: [attendanceReasonId], references: [id])
+  details            String
+  image              String
+  datetime           DateTime
+
+  @@map("attendance_reason_attachments")
+}
+
+model AttendanceDeduction {
+  id              String       @id @default(cuid())
+  attendanceId    String
+  attendance      Attendance[]
+  deductionReason String
+  deductValue     Float
+  leaveId         Int?
+  datetime        DateTime
+
+  // Track which ZKTeco records triggered this deduction
+  zktecoRecordIds String? // JSON array of ZKTeco record IDs that triggered this deduction
+  deductionType   String? // "LATE_TO_HALF_DAY" or "HALF_DAY_TO_FULL_DAY"
+
+  @@map("attendance_deductions")
+}
+
+// Leave Management
+model LeaveRequest {
+  id                    String        @id @default(cuid())
+  leaveType             LeaveType
+  startDate             DateTime
+  endDate               DateTime
+  days                  Int
+  reason                String
+  status                RequestStatus @default(PENDING)
+  comments              String?
+  approvedByLineManager String?
+  approvedByHr          String?
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  // Relations
+  employee   User   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  @@map("leave_requests")
+}
+
+// Payroll Management
+model PayrollRecord {
+  id          String        @id @default(cuid())
+  payPeriod   String // "January 2024", "Q1 2024", etc.
+  basicSalary Decimal
+  overtime    Decimal       @default(0)
+  bonus       Decimal       @default(0)
+  deductions  Decimal       @default(0)
+  netPay      Decimal
+  status      PayrollStatus @default(PENDING)
+  payDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  employee   User   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  @@map("payroll_records")
+}
+
+// Performance Management
+model PerformanceReview {
+  id            String       @id @default(cuid())
+  reviewPeriod  String // "Q4 2023", "2023 Annual", etc.
+  rating        Int // 1-5 scale
+  goalsMet      Int          @default(0)
+  totalGoals    Int          @default(0)
+  manager       String
+  feedback      String?
+  status        ReviewStatus @default(DRAFT)
+  dateCreated   DateTime     @default(now())
+  dateCompleted DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  employee   User   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  @@map("performance_reviews")
+}
+
+// Notification Management
+model Notification {
+  id        String               @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType
+  priority  NotificationPriority @default(MEDIUM)
+  isRead    Boolean              @default(false)
+  data      Json? // Additional data for the notification
+  createdAt DateTime             @default(now())
+  readAt    DateTime?
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@map("notifications")
+}
+
+model Loan {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Decimal
+  interest     Decimal?
+  totalAmount  Decimal?
+  installments Int?
+  tenure       Int? // in months
+  reason       String?
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("loans")
+}
+
+model AdvanceSalary {
+  id         String   @id @default(cuid())
+  userId     String
+  daysCount  Int
+  reason     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Status     String?
+  ApprovedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Enums
+enum Role {
+  ADMIN
+  EMPLOYEE
+  SUPERADMIN
+  HR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserRank {
+  DIRECTOR_LEVEL
+  LINE_MANAGER
+  EMPLOYEE
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+}
+
+enum EducationLevel {
+  PRIMARY
+  SECONDARY
+  HIGHER_SECONDARY
+  BACHELORS
+  MASTERS
+  PHD
+  DIPLOMA
+  CERTIFICATE
+  PROFESSIONAL
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  SEPARATED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_LEAVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  WORK_FROM_HOME
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  PERSONAL
+  EMERGENCY
+  BEREAVEMENT
+  STUDY
+  UNPAID
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PayrollStatus {
+  PENDING
+  PROCESSED
+  PAID
+  FAILED
+}
+
+enum ReviewStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+enum NotificationType {
+  LEAVE_REQUEST_SUBMITTED
+  LEAVE_REQUEST_APPROVED
+  LEAVE_REQUEST_REJECTED
+  PAYROLL_PROCESSED
+  PERFORMANCE_REVIEW_DUE
+  ATTENDANCE_REMINDER
+  SYSTEM_ANNOUNCEMENT
+  BIRTHDAY_REMINDER
+  WORK_ANNIVERSARY
+  DOCUMENT_EXPIRY
+  TASK_ASSIGNED
+  MEETING_SCHEDULED
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// PDR Status Enums
+
+// Individual role status (for emp_status, linemanager_status, etc.)
+enum PdrStatus {
+  PENDING // Not started yet
+  IN_PROGRESS // Currently filling
+  SUBMITTED // Submitted to next party
+  APPROVED // Approved by reviewer
+  REVERTED // Sent back for rework
+  ACKNOWLEDGED // Acknowledged (employee only)
+  COMPLETED // Final completion
+}
+
+// Overall PDR lifecycle status (19-step flow)
+enum PdrOverallStatus {
+  // 1. Creation
+  CREATED_BY_HR // 1: HR creates PDR
+
+  // 2-5. Employee Fill & Submit (with potential HR loop)
+  EMPLOYEE_FILLING // 2: Employee is filling
+  EMPLOYEE_SUBMITTED_TO_HR // 3: Employee submitted to HR for review
+  HR_REVIEWING_EMPLOYEE // 4: HR reviewing employee's part
+  HR_REVERTED_TO_EMPLOYEE // 5: HR sent back to employee (loops back to 2)
+  HR_APPROVED_EMPLOYEE // 6: HR approved employee's part
+
+  // 7-11. Manager Fill & Submit (with potential HR loop)
+  MANAGER_FILLING // 7: Manager is filling
+  MANAGER_SUBMITTED_TO_HR // 8: Manager submitted to HR
+  HR_REVIEWING_MANAGER // 9: HR reviewing manager's part
+  HR_REVERTED_TO_MANAGER // 10: HR sent back to manager (loops back to 7)
+  HR_APPROVED_MANAGER // 11: HR approved manager's part
+
+  // 12-15. Employee Acknowledgment (with potential revert loop)
+  EMPLOYEE_ACKNOWLEDGING // 12: Employee reviewing for acknowledgment
+  EMPLOYEE_DISAGREED // 13: Employee disagreed with manager assessment
+  EMPLOYEE_REVERT_TO_MANAGER // 14: Employee requested changes from manager
+  MANAGER_REVISING // 15: Manager revising (loops back)
+  EMPLOYEE_ACKNOWLEDGED // 16: Employee acknowledged
+
+  // 17-19. Director Review & Completion
+  DIRECTOR_REVIEWING // 17: Director reviewing final PDR
+  DIRECTOR_REVIEWED // 18: Director completed review
+  COMPLETED // 19: PDR fully completed and locked
+}
+
+//PDR Management
+
+model Pdr {
+  id            Int      @id @default(autoincrement())
+  user          User     @relation("PdrEmployee", fields: [userId], references: [id])
+  userId        String
+  creation_date DateTime @default(now())
+  pdr_cycle     String?  @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
+  pdr_timeline  String?
+
+  // Relations to other users
+  linemanager    User?   @relation("PdrLineManager", fields: [linemanager_id], references: [id])
+  linemanager_id String?
+  director       User?   @relation("PdrDirector", fields: [director_id], references: [id])
+  director_id    String?
+
+  // Overall PDR Status (follows 19-step flow)
+  overallStatus PdrOverallStatus @default(CREATED_BY_HR)
+
+  // Individual role statuses (for granular tracking)
+  emp_status         PdrStatus @default(PENDING)
+  linemanager_status PdrStatus @default(PENDING)
+  director_status    PdrStatus @default(PENDING)
+  hr_status          PdrStatus @default(PENDING)
+
+  // Tracking fields
+  isCompleted    Boolean   @default(false)
+  completedAt    DateTime?
+  lastModifiedBy String? // User ID who last modified
+  lastModifiedAt DateTime  @default(now()) @updatedAt
+
+  // Manager recommendations (visible to HR and Manager only, NOT to employee)
+  training_required     Boolean? @default(false)
+  training_description  String?  @db.Text
+  promotion_recommended Boolean? @default(false)
+  promotion_description String?  @db.Text
+
+  // Director's overall PDR comment
+  director_overall_comment String? @db.Text
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Relations to PDR components
+  comments          PdrComment[]
+  personalQualities PdrPersonalQuality[]
+  goalsTasks        PdrGoalsTask[]
+  overallComments   PdrOverallComment[]
+  transitions       PdrStatusTransition[]
+
+  @@unique([userId, pdr_cycle]) // Prevent duplicate PDRs per cycle
+  @@map("pdr")
+}
+
+// Track status transitions for audit trail
+model PdrStatusTransition {
+  id            Int              @id @default(autoincrement())
+  pdr           Pdr              @relation(fields: [pdrId], references: [id], onDelete: Cascade)
+  pdrId         Int
+  fromStatus    PdrOverallStatus
+  toStatus      PdrOverallStatus
+  changedBy     String // User ID
+  changedByRole String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
+  comment       String?
+  createdAt     DateTime         @default(now())
+
+  @@map("pdr_status_transitions")
+}
+
+model PdrComment {
+  id              Int      @id @default(autoincrement())
+  pdr             Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr_id          Int
+  employee_type   String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
+  pdr_status_type String // Status when comment was made
+  description     String   @db.Text
+  datetime        DateTime @default(now())
+
+  // Extended fields for revert messages
+  commentType String?   @default("GENERAL") // "GENERAL", "REVERT", "APPROVAL", "FEEDBACK"
+  sentTo      String? // Who this message is for (for REVERT type)
+  isResolved  Boolean   @default(false) // For REVERT messages
+  resolvedAt  DateTime?
+
+  @@map("pdr_comments")
+}
+
+model PdrPersonalQuality {
+  id                        Int      @id @default(autoincrement())
+  pdr                       Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr_id                    Int
+  employee_type             String
+  communication             Int
+  innovation                Int
+  work_ethics               Int
+  teamwork                  Int
+  maturity                  Int
+  initiative                Int
+  self_management           Int
+  customer_focus            Int
+  sense_of_responsibilities Int
+  accountability            Int
+  work_knowledge            Int
+  attendance                Int
+  leadership                Int
+  comment                   String
+  datetime                  DateTime
+
+  @@map("pdrpersonalquality")
+}
+
+model PdrGoalsTask {
+  id                   Int      @id @default(autoincrement())
+  pdr                  Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr_id               Int
+  task                 String
+  employee_self_rating Int
+  linemanager_rating   Int
+  datetime             DateTime
+
+  @@map("pdrgoalstask")
+}
+
+model PdrOverallComment {
+  id            Int      @id @default(autoincrement())
+  pdr           Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr_id        Int
+  employee_type String
+  comment       String
+  datetime      DateTime
+
+  @@map("pdroverallcomment")
+}

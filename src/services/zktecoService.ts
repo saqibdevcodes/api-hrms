@@ -85,7 +85,7 @@ export class ZKTecoService {
       // Note: iClock protocol uses HTTP, not UDP
       console.log("iClock HTTP server will be started via Express routes");
       console.log(
-        "Device should be configured to push to: http://192.168.2.85:3000/api/v1/zkteco/iclock/"
+        "Device should be configured to push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/"
       );
     } catch (error) {
       console.error("Failed to start ADMS server:", error);
@@ -657,10 +657,10 @@ export class ZKTecoService {
           `🔍 Device ${sn} is online - waiting for attendance data...`
         );
         console.log(
-          `📡 Device should push to: http://192.168.2.85:3000/api/v1/zkteco/iclock/`
+          `📡 Device should push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/`
         );
         console.log(
-          `💡 Check device configuration: ADMS Server = 192.168.2.85, Port = 3000`
+          `💡 Check device configuration: ADMS Server = 147.79.100.197, Port = 30000`
         );
       } catch (error) {
         console.error(`Error auto-syncing device ${sn}:`, error);
@@ -1733,8 +1733,8 @@ export class ZKTecoService {
     try {
       console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
 
-      // Step 1: Save raw ZKTeco record first (without status calculation initially)
-      const zktecoRecord = await prisma.zKTecoAttendanceRecord.create({
+      // Step 1: Save to STAGING table first (3-day delay before finalization)
+      const stagingRecord = await prisma.zKTecoAttendanceStaging.create({
         data: {
           employeeId: attendanceData.employeeId,
           deviceId: attendanceData.deviceId,
@@ -1743,10 +1743,11 @@ export class ZKTecoService {
           verifyType: attendanceData.verifyType,
           workCode: (attendanceData as any).workCode || null,
           processed: false,
+          isFinalized: false,
         },
       });
 
-      console.log(`📝 Raw ZKTeco record saved with ID: ${zktecoRecord.id}`);
+      console.log(`📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 3 days)`);
 
       // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
       const employee = await prisma.user.findFirst({
@@ -1762,8 +1763,8 @@ export class ZKTecoService {
       });
 
       if (!employee) {
-        await prisma.zKTecoAttendanceRecord.update({
-          where: { id: zktecoRecord.id },
+        await prisma.zKTecoAttendanceStaging.update({
+          where: { id: stagingRecord.id },
           data: {
             processingError: `Employee not found for ID: ${attendanceData.employeeId}`,
             overallStatus: "ABSENT", // Mark as absent if employee not found
@@ -1797,9 +1798,9 @@ export class ZKTecoService {
         }`
       );
 
-      // Step 4: Update the raw record with calculated status
-      await prisma.zKTecoAttendanceRecord.update({
-        where: { id: zktecoRecord.id },
+      // Step 4: Update the staging record with calculated status
+      await prisma.zKTecoAttendanceStaging.update({
+        where: { id: stagingRecord.id },
         data: {
           userId: employee.id,
           overallStatus: calculatedStatus as any, // Cast to any to avoid type issues until Prisma client is regenerated
@@ -1832,7 +1833,7 @@ export class ZKTecoService {
 
       if (attendanceData.checkType === "check_out") {
         // Check if there's a check-in record for today with FULL_DAY_LEAVE_POTENTIAL or FULL_DAY_LEAVE status
-        const todayCheckIn = await prisma.zKTecoAttendanceRecord.findFirst({
+        const todayCheckIn = await prisma.zKTecoAttendanceStaging.findFirst({
           where: {
             userId: employee.id,
             checkType: "check_in",
@@ -1890,7 +1891,7 @@ export class ZKTecoService {
               );
 
               // Update check-in record to confirmed FULL_DAY_LEAVE
-              await prisma.zKTecoAttendanceRecord.update({
+              await prisma.zKTecoAttendanceStaging.update({
                 where: { id: todayCheckIn.id },
                 data: {
                   overallStatus: "FULL_DAY_LEAVE",
@@ -1898,8 +1899,8 @@ export class ZKTecoService {
               });
 
               // Update current check-out record to confirmed FULL_DAY_LEAVE
-              await prisma.zKTecoAttendanceRecord.update({
-                where: { id: zktecoRecord.id },
+              await prisma.zKTecoAttendanceStaging.update({
+                where: { id: stagingRecord.id },
                 data: {
                   overallStatus: "FULL_DAY_LEAVE",
                 },
@@ -1931,22 +1932,20 @@ export class ZKTecoService {
             `🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`
           );
 
-          // Mark current check-out record as used for deduction
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
+          // Mark current check-out record with processing error (deduction tracking only in final table)
+          await prisma.zKTecoAttendanceStaging.update({
+            where: { id: stagingRecord.id },
             data: {
-              usedForDeduction: true,
-              deductionAppliedAt: new Date(),
+              processingError: "Marked for FULL_DAY_LEAVE deduction",
             },
           });
 
-          // Mark corresponding check-in record as used for deduction
+          // Mark corresponding check-in record with processing error
           if (todayCheckIn) {
-            await prisma.zKTecoAttendanceRecord.update({
+            await prisma.zKTecoAttendanceStaging.update({
               where: { id: todayCheckIn.id },
               data: {
-                usedForDeduction: true,
-                deductionAppliedAt: new Date(),
+                processingError: "Marked for FULL_DAY_LEAVE deduction",
               },
             });
             console.log(
@@ -1970,23 +1969,20 @@ export class ZKTecoService {
             `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`
           );
 
-          // Mark this checkout record as null/invalid AND mark it as used for deduction
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
+          // Mark this checkout record as blocked
+          await prisma.zKTecoAttendanceStaging.update({
+            where: { id: stagingRecord.id },
             data: {
               overallStatus: todayCheckIn.overallStatus,
-              processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE",
-              usedForDeduction: true, // Mark as used to ignore for deductions
-              deductionAppliedAt: new Date(),
+              processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE (deduction in final table)",
             },
           });
 
-          // Also mark the check-in record as used for deduction to prevent it from contributing to progressive deductions
-          await prisma.zKTecoAttendanceRecord.update({
+          // Mark the check-in record with processing note
+          await prisma.zKTecoAttendanceStaging.update({
             where: { id: todayCheckIn.id },
             data: {
-              usedForDeduction: true,
-              deductionAppliedAt: new Date(),
+              processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
             },
           });
 
@@ -1998,7 +1994,7 @@ export class ZKTecoService {
         }
       } else if (attendanceData.checkType === "check_in") {
         // Check if there's a checkout record for today with FULL_DAY_LEAVE status
-        const todayCheckOut = await prisma.zKTecoAttendanceRecord.findFirst({
+        const todayCheckOut = await prisma.zKTecoAttendanceStaging.findFirst({
           where: {
             userId: employee.id,
             checkType: "check_out",
@@ -2018,25 +2014,21 @@ export class ZKTecoService {
             "todayCheckOut.overallStatus",
             todayCheckOut.overallStatus
           );
-          // Mark this check-in record as null/invalid AND mark it as used for deduction
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
+          // Mark this check-in record as blocked
+          await prisma.zKTecoAttendanceStaging.update({
+            where: { id: stagingRecord.id },
             data: {
-              // overallstatus should be a status according to the status of the check-out record
               overallStatus: null,
               processingError:
-                "Check-in blocked - Check-out was FULL_DAY_LEAVE",
-              usedForDeduction: true, // Mark as used to ignore for deductions
-              deductionAppliedAt: new Date(),
+                "Check-in blocked - Check-out was FULL_DAY_LEAVE (deduction in final table)",
             },
           });
 
-          // Also mark the checkout record as used for deduction to prevent it from contributing to progressive deductions
-          await prisma.zKTecoAttendanceRecord.update({
+          // Mark the checkout record with processing note
+          await prisma.zKTecoAttendanceStaging.update({
             where: { id: todayCheckOut.id },
             data: {
-              usedForDeduction: true,
-              deductionAppliedAt: new Date(),
+              processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
             },
           });
 
@@ -2048,240 +2040,20 @@ export class ZKTecoService {
         }
       }
 
-      // Step 5: Process daily attendance record
-      // Use the already declared attendanceDate and todayDateOnly variables
-      const dateOnly = new Date(
-        Date.UTC(
-          attendanceDate.getUTCFullYear(),
-          attendanceDate.getUTCMonth(),
-          attendanceDate.getUTCDate()
-        )
-      );
-
-      // Step 4: Check existing attendance for validation
-      console.log(`🔍 Searching for attendance record...`);
-      console.log(
-        `🔍 Employee ID: ${employee.id}, Employee Number: ${employee.employeeId}`
-      );
-      console.log(`🔍 Date to search: ${dateOnly.toISOString()}`);
-      console.log(`🔍 Date object:`, dateOnly);
-
-      let attendance = await prisma.attendance.findFirst({
-        where: {
-          employeeId: employee.id,
-          date: dateOnly,
-        },
-      });
-
-      console.log(`🔍 Found attendance:`, attendance);
-      if (attendance) {
-        console.log(`🔍 Attendance details:`, {
-          id: attendance.id,
-          date: attendance.date?.toISOString(),
-          checkIn: attendance.checkIn?.toISOString(),
-          checkOut: attendance.checkOut?.toISOString(),
-          deviceCheckIns: attendance.deviceCheckIns,
-          deviceCheckOuts: attendance.deviceCheckOuts,
-        });
-      }
-
-      // Step 5: Validate check-in/out rules
-      const today = new Date();
-      // Use the already declared todayDateOnly variable from above
-      const isToday = dateOnly.getTime() === todayDateOnly.getTime();
-
-      console.log(
-        `🔍 Date validation: attendanceDate=${dateOnly.toISOString()}, today=${todayDateOnly.toISOString()}, isToday=${isToday}`
-      );
-      console.log(
-        `🔍 Existing attendance:`,
-        attendance
-          ? { checkIn: attendance.checkIn, checkOut: attendance.checkOut }
-          : "None"
-      );
-
-      if (attendanceData.checkType === "check_in") {
-        if (attendance?.checkIn && isToday) {
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
-            data: {
-              processingError: "Employee already checked in today",
-              processed: true,
-            },
-          });
-          console.warn(
-            `⚠️ Employee ${employee.employeeId} already checked in today`
-          );
-          return false;
-        }
-      } else if (attendanceData.checkType === "check_out") {
-        console.log(`🔍 Processing checkout for ${employee.employeeId}`);
-        console.log(`🔍 Attendance record exists: ${!!attendance}`);
-        console.log(`🔍 Has check-in: ${!!attendance?.checkIn}`);
-        console.log(`🔍 Has check-out: ${!!attendance?.checkOut}`);
-        console.log(`🔍 Is today: ${isToday}`);
-
-        if (!attendance?.checkIn && isToday) {
-          console.warn(`🚫 Checkout blocked: No check-in found for today`);
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
-            data: {
-              processingError: "Cannot check out without checking in first",
-              processed: true,
-            },
-          });
-          console.warn(
-            `⚠️ Employee ${employee.employeeId} trying to check out without checking in`
-          );
-          return false;
-        }
-        if (attendance?.checkOut && isToday) {
-          console.warn(`🚫 Checkout blocked: Already checked out today`);
-          await prisma.zKTecoAttendanceRecord.update({
-            where: { id: zktecoRecord.id },
-            data: {
-              processingError: "Employee already checked out today",
-              processed: true,
-            },
-          });
-          console.warn(
-            `⚠️ Employee ${employee.employeeId} already checked out today`
-          );
-          return false;
-        }
-
-        console.log(`✅ Checkout validation passed for ${employee.employeeId}`);
-      }
-
-      // Step 6: Create or update attendance record
-      if (!attendance) {
-        console.log(
-          `📝 Creating new attendance record for ${
-            employee.employeeId
-          } on ${dateOnly.toISOString()}`
-        );
-        console.log(
-          `📝 Check type: ${
-            attendanceData.checkType
-          }, Timestamp: ${attendanceData.timestamp.toISOString()}`
-        );
-
-        attendance = await prisma.attendance.create({
-          data: {
-            employeeId: employee.id,
-            date: dateOnly,
-            checkIn:
-              attendanceData.checkType === "check_in"
-                ? attendanceData.timestamp
-                : null,
-            checkOut:
-              attendanceData.checkType === "check_out"
-                ? attendanceData.timestamp
-                : null,
-            status: "PRESENT",
-            deviceCheckIns: attendanceData.checkType === "check_in" ? 1 : 0,
-            deviceCheckOuts: attendanceData.checkType === "check_out" ? 1 : 0,
-            lastDeviceSync: new Date(),
-            notes: `Recorded via ZKTeco device ${attendanceData.deviceId} (${deviceIp})`,
-          },
-        });
-
-        console.log(`✅ Created attendance record:`, {
-          id: attendance.id,
-          checkIn: attendance.checkIn?.toISOString(),
-          checkOut: attendance.checkOut?.toISOString(),
-          deviceCheckIns: attendance.deviceCheckIns,
-          deviceCheckOuts: attendance.deviceCheckOuts,
-        });
-      } else {
-        console.log(
-          `📝 Updating existing attendance record for ${employee.employeeId}`
-        );
-        console.log(`📝 Current record:`, {
-          id: attendance.id,
-          checkIn: attendance.checkIn?.toISOString(),
-          checkOut: attendance.checkOut?.toISOString(),
-          deviceCheckIns: attendance.deviceCheckIns,
-          deviceCheckOuts: attendance.deviceCheckOuts,
-        });
-        console.log(
-          `📝 Processing: ${
-            attendanceData.checkType
-          } at ${attendanceData.timestamp.toISOString()}`
-        );
-
-        const updateData: any = {
-          status: "PRESENT",
-          lastDeviceSync: new Date(),
-          notes: `Updated via ZKTeco device ${
-            attendanceData.deviceId
-          } at ${new Date().toISOString()}`,
-        };
-
-        if (attendanceData.checkType === "check_in" && !attendance.checkIn) {
-          console.log(
-            `📝 Adding check-in time: ${attendanceData.timestamp.toISOString()}`
-          );
-          updateData.checkIn = attendanceData.timestamp;
-          updateData.deviceCheckIns = (attendance.deviceCheckIns || 0) + 1;
-        } else if (attendanceData.checkType === "check_out") {
-          console.log(
-            `📝 Adding check-out time: ${attendanceData.timestamp.toISOString()}`
-          );
-          updateData.checkOut = attendanceData.timestamp;
-          updateData.deviceCheckOuts = (attendance.deviceCheckOuts || 0) + 1;
-
-          if (attendance.checkIn) {
-            const workingMs =
-              attendanceData.timestamp.getTime() - attendance.checkIn.getTime();
-            const workingHours = workingMs / (1000 * 60 * 60);
-            updateData.totalHours = Math.round(workingHours * 100) / 100;
-            console.log(
-              `📊 Calculated working hours: ${updateData.totalHours} hours`
-            );
-          } else {
-            console.warn(
-              `⚠️ No check-in time found for working hours calculation`
-            );
-          }
-        }
-
-        console.log(`📝 Update data:`, updateData);
-
-        attendance = await prisma.attendance.update({
-          where: { id: attendance.id },
-          data: updateData,
-        });
-
-        console.log(`✅ Updated attendance record:`, {
-          id: attendance.id,
-          checkIn: attendance.checkIn?.toISOString(),
-          checkOut: attendance.checkOut?.toISOString(),
-          deviceCheckIns: attendance.deviceCheckIns,
-          deviceCheckOuts: attendance.deviceCheckOuts,
-          totalHours: attendance.totalHours,
-        });
-      }
-
-      // Step 7: Mark ZKTeco record as processed
-      await prisma.zKTecoAttendanceRecord.update({
-        where: { id: zktecoRecord.id },
+      // Step 5: Mark staging record as processed
+      // NO ATTENDANCE RECORD CREATED YET - Will be created after 3 days by finalization cron
+      await prisma.zKTecoAttendanceStaging.update({
+        where: { id: stagingRecord.id },
         data: {
-          attendanceId: attendance.id,
           processed: true,
           processingError: null,
         },
       });
 
       console.log(
-        `✅ Attendance processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`
+        `✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`
       );
-
-      // Step 8: Emit real-time updates
-      await this.emitAttendanceUpdate(employee, attendance, attendanceData);
-
-      // Step 9: Handle progressive deductions (3 late = 1 half day, 2 half day = 1 full day)
-      await this.handleProgressiveDeductions(employee.id, attendance.id);
+      console.log(`⏳ Record will be finalized and moved to attendance after 3 days`);
 
       return true;
     } catch (error) {

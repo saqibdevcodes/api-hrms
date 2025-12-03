@@ -155,6 +155,7 @@ router.post(
 router.get("/getrequest", ZKTecoController.handleIClockGetRequest);
 router.post("/ping", ZKTecoController.handleIClockPing);
 router.post("/cdata", ZKTecoController.handleIClockCData);
+router.get("/cdata", ZKTecoController.handleIClockCData); // Allow GET for testing/legacy
 router.post("/fdata", ZKTecoController.handleIClockFData); // Add face data handler
 
 // API versions for manual calls (/api/v1/zkteco/iclock/path)
@@ -162,5 +163,17 @@ router.get("/iclock/getrequest", ZKTecoController.handleIClockGetRequest);
 router.post("/iclock/ping", ZKTecoController.handleIClockPing);
 router.post("/iclock/cdata", ZKTecoController.handleIClockCData);
 router.post("/iclock/fdata", ZKTecoController.handleIClockFData); // Add face data handler
+
+// Finalization Routes (SuperAdmin only)
+router.post(
+  "/attendance/force-finalize-all",
+  authenticate,
+  ZKTecoController.forceFinalizeAll
+);
+router.post(
+  "/attendance/run-finalization-cron",
+  authenticate,
+  ZKTecoController.runFinalizationCron
+);
 
 export default router;

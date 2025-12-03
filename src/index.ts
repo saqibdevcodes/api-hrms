@@ -9,6 +9,7 @@ import { createServer } from "http";
 import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
 import router from "./routes";
+import zktecoRoutes from "./routes/zktecoRoutes";
 import { SocketManager } from "./socket/socketManager";
 import { zktecoService } from "./services/zktecoService";
 
@@ -60,6 +61,14 @@ app.use(
       "Accept",
       "Authorization",
       "X-Company",
+      "Cache-Control",
+      "Pragma",
+      "Expires",
+    ],
+    exposedHeaders: [
+      "Cache-Control",
+      "Pragma",
+      "Expires",
     ],
   })
 );
@@ -157,7 +166,7 @@ app.use((req, res, next) => {
 });
 
 // iClock routes at root level for ZKTeco device communication
-app.use("/iclock", require("./routes/zktecoRoutes").default);
+app.use("/iclock", zktecoRoutes);
 
 // API routes
 app.use(config.API_PREFIX, router);

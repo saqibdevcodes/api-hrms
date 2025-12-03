@@ -254,7 +254,7 @@ export class ZKTecoController {
       const currentUser = authenticatedRequest.user;
 
       // 🏗️ BUILD FILTER: Create database query conditions
-      const where: any = {};
+      let where: any = {};
 
       // 👥 ROLE-BASED ACCESS CONTROL: Filter data based on user role
       if (currentUser.role === "EMPLOYEE") {
@@ -286,31 +286,14 @@ export class ZKTecoController {
       // If deviceId filter is needed, we can add a deviceId field to attendance records
       // For now, we'll get all attendance records
 
-      // Add 3-day delay filter (unless forceFetch is enabled by SuperAdmin)
-      const forceFetch = req.query.forceFetch === 'true';
+      // ✅ NO 3-DAY FILTER NEEDED!
+      // Once data is in the attendance table, it's already been finalized
+      // (either auto-finalized after 3 days OR force-finalized by SuperAdmin)
+      // So we show ALL attendance records immediately!
       
-      // Security: Only SuperAdmin can use forceFetch
-      if (forceFetch && currentUser.role !== 'SUPERADMIN') {
-        return res.status(403).json({
-          success: false,
-          message: 'Only SuperAdmin can force fetch attendance data',
-          error: 'Insufficient permissions',
-        });
-      }
-      
-      if (!forceFetch) {
-        // Normal mode: Only show records created 3+ days ago
-        const today = new Date();
-        const threeDaysAgo = new Date();
-        threeDaysAgo.setDate(today.getDate() - 3);
-        where.createdAt = {
-          lte: threeDaysAgo,
-        };
-        console.log('📅 Applying 3-day delay filter for attendance data');
-      } else {
-        // Force fetch mode: Show all records (SuperAdmin only)
-        console.log('⚡ Force fetch enabled by SuperAdmin - showing all attendance records');
-      }
+      console.log('📊 Fetching attendance records (all finalized data)');
+      console.log(`   User: ${currentUser.email} (${currentUser.role})`);
+      console.log(`   Filters:`, JSON.stringify(where));
 
       const [attendanceRecords, total] = await Promise.all([
         prisma.attendance.findMany({
@@ -1913,6 +1896,89 @@ export class ZKTecoController {
     } catch (error) {
       console.error("Error handling iClock cdata:", error);
       res.status(400).send("Data processing error");
+    }
+  }
+
+  /**
+   * Force finalize all staging records (SuperAdmin only)
+   * 
+   * This endpoint allows SuperAdmin to immediately finalize all staging records
+   * without waiting for the 3-day delay
+   */
+  static async forceFinalizeAll(req: Request, res: Response): Promise<void> {
+    try {
+      const authenticatedRequest = req as any;
+      const currentUser = authenticatedRequest.user;
+
+      // Security check: Only SuperAdmin can force finalize
+      if (currentUser.role !== "SUPERADMIN") {
+        res.status(403).json({
+          success: false,
+          message: "Only SuperAdmin can force finalize staging records",
+        });
+        return;
+      }
+
+      console.log(`🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`);
+
+      const { finalizationService } = await import("../services/finalizationService");
+      const result = await finalizationService.forceFinalizeAllStagingRecords(currentUser.id);
+
+      res.json({
+        success: result.success,
+        message: `Finalized ${result.finalized} records with ${result.errors} errors`,
+        data: {
+          finalized: result.finalized,
+          errors: result.errors,
+        },
+      });
+    } catch (error) {
+      console.error("Error force finalizing records:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to force finalize records",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  /**
+   * Run finalization cron manually (SuperAdmin only)
+   */
+  static async runFinalizationCron(req: Request, res: Response): Promise<void> {
+    try {
+      const authenticatedRequest = req as any;
+      const currentUser = authenticatedRequest.user;
+
+      // Security check: Only SuperAdmin can run cron manually
+      if (currentUser.role !== "SUPERADMIN") {
+        res.status(403).json({
+          success: false,
+          message: "Only SuperAdmin can run finalization cron",
+        });
+        return;
+      }
+
+      console.log(`🔐 SuperAdmin ${currentUser.email} running finalization cron manually`);
+
+      const { finalizationService } = await import("../services/finalizationService");
+      const result = await finalizationService.finalizeStagingRecords();
+
+      res.json({
+        success: result.success,
+        message: `Finalized ${result.finalized} records (3+ days old) with ${result.errors} errors`,
+        data: {
+          finalized: result.finalized,
+          errors: result.errors,
+        },
+      });
+    } catch (error) {
+      console.error("Error running finalization cron:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to run finalization cron",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   }
 }
