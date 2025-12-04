@@ -81,6 +81,9 @@ export interface UserProfile {
   role: Role;
   userD: User;
   userRank?: UserRank;
+  profilePicture?: string | null;
+  firstName?: string;
+  lastName?: string;
   employee?: EmployeeInfo;
 }
 
@@ -92,6 +95,7 @@ export interface EmployeeInfo {
   position: string;
   department: string;
   avatar?: string;
+  profilePicture?: string | null;
   designation?: string;
   userRank?: string;
   phone?: string;

@@ -71,6 +71,9 @@ export class AuthService {
         role: user.role,
         userD: user,
         userRank: user.userRank || undefined,
+        profilePicture: user.profilePicture || null,
+        firstName: user.firstName,
+        lastName: user.lastName,
         employee: user.employeeId
           ? {
               id: user.id,
@@ -80,6 +83,7 @@ export class AuthService {
               position: user.position,
               department: user.department,
               designation: designation ? designation.title : undefined,
+              profilePicture: user.profilePicture || null,
               userRank: user.userRank,
               phone: user.phone,
               personalMobile: user.personalMobile,

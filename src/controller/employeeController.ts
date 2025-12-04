@@ -615,7 +615,7 @@ export class EmployeeController {
       const insuranceCardFile = files?.insuranceCardFile?.[0];
       const profilePictureFile = files?.profilePictureFile?.[0];
 
-      // Extract relational IDs from body
+      // Extract relational IDs and file fields from body
       const {
         departmentId,
         contractTypeId,
@@ -631,6 +631,12 @@ export class EmployeeController {
         emergencyContactRelation,
         emergencyContactAddress,
         emergencyContactAlternatePhone,
+        // Exclude file fields that come through FormData as strings
+        profilePictureFile: _profilePictureFile,
+        cnicFrontFile: _cnicFrontFile,
+        cnicBackFile: _cnicBackFile,
+        documentFile: _documentFile,
+        insuranceCardFile: _insuranceCardFile,
         ...restData
       } = req.body;
 
