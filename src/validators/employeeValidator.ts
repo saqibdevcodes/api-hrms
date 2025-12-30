@@ -226,6 +226,23 @@ export const createEmployeeValidation = [
 
   body("supervisorIds")
     .optional()
+    .customSanitizer((value) => {
+      // If it's already an array, return as-is
+      if (Array.isArray(value)) {
+        return value;
+      }
+      // If it's a string (from multipart/form-data), try to parse it as JSON
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [value];
+        } catch {
+          // If parsing fails, return as single-item array
+          return [value];
+        }
+      }
+      return value;
+    })
     .isArray()
     .withMessage("Supervisor IDs must be an array"),
 
@@ -479,6 +496,23 @@ export const updateEmployeeValidation = [
 
   body("supervisorIds")
     .optional()
+    .customSanitizer((value) => {
+      // If it's already an array, return as-is
+      if (Array.isArray(value)) {
+        return value;
+      }
+      // If it's a string (from multipart/form-data), try to parse it as JSON
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [value];
+        } catch {
+          // If parsing fails, return as single-item array
+          return [value];
+        }
+      }
+      return value;
+    })
     .isArray()
     .withMessage("Supervisor IDs must be an array"),
 

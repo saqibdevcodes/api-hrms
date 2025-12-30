@@ -339,30 +339,24 @@ export class EmployeeController {
               if (
                 userRank === "LINE_MANAGER" &&
                 supervisorIds &&
-                Array.isArray(supervisorIds)
+                supervisorIds.length > 0
               ) {
-                // For line managers with multiple supervisors, store as JSON
-                const supervisors = await tx.user.findMany({
+                // For line managers with multiple supervisors, get all supervisor emails
+                const supervisorsData = await tx.user.findMany({
                   where: { id: { in: supervisorIds } },
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    email: true,
-                  },
+                  select: { email: true },
                 });
-                return JSON.stringify(supervisors);
+                // Store all emails comma-separated
+                return supervisorsData.map((s) => s.email).join(", ");
               } else if (userRank === "EMPLOYEE" && supervisorId) {
-                // For employees with single supervisor
+                // For employees with single supervisor, use supervisor's email
                 const supervisor = await tx.user.findUnique({
                   where: { id: supervisorId },
-                  select: { firstName: true, lastName: true, email: true },
+                  select: { email: true },
                 });
-                return supervisor
-                  ? `${supervisor.firstName} ${supervisor.lastName}`
-                  : manager;
+                return supervisor?.email || null;
               }
-              return manager; // Default manager field value
+              return manager || null; // Use provided manager or null
             })(),
             salary: salary ? parseFloat(salary) : null,
             currency,
@@ -460,11 +454,53 @@ export class EmployeeController {
       // Return success with created data (excluding password)
       const { password: _, ...userWithoutPassword } = result.user;
 
+      // Fetch supervisor information if applicable
+      let supervisorsList = null;
+      let supervisorIdsArray: string[] = [];
+
+      if (
+        userRank === "LINE_MANAGER" &&
+        supervisorIds &&
+        supervisorIds.length > 0
+      ) {
+        const supervisorsData = await prisma.user.findMany({
+          where: { id: { in: supervisorIds } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
+        });
+        supervisorsList = supervisorsData;
+        supervisorIdsArray = supervisorsData.map((s) => s.id);
+      } else if (userRank === "EMPLOYEE" && supervisorId) {
+        const supervisor = await prisma.user.findUnique({
+          where: { id: supervisorId },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
+        });
+        if (supervisor) {
+          supervisorsList = [supervisor];
+          supervisorIdsArray = [supervisor.id];
+        }
+      }
+
       res.status(201).json({
         success: true,
         message: "Employee created successfully",
         data: {
-          user: userWithoutPassword,
+          user: {
+            ...userWithoutPassword,
+            supervisors: supervisorsList,
+            supervisorIds: supervisorIdsArray,
+          },
           employeeLeave: result.employeeLeave,
           emergencyDetail,
           files: {
@@ -566,10 +602,41 @@ export class EmployeeController {
       // Exclude password from response
       const { password, ...userWithoutPassword } = user;
 
+      // Parse manager field to get supervisors
+      let supervisorsList = null;
+      let supervisorIdsArray: string[] = [];
+
+      if (user.manager) {
+        // Manager field contains comma-separated emails for LINE_MANAGERs
+        // or single email for EMPLOYEEs
+        const managerEmails = user.manager
+          .split(",")
+          .map((email: string) => email.trim());
+
+        const supervisorsData = await prisma.user.findMany({
+          where: { email: { in: managerEmails } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+            department: true,
+          },
+        });
+
+        supervisorsList = supervisorsData;
+        supervisorIdsArray = supervisorsData.map((s) => s.id);
+      }
+
       res.json({
         success: true,
         message: "Employee retrieved successfully",
-        data: userWithoutPassword,
+        data: {
+          ...userWithoutPassword,
+          supervisors: supervisorsList,
+          supervisorIds: supervisorIdsArray,
+        },
       });
     } catch (error) {
       console.error("Error fetching employee:", error);
@@ -625,6 +692,7 @@ export class EmployeeController {
         employmentTypeId,
         supervisorId,
         supervisorIds,
+        manager,
         emergencyContactName,
         emergencyContactPhone,
         emergencyContactEmail,
@@ -739,30 +807,48 @@ export class EmployeeController {
       }
 
       // Handle supervisor updates based on rank
+      let supervisorsList = null;
+
       if (
         updateData.userRank === "LINE_MANAGER" &&
         supervisorIds &&
-        Array.isArray(supervisorIds)
+        // Array.isArray(supervisorIds)
+        supervisorIds.length > 0
       ) {
-        // For line managers with multiple supervisors, store as JSON
-        const supervisors = await prisma.user.findMany({
+        // For line managers with multiple supervisors
+        // Fetch all supervisors to get their emails
+        const supervisorsData = await prisma.user.findMany({
           where: { id: { in: supervisorIds } },
           select: {
             id: true,
             firstName: true,
             lastName: true,
             email: true,
+            employeeId: true,
           },
         });
-        updateData.manager = JSON.stringify(supervisors);
+
+        supervisorsList = supervisorsData;
+
+        // Store all supervisor emails comma-separated
+        const supervisorEmails = supervisorsData.map((s) => s.email).join(", ");
+        updateData.manager = supervisorEmails;
       } else if (updateData.userRank === "EMPLOYEE" && supervisorId) {
         // For employees with single supervisor
         const supervisor = await prisma.user.findUnique({
           where: { id: supervisorId },
-          select: { firstName: true, lastName: true, email: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            employeeId: true,
+          },
         });
+
         if (supervisor) {
-          updateData.manager = `${supervisor.firstName} ${supervisor.lastName}`;
+          updateData.manager = supervisor.email;
+          supervisorsList = [supervisor];
         }
       }
 
@@ -819,7 +905,13 @@ export class EmployeeController {
       res.json({
         success: true,
         message: "Employee updated successfully",
-        data: userWithoutPassword,
+        data: {
+          ...userWithoutPassword,
+          supervisors: supervisorsList,
+          supervisorIds: supervisorsList
+            ? supervisorsList.map((s: any) => s.id)
+            : [],
+        },
       });
     } catch (error: any) {
       console.error("Error updating employee:", error);
