@@ -96,6 +96,11 @@ export const getAttendanceDataValidator = [
     .isLength({ min: 1, max: 50 })
     .withMessage("Employee ID must be between 1 and 50 characters"),
 
+  query("departmentId")
+    .optional()
+    .isLength({ min: 1, max: 50 })
+    .withMessage("Department ID must be between 1 and 50 characters"),
+
   query("page")
     .optional()
     .isInt({ min: 1 })

@@ -242,6 +242,7 @@ export class ZKTecoController {
         startDate,
         endDate,
         employeeId,
+        departmentId,
         page = 1,
         limit = 50,
       } = req.query;
@@ -263,10 +264,21 @@ export class ZKTecoController {
       );
 
       if (canViewAllRecords) {
-        // 🔓 PRIVILEGED ACCESS: Can see all records, optionally filtered by employeeId
-        if (employeeId) {
-          where.employeeId = employeeId as string;
+        // 🔓 PRIVILEGED ACCESS: Can see all records, optionally filtered by employeeId and/or department
+        
+        // Build employee filter if either employeeId or departmentId is specified
+        if (employeeId || departmentId) {
+          where.employee = {};
+          
+          if (employeeId) {
+            where.employee.id = employeeId as string;
+          }
+          
+          if (departmentId) {
+            where.employee.departmentId = departmentId as string;
+          }
         }
+        
         console.log(
           `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`
         );
@@ -301,7 +313,9 @@ export class ZKTecoController {
 
       console.log("📊 Fetching attendance records (all finalized data)");
       console.log(`   User: ${currentUser.email} (${currentUser.role})`);
-      console.log(`   Filters:`, JSON.stringify(where));
+      console.log(`   Department Filter: ${departmentId || 'none'}`);
+      console.log(`   Employee Filter: ${employeeId || 'none'}`);
+      console.log(`   Where Clause:`, JSON.stringify(where, null, 2));
 
       const [attendanceRecords, total] = await Promise.all([
         prisma.attendance.findMany({
@@ -314,6 +328,7 @@ export class ZKTecoController {
                 firstName: true,
                 lastName: true,
                 email: true,
+                department: true,
                 shift: {
                   select: {
                     id: true,
@@ -324,6 +339,12 @@ export class ZKTecoController {
                     halfDayStart: true,
                     fullDayStart: true,
                     earlyOut: true,
+                  },
+                },
+                departmentEntity: {
+                  select: {
+                    id: true,
+                    name: true,
                   },
                 },
               },
@@ -546,6 +567,8 @@ export class ZKTecoController {
             employeeId: record.employee.employeeId,
             name: `${record.employee.firstName} ${record.employee.lastName}`,
             email: record.employee.email,
+            department: record.employee.department,
+            departmentEntity: record.employee.departmentEntity,
             shift: record.employee.shift
               ? {
                   id: record.employee.shift.id,
