@@ -6,12 +6,14 @@ import rateLimit from "express-rate-limit";
 import path from "path";
 import fs from "fs";
 import { createServer } from "http";
+import cron from "node-cron";
 import { config, validateConfig } from "./config/env";
 import DatabaseConnection from "./config/database";
 import router from "./routes";
 import zktecoRoutes from "./routes/zktecoRoutes";
 import { SocketManager } from "./socket/socketManager";
 import { zktecoService } from "./services/zktecoService";
+import { finalizationService } from "./services/finalizationService";
 
 // Validate environment configuration
 try {
@@ -347,6 +349,44 @@ const startServer = async () => {
       console.log("👤 Admin: admin@iris-communications.com / admin123");
       console.log("👥 HR: hr@iris-communications.com / hr123123");
       console.log("");
+      
+      // Schedule automatic attendance finalization (runs daily at 2 AM)
+      // This automatically finalizes staging records that are 3+ days old
+      cron.schedule("0 2 * * *", async () => {
+        console.log("");
+        console.log("🕐 ======================================");
+        console.log("🔄 Running Automatic Attendance Finalization");
+        console.log(`⏰ Time: ${new Date().toISOString()}`);
+        console.log("🕐 ======================================");
+        
+        try {
+          const result = await finalizationService.finalizeStagingRecords();
+          
+          console.log("📊 Finalization Results:");
+          console.log(`✅ Success: ${result.success}`);
+          console.log(`📝 Finalized: ${result.finalized} records`);
+          console.log(`❌ Errors: ${result.errors} records`);
+          console.log("🕐 ======================================");
+        } catch (error) {
+          console.error("❌ Automatic finalization failed:", error);
+          console.error("🕐 ======================================");
+        }
+      }, {
+        timezone: "Asia/Karachi" // Adjust to your timezone
+      });
+      
+      console.log("⏰ Automatic finalization scheduled: Daily at 2:00 AM (Asia/Karachi)");
+      console.log("");
+      
+      // Run finalization immediately on server start to process any existing old records
+      console.log("🔄 Running initial finalization check...");
+      finalizationService.finalizeStagingRecords()
+        .then((result) => {
+          console.log(`✅ Initial finalization: ${result.finalized} records finalized, ${result.errors} errors`);
+        })
+        .catch((error) => {
+          console.error("❌ Initial finalization failed:", error);
+        });
     });
 
     // Server error handling

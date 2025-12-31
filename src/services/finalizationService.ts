@@ -9,7 +9,7 @@
  * 3. After 3 days → Attendance table (finalized)
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
