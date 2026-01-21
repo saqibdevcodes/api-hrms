@@ -1,5 +1,10 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import path from "path";
+import fs from "fs";
+import cloudinary from "../config/cloudinary";
 import { AuthController } from "../controller/authController";
 import { authenticate, optionalAuth } from "../middleware/auth";
 import {
@@ -10,6 +15,60 @@ import { config } from "../config/env";
 import { AuthenticatedRequest } from "../types/auth";
 
 const router = Router();
+
+// Determine if Cloudinary is configured
+const isCloudinaryConfigured = !!(
+  config.CLOUDINARY_CLOUD_NAME &&
+  config.CLOUDINARY_API_KEY &&
+  config.CLOUDINARY_API_SECRET
+);
+
+// Configure storage based on environment
+const storage = isCloudinaryConfigured
+  ? new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: async (req, file) => {
+      return {
+        folder: "hrms/profile-pictures",
+        allowed_formats: ["jpg", "jpeg", "png", "gif"],
+        public_id: `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+        resource_type: "image",
+        transformation: [{ width: 400, height: 400, crop: "limit" }],
+      };
+    },
+  })
+  : multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(process.cwd(), "uploads", "profile-pictures");
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const extension = path.extname(file.originalname);
+      cb(null, "profile-" + uniqueSuffix + extension);
+    },
+  });
+
+// File filter for profile pictures
+const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Profile picture must be an image"), false);
+  }
+};
+
+// Configure multer upload
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
 
 // Rate limiting for authentication endpoints
 const authRateLimit = rateLimit({
@@ -129,5 +188,45 @@ router.get("/me", optionalAuth, (req: AuthenticatedRequest, res) => {
     });
   }
 });
+
+/**
+ * @route   POST /api/v1/auth/upload-profile-picture
+ * @desc    Upload profile picture
+ * @access  Private
+ */
+router.post(
+  "/upload-profile-picture",
+  authenticate,
+  upload.single("profilePicture"),
+  AuthController.uploadProfilePicture
+);
+
+/**
+ * @route   PUT /api/v1/auth/profile
+ * @desc    Update user profile
+ * @access  Private
+ */
+router.put("/profile", authenticate, AuthController.updateProfile);
+
+/**
+ * @route   PUT /api/v1/auth/change-password
+ * @desc    Change user password
+ * @access  Private
+ */
+router.put("/change-password", authenticate, AuthController.changePassword);
+
+/**
+ * @route   POST /api/v1/auth/send-email-otp
+ * @desc    Send OTP to email for verification
+ * @access  Private
+ */
+router.post("/send-email-otp", authenticate, AuthController.sendEmailOTP);
+
+/**
+ * @route   POST /api/v1/auth/verify-email-otp
+ * @desc    Verify email OTP
+ * @access  Private
+ */
+router.post("/verify-email-otp", authenticate, AuthController.verifyEmailOTP);
 
 export default router;

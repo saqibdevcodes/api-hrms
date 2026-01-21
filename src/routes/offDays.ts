@@ -18,6 +18,9 @@ router.get("/range", authenticate, OffDayController.getOffDaysByDateRange);
 // GET /api/off-days/:id - Get off day by ID
 router.get("/:id", authenticate, OffDayController.getOffDayById);
 
+// POST /api/off-days/send-chart-email - Send chart email
+router.post("/send-chart-email", authenticate, OffDayController.sendChartEmail);
+
 // POST /api/off-days - Create new off day (HR and Admin only)
 router.post(
   "/",

@@ -21,6 +21,7 @@ export class NotificationController {
       const options: any = {
         page: pageNumber,
         limit: limitNumber,
+        userRole: req.user!.role, // Pass user role for filtering
       };
 
       if (isRead !== undefined) {

@@ -378,6 +378,20 @@ const startServer = async () => {
       console.log("⏰ Automatic finalization scheduled: Daily at 2:00 AM (Asia/Karachi)");
       console.log("");
       
+      // Schedule OTP cleanup (runs every 30 minutes)
+      cron.schedule("*/30 * * * *", async () => {
+        try {
+          const { AuthService } = await import('./services/authService');
+          AuthService.cleanupExpiredOTPs();
+          console.log("🧹 Expired OTPs cleaned up");
+        } catch (error) {
+          console.error("❌ OTP cleanup failed:", error);
+        }
+      });
+      
+      console.log("🧹 OTP cleanup scheduled: Every 30 minutes");
+      console.log("");
+      
       // Run finalization immediately on server start to process any existing old records
       console.log("🔄 Running initial finalization check...");
       finalizationService.finalizeStagingRecords()

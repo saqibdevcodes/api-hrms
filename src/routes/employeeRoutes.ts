@@ -24,30 +24,30 @@ const isCloudinaryConfigured = !!(
 // Configure storage based on environment
 const storage = isCloudinaryConfigured
   ? new CloudinaryStorage({
-      cloudinary: cloudinary,
-      params: async (req, file) => {
-        return {
-          folder: "hrms/employees",
-          allowed_formats: ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"],
-          public_id: `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-          resource_type: file.mimetype.startsWith("image/") ? "image" : "raw",
-        };
-      },
-    })
+    cloudinary: cloudinary,
+    params: async (req, file) => {
+      return {
+        folder: "hrms/employees",
+        allowed_formats: ["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"],
+        public_id: `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+        resource_type: file.mimetype.startsWith("image/") ? "image" : "raw",
+      };
+    },
+  })
   : multer.diskStorage({
-      destination: (req, file, cb) => {
-        const uploadPath = path.join(process.cwd(), "uploads");
-        if (!fs.existsSync(uploadPath)) {
-          fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-        const extension = path.extname(file.originalname);
-        cb(null, file.fieldname + "-" + uniqueSuffix + extension);
-      },
-    });
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(process.cwd(), "uploads");
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const extension = path.extname(file.originalname);
+      cb(null, file.fieldname + "-" + uniqueSuffix + extension);
+    },
+  });
 
 // File filter for allowed file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
@@ -150,6 +150,14 @@ router.put(
   updateEmployeeValidation,
   validateRequest,
   EmployeeController.updateEmployee
+);
+
+// PATCH /api/employees/:id/toggle - Toggle employee status (HR and Admin only)
+router.patch(
+  "/:id/toggle",
+  authenticate,
+  hrAndAdmin,
+  EmployeeController.toggleEmployeeStatus
 );
 
 // DELETE /api/employees/:id - Delete employee (Admin only)

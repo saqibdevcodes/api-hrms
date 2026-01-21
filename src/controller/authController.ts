@@ -392,6 +392,335 @@ export class AuthController {
   }
 
   /**
+   * Upload profile picture
+   */
+  static async uploadProfilePicture(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      if (!req.file) {
+        res.status(400).json({
+          success: false,
+          message: "No profile picture file provided",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      // Get the file URL based on storage type (Cloudinary or local)
+      let profilePictureUrl: string;
+      
+      // Check if it's a Cloudinary upload (has secure_url or starts with http)
+      if ((req.file as any).secure_url) {
+        // Cloudinary upload - use the secure_url
+        profilePictureUrl = (req.file as any).secure_url;
+      } else if ((req.file as any).path && (req.file as any).path.startsWith('http')) {
+        // Cloudinary upload - use path if it's a URL
+        profilePictureUrl = (req.file as any).path;
+      } else {
+        // Local storage - construct the URL
+        profilePictureUrl = `/uploads/profile-pictures/${req.file.filename}`;
+      }
+
+      // Update user's profile picture in database
+      const updatedUser = await AuthService.updateProfilePicture(
+        req.user.id,
+        profilePictureUrl
+      );
+
+      const response: ApiResponse = {
+        success: true,
+        message: "Profile picture uploaded successfully",
+        data: {
+          profilePicture: profilePictureUrl,
+          user: updatedUser,
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Upload profile picture error:", error);
+
+      const response: ApiResponse = {
+        success: false,
+        message: "Failed to upload profile picture",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  /**
+   * Update user profile
+   */
+  static async updateProfile(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      // Extract and remove verification fields that shouldn't be saved to database
+      const { 
+        emailOtp, 
+        emailType, 
+        personalPhoneNumber,
+        officialPhoneNumber,
+        personalEmail,
+        officialEmail,
+        personalAddress,
+        ...restData 
+      } = req.body;
+
+      // Map frontend field names to database schema field names
+      const updateData: any = {
+        ...restData,
+      };
+
+      // Map phone numbers
+      if (personalPhoneNumber !== undefined) {
+        updateData.personalMobile = personalPhoneNumber;
+      }
+      if (officialPhoneNumber !== undefined) {
+        updateData.officialMobile = officialPhoneNumber;
+      }
+
+      // Map emails - only update if email was changed and OTP verified
+      if (emailType && emailOtp) {
+        // Email was changed and OTP verified
+        if (emailType === 'official' && officialEmail !== undefined) {
+          updateData.email = officialEmail;
+        } else if (emailType === 'personal' && personalEmail !== undefined) {
+          // Note: personalEmail doesn't have a separate field in current schema
+          // For now, also update the main email field
+          updateData.email = personalEmail;
+        }
+      }
+      // If no emailType/emailOtp, don't update email at all (prevents unique constraint errors)
+
+      // Map address
+      if (personalAddress !== undefined) {
+        updateData.address = personalAddress;
+      }
+
+      // Update user profile in database
+      const updatedUser = await AuthService.updateProfile(req.user.id, updateData);
+
+      const response: ApiResponse = {
+        success: true,
+        message: "Profile updated successfully",
+        data: updatedUser,
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Update profile error:", error);
+
+      const response: ApiResponse = {
+        success: false,
+        message: "Failed to update profile",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  /**
+   * Change password
+   */
+  static async changePassword(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        res.status(400).json({
+          success: false,
+          message: "Current password and new password are required",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      // Change password
+      await AuthService.changePassword(req.user.id, currentPassword, newPassword);
+
+      const response: ApiResponse = {
+        success: true,
+        message: "Password changed successfully",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Change password error:", error);
+
+      if (error instanceof AuthenticationError) {
+        const response: ApiResponse = {
+          success: false,
+          message: error.message,
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        };
+        res.status(400).json(response);
+        return;
+      }
+
+      const response: ApiResponse = {
+        success: false,
+        message: "Failed to change password",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  /**
+   * Send OTP to email for verification
+   */
+  static async sendEmailOTP(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      const { email, emailType } = req.body;
+
+      if (!email || !emailType) {
+        res.status(400).json({
+          success: false,
+          message: "Email and email type are required",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      // Send OTP
+      await AuthService.sendEmailOTP(email, emailType);
+
+      const response: ApiResponse = {
+        success: true,
+        message: "OTP sent successfully",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Send email OTP error:", error);
+
+      const response: ApiResponse = {
+        success: false,
+        message: "Failed to send OTP",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  /**
+   * Verify email OTP
+   */
+  static async verifyEmailOTP(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw new AuthenticationError("User not authenticated");
+      }
+
+      const { email, otp, emailType } = req.body;
+
+      if (!email || !otp || !emailType) {
+        res.status(400).json({
+          success: false,
+          message: "Email, OTP, and email type are required",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      // Verify OTP
+      const isValid = await AuthService.verifyEmailOTP(email, otp, emailType);
+
+      if (!isValid) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid or expired OTP",
+          meta: {
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const response: ApiResponse = {
+        success: true,
+        message: "OTP verified successfully",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Verify email OTP error:", error);
+
+      const response: ApiResponse = {
+        success: false,
+        message: "Failed to verify OTP",
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      };
+      res.status(500).json(response);
+    }
+  }
+
+  /**
    * Health check endpoint
    */
   static async health(req: Request, res: Response): Promise<void> {

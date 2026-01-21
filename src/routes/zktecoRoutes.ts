@@ -98,6 +98,30 @@ router.get(
   authenticate,
   ZKTecoController.exportAttendanceData
 );
+
+router.post(
+  "/attendance/late-reason",
+  authenticate,
+  ZKTecoController.addLateReason
+);
+router.put(
+  "/attendance/late-reason/:id",
+  authenticate,
+  ZKTecoController.updateLateReason
+);
+
+router.post(
+  "/attendance/request-reason",
+  authenticate,
+  ZKTecoController.requestReason
+);
+
+router.post(
+  "/attendance/late-reason-reminders",
+  authenticate,
+  ZKTecoController.sendLateReasonReminders
+);
+
 router.post(
   "/employees/create-from-zkteco",
   authenticate,

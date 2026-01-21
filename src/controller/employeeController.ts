@@ -979,6 +979,55 @@ export class EmployeeController {
     }
   }
 
+  // Toggle employee status (ACTIVE <-> INACTIVE)
+  static async toggleEmployeeStatus(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      // Find the employee
+      const employee = await prisma.user.findUnique({
+        where: { id },
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found",
+        });
+      }
+
+      // Toggle status
+      const newStatus = employee.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+      // Update employee status
+      const updatedEmployee = await prisma.user.update({
+        where: { id },
+        data: {
+          status: newStatus,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Employee status changed to ${newStatus}`,
+        data: {
+          employee: updatedEmployee,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error toggling employee status:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to toggle employee status",
+        error: {
+          message: error.message,
+          code: error.code,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
   // Delete employee
   static async deleteEmployee(req: Request, res: Response) {
     try {

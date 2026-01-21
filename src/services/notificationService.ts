@@ -21,6 +21,7 @@ export interface CreateNotificationData {
     | "MEETING_SCHEDULED";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   data?: any;
+  fromUserId?: string; // Track who created/sent the notification
 }
 
 export class NotificationService {
@@ -44,6 +45,7 @@ export class NotificationService {
           type: notificationData.type,
           priority: notificationData.priority || "MEDIUM",
           data: notificationData.data || null,
+          fromUserId: notificationData.fromUserId || null,
         },
       });
 
@@ -135,6 +137,7 @@ export class NotificationService {
               type: notificationData.type,
               priority: notificationData.priority || "MEDIUM",
               data: notificationData.data || null,
+              fromUserId: notificationData.fromUserId || null,
             },
           })
         )
@@ -155,6 +158,7 @@ export class NotificationService {
       limit?: number;
       isRead?: boolean;
       type?: string;
+      userRole?: string;
     }
   ) {
     try {
@@ -163,6 +167,27 @@ export class NotificationService {
       const offset = (page - 1) * limit;
 
       const where: any = { userId };
+
+      // Filter notifications from specific user (e.g., user 1) - only show to admins
+      // If current user is not admin or HR, exclude notifications from user 1
+      if (options?.userRole && options.userRole !== "ADMIN" && options.userRole !== "SUPERADMIN" && options.userRole !== "HR") {
+        // Find user 1 or system user
+        const systemUser = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: "admin@iriscommunications.com" },
+              { role: "SUPERADMIN" },
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (systemUser) {
+          where.NOT = {
+            fromUserId: systemUser.id,
+          };
+        }
+      }
 
       if (options?.isRead !== undefined) {
         where.isRead = options.isRead;
