@@ -1,5 +1,11 @@
 // services/pdrService.ts
-import { PrismaClient, PdrOverallStatus, PdrStatus, UserRank, Role } from "../generated/prisma";
+import {
+  PrismaClient,
+  PdrOverallStatus,
+  PdrStatus,
+  UserRank,
+  Role,
+} from "../generated/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 
 const prisma = new PrismaClient();
@@ -28,63 +34,135 @@ export class PdrService {
     { nextStatus: PdrOverallStatus; allowedRoles: string[] }[]
   > = {
     CREATED_BY_HR: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_FILLING, allowedRoles: ["EMPLOYEE", "HR"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_FILLING,
+        allowedRoles: ["EMPLOYEE", "HR"],
+      },
     ],
     EMPLOYEE_FILLING: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR, allowedRoles: ["EMPLOYEE"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR,
+        allowedRoles: ["EMPLOYEE"],
+      },
     ],
     EMPLOYEE_SUBMITTED_TO_HR: [
-      { nextStatus: PdrOverallStatus.HR_REVIEWING_EMPLOYEE, allowedRoles: ["HR"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["HR"] },
+      {
+        nextStatus: PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
+        allowedRoles: ["HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
+        allowedRoles: ["HR"],
+      },
     ],
     HR_REVIEWING_EMPLOYEE: [
-      { nextStatus: PdrOverallStatus.HR_APPROVED_EMPLOYEE, allowedRoles: ["HR"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE, allowedRoles: ["HR"] },
+      {
+        nextStatus: PdrOverallStatus.HR_APPROVED_EMPLOYEE,
+        allowedRoles: ["HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
+        allowedRoles: ["HR"],
+      },
     ],
     HR_REVERTED_TO_EMPLOYEE: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_FILLING, allowedRoles: ["EMPLOYEE"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_FILLING,
+        allowedRoles: ["EMPLOYEE"],
+      },
     ],
     HR_APPROVED_EMPLOYEE: [
-      { nextStatus: PdrOverallStatus.MANAGER_FILLING, allowedRoles: ["LINE_MANAGER", "HR"] },
+      {
+        nextStatus: PdrOverallStatus.MANAGER_FILLING,
+        allowedRoles: ["LINE_MANAGER", "HR"],
+      },
     ],
     MANAGER_FILLING: [
-      { nextStatus: PdrOverallStatus.MANAGER_SUBMITTED_TO_HR, allowedRoles: ["LINE_MANAGER"] },
+      {
+        nextStatus: PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
+        allowedRoles: ["LINE_MANAGER"],
+      },
     ],
     MANAGER_SUBMITTED_TO_HR: [
-      { nextStatus: PdrOverallStatus.HR_REVIEWING_MANAGER, allowedRoles: ["HR"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["HR"] },
+      {
+        nextStatus: PdrOverallStatus.HR_REVIEWING_MANAGER,
+        allowedRoles: ["HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+        allowedRoles: ["HR"],
+      },
     ],
     HR_REVIEWING_MANAGER: [
-      { nextStatus: PdrOverallStatus.HR_APPROVED_MANAGER, allowedRoles: ["HR"] },
-      { nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER, allowedRoles: ["HR"] },
+      {
+        nextStatus: PdrOverallStatus.HR_APPROVED_MANAGER,
+        allowedRoles: ["HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+        allowedRoles: ["HR"],
+      },
     ],
     HR_REVERTED_TO_MANAGER: [
-      { nextStatus: PdrOverallStatus.MANAGER_FILLING, allowedRoles: ["LINE_MANAGER"] },
+      {
+        nextStatus: PdrOverallStatus.MANAGER_FILLING,
+        allowedRoles: ["LINE_MANAGER"],
+      },
     ],
     HR_APPROVED_MANAGER: [
-      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWING, allowedRoles: ["DIRECTOR_LEVEL", "HR"] },
+      {
+        nextStatus: PdrOverallStatus.DIRECTOR_REVIEWING,
+        allowedRoles: ["DIRECTOR", "HR"],
+      },
     ],
     DIRECTOR_REVIEWING: [
-      { nextStatus: PdrOverallStatus.DIRECTOR_REVIEWED, allowedRoles: ["DIRECTOR_LEVEL", "HR"] },
+      {
+        nextStatus: PdrOverallStatus.DIRECTOR_REVIEWED,
+        allowedRoles: ["DIRECTOR", "HR"],
+      },
     ],
     DIRECTOR_REVIEWED: [
-      { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE", "HR"] },
-      { nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED, allowedRoles: ["EMPLOYEE", "HR"] },
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["HR"] }, // legacy support
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED, allowedRoles: ["HR"] }, // legacy support
+      {
+        nextStatus: PdrOverallStatus.COMPLETED,
+        allowedRoles: ["EMPLOYEE", "HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED,
+        allowedRoles: ["EMPLOYEE", "HR"],
+      },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+        allowedRoles: ["HR"],
+      }, // legacy support
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED,
+        allowedRoles: ["HR"],
+      }, // legacy support
     ],
     EMPLOYEE_ACKNOWLEDGING: [
       { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE"] },
-      { nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED, allowedRoles: ["EMPLOYEE"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_DISAGREED,
+        allowedRoles: ["EMPLOYEE"],
+      },
     ],
     EMPLOYEE_DISAGREED: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER, allowedRoles: ["HR"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER,
+        allowedRoles: ["HR"],
+      },
     ],
     EMPLOYEE_REVERT_TO_MANAGER: [
-      { nextStatus: PdrOverallStatus.MANAGER_REVISING, allowedRoles: ["LINE_MANAGER"] },
+      {
+        nextStatus: PdrOverallStatus.MANAGER_REVISING,
+        allowedRoles: ["LINE_MANAGER"],
+      },
     ],
     MANAGER_REVISING: [
-      { nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING, allowedRoles: ["LINE_MANAGER"] },
+      {
+        nextStatus: PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+        allowedRoles: ["LINE_MANAGER"],
+      },
     ],
     EMPLOYEE_ACKNOWLEDGED: [
       { nextStatus: PdrOverallStatus.COMPLETED, allowedRoles: ["HR"] },
@@ -107,7 +185,9 @@ export class PdrService {
     });
 
     if (existingPdr) {
-      throw new Error(`PDR already exists for user ${data.userId} in cycle ${data.pdrCycle}`);
+      throw new Error(
+        `PDR already exists for user ${data.userId} in cycle ${data.pdrCycle}`,
+      );
     }
 
     // Get user details to find line manager and director
@@ -129,15 +209,15 @@ export class PdrService {
         where: { id: user.manager },
         select: { id: true, userRank: true },
       });
-      
+
       if (managerById && managerById.userRank === UserRank.LINE_MANAGER) {
         linemanagerId = managerById.id;
       } else {
         // If not found by ID, try finding by employeeId (backward compatibility)
         const managerByEmpId = await prisma.user.findFirst({
-          where: { 
+          where: {
             employeeId: user.manager,
-            userRank: UserRank.LINE_MANAGER 
+            userRank: UserRank.LINE_MANAGER,
           },
         });
         linemanagerId = managerByEmpId?.id;
@@ -148,7 +228,7 @@ export class PdrService {
     let directorId = data.directorId;
     if (!directorId) {
       const director = await prisma.user.findFirst({
-        where: { userRank: UserRank.DIRECTOR_LEVEL },
+        where: { userRank: UserRank.DIRECTOR },
       });
       directorId = director?.id;
     }
@@ -200,7 +280,7 @@ export class PdrService {
   static async createBulkPdrs(
     pdrCycle: string,
     createdBy: string,
-    departmentId?: string
+    departmentId?: string,
   ) {
     const whereClause: any = {
       role: Role.EMPLOYEE,
@@ -229,7 +309,7 @@ export class PdrService {
             userId: employee.id,
             pdrCycle,
           },
-          createdBy
+          createdBy,
         );
         results.created.push(pdr);
       } catch (error: any) {
@@ -251,41 +331,47 @@ export class PdrService {
     currentStatus: PdrOverallStatus,
     targetStatus: PdrOverallStatus,
     userRole: string,
-    userRank?: string
+    userRank?: string,
   ): boolean {
     const transitions = this.statusTransitions[currentStatus];
     if (!transitions) return false;
 
-    const validTransition = transitions.find((t) => t.nextStatus === targetStatus);
+    const validTransition = transitions.find(
+      (t) => t.nextStatus === targetStatus,
+    );
     if (!validTransition) return false;
 
     // Check if user's role or rank is allowed
     // HR role is allowed for HR tasks
     // HR with LINE_MANAGER rank is also allowed for LINE_MANAGER tasks
     const isHR = userRole === "HR" || userRole === "ADMIN"; // Backward compatibility
-    
+
     // Check if transition requires HR role
     const requiresHR = validTransition.allowedRoles.includes("HR");
     if (requiresHR && isHR) {
       return true;
     }
-    
+
     // Check if transition requires LINE_MANAGER and user has LINE_MANAGER rank (even if HR)
-    const requiresManager = validTransition.allowedRoles.includes("LINE_MANAGER");
+    const requiresManager =
+      validTransition.allowedRoles.includes("LINE_MANAGER");
     if (requiresManager && userRank === "LINE_MANAGER") {
       return true;
     }
-    
+
     // Check other roles
     return validTransition.allowedRoles.some(
-      (role) => role === userRole || role === userRank
+      (role) => role === userRole || role === userRank,
     );
   }
 
   /**
    * Transition PDR to next status
    */
-  static async transitionStatus(data: PdrTransitionData, targetStatus: PdrOverallStatus) {
+  static async transitionStatus(
+    data: PdrTransitionData,
+    targetStatus: PdrOverallStatus,
+  ) {
     const pdr = await prisma.pdr.findUnique({
       where: { id: data.pdrId },
       include: { user: true },
@@ -304,12 +390,12 @@ export class PdrService {
       pdr.overallStatus,
       targetStatus,
       data.userRole,
-      data.userRank // Pass userRank separately
+      data.userRank, // Pass userRank separately
     );
 
     if (!canTransition) {
       throw new Error(
-        `Invalid transition from ${pdr.overallStatus} to ${targetStatus} for role ${data.userRole}`
+        `Invalid transition from ${pdr.overallStatus} to ${targetStatus} for role ${data.userRole}`,
       );
     }
 
@@ -334,7 +420,10 @@ export class PdrService {
           overallStatus: targetStatus,
           lastModifiedBy: data.userId,
           isCompleted: targetStatus === PdrOverallStatus.COMPLETED,
-          completedAt: targetStatus === PdrOverallStatus.COMPLETED ? new Date() : undefined,
+          completedAt:
+            targetStatus === PdrOverallStatus.COMPLETED
+              ? new Date()
+              : undefined,
         },
         include: {
           user: {
@@ -380,7 +469,7 @@ export class PdrService {
     sentByRole: string,
     sentTo: string,
     message: string,
-    currentStatus: string
+    currentStatus: string,
   ) {
     const revertComment = await prisma.pdrComment.create({
       data: {
@@ -409,8 +498,8 @@ export class PdrService {
       limit?: number;
       status?: PdrOverallStatus;
       cycle?: string;
-      section?: 'mine' | 'team' | 'all'; // Section filter for HR users
-    }
+      section?: "mine" | "team" | "all"; // Section filter for HR users
+    },
   ) {
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
@@ -422,17 +511,20 @@ export class PdrService {
 
     // Section-based filtering for HR users
     if (isHR && filters?.section) {
-      if (filters.section === 'mine') {
+      if (filters.section === "mine") {
         // Section 1: My PDRs (HR's own PDRs)
         whereClause.userId = userId;
-      } else if (filters.section === 'team' && userRank === UserRank.LINE_MANAGER) {
+      } else if (
+        filters.section === "team" &&
+        userRank === UserRank.LINE_MANAGER
+      ) {
         // Section 2: Team PDRs (Only for HR with LINE_MANAGER rank)
         // PDRs where HR is the line manager, but exclude HR's own PDRs
         whereClause.AND = [
           { linemanager_id: userId },
-          { userId: { not: userId } }
+          { userId: { not: userId } },
         ];
-      } else if (filters.section === 'all') {
+      } else if (filters.section === "all") {
         // Section 3: All Employee PDRs (HR role functionality)
         // No filter - shows all PDRs
       }
@@ -441,7 +533,11 @@ export class PdrService {
       whereClause.userId = { not: userId };
     } else {
       // Non-HR users or HR without section filter - use role-based filtering
-      if (userRole === Role.EMPLOYEE && userRank !== UserRank.LINE_MANAGER && userRank !== UserRank.DIRECTOR_LEVEL) {
+      if (
+        userRole === Role.EMPLOYEE &&
+        userRank !== UserRank.LINE_MANAGER &&
+        userRank !== UserRank.DIRECTOR
+      ) {
         // Regular employees see only their own PDRs
         whereClause.userId = userId;
       } else if (userRank === UserRank.LINE_MANAGER) {
@@ -456,7 +552,7 @@ export class PdrService {
           // HR with LINE_MANAGER rank: by default show all (unless section specified)
           // No filter - shows all PDRs
         }
-      } else if (userRank === UserRank.DIRECTOR_LEVEL) {
+      } else if (userRank === UserRank.DIRECTOR) {
         // Directors see their own PDRs AND PDRs where they are the director
         if (userRole === Role.EMPLOYEE) {
           // Regular director (not HR)
@@ -465,7 +561,7 @@ export class PdrService {
             { director_id: userId }, // PDRs where they are the director
           ];
         } else if (isHR) {
-          // HR with DIRECTOR_LEVEL rank: by default show all
+          // HR with DIRECTOR rank: by default show all
           // No filter - shows all PDRs
         }
       } else if (isHR) {
@@ -517,9 +613,9 @@ export class PdrService {
             },
           },
           comments: {
-            where: { 
+            where: {
               commentType: "REVERT",
-              isResolved: false 
+              isResolved: false,
             },
             orderBy: { datetime: "desc" },
           },
@@ -542,7 +638,12 @@ export class PdrService {
   /**
    * Get single PDR with full details
    */
-  static async getPdrById(pdrId: number, userId: string, userRole: Role, userRank?: UserRank) {
+  static async getPdrById(
+    pdrId: number,
+    userId: string,
+    userRole: Role,
+    userRank?: UserRank,
+  ) {
     const pdr = await prisma.pdr.findUnique({
       where: { id: pdrId },
       include: {
@@ -614,7 +715,10 @@ export class PdrService {
   /**
    * Get PDR statistics for dashboard
    */
-  static async getPdrStatistics(filters?: { cycle?: string; departmentId?: string }) {
+  static async getPdrStatistics(filters?: {
+    cycle?: string;
+    departmentId?: string;
+  }) {
     const whereClause: any = {};
     if (filters?.cycle) {
       whereClause.pdr_cycle = filters.cycle;
@@ -645,7 +749,10 @@ export class PdrService {
         where: {
           ...whereClause,
           overallStatus: {
-            in: [PdrOverallStatus.MANAGER_FILLING, PdrOverallStatus.MANAGER_REVISING],
+            in: [
+              PdrOverallStatus.MANAGER_FILLING,
+              PdrOverallStatus.MANAGER_REVISING,
+            ],
           },
         },
       }),
@@ -777,7 +884,9 @@ export class PdrService {
     });
 
     // Filter out goals with empty tasks
-    const validGoals = data.goals.filter(goal => goal.task && goal.task.trim() !== '');
+    const validGoals = data.goals.filter(
+      (goal) => goal.task && goal.task.trim() !== "",
+    );
 
     // If no valid goals, return empty array
     if (validGoals.length === 0) {
@@ -795,8 +904,8 @@ export class PdrService {
             linemanager_rating: goal.linemanager_rating || 0,
             datetime: new Date(),
           },
-        })
-      )
+        }),
+      ),
     );
 
     return createdGoals;
@@ -899,10 +1008,14 @@ export class PdrService {
 
     // Add manager recommendations if provided
     if (data.managerRecommendations) {
-      updateData.training_required = data.managerRecommendations.trainingRequired;
-      updateData.training_description = data.managerRecommendations.trainingDescription || null;
-      updateData.promotion_recommended = data.managerRecommendations.promotionRecommended;
-      updateData.promotion_description = data.managerRecommendations.promotionDescription || null;
+      updateData.training_required =
+        data.managerRecommendations.trainingRequired;
+      updateData.training_description =
+        data.managerRecommendations.trainingDescription || null;
+      updateData.promotion_recommended =
+        data.managerRecommendations.promotionRecommended;
+      updateData.promotion_description =
+        data.managerRecommendations.promotionDescription || null;
     }
 
     // Add director's overall comment if provided
@@ -925,11 +1038,12 @@ export class PdrService {
         pdrId: data.pdrId,
         employeeType: data.employeeType,
         ratings: data.part1.ratings,
-        comment: data.employeeType === "EMPLOYEE" 
-          ? (data.part1.employeeRemarks || "")
-          : data.employeeType === "MANAGER" 
-            ? (data.part1.managerRemarks || "")
-            : "",
+        comment:
+          data.employeeType === "EMPLOYEE"
+            ? data.part1.employeeRemarks || ""
+            : data.employeeType === "MANAGER"
+              ? data.part1.managerRemarks || ""
+              : "",
       });
     }
 
@@ -941,7 +1055,10 @@ export class PdrService {
       });
 
       // Save Part 2 overall comments based on employeeType
-      if (data.employeeType === "EMPLOYEE" && data.part2.employeeRemarks !== undefined) {
+      if (
+        data.employeeType === "EMPLOYEE" &&
+        data.part2.employeeRemarks !== undefined
+      ) {
         results.employeeOverallComment = await this.saveOverallComment({
           pdrId: data.pdrId,
           employeeType: "EMPLOYEE",
@@ -949,7 +1066,10 @@ export class PdrService {
         });
       }
 
-      if (data.employeeType === "MANAGER" && data.part2.managerRemarks !== undefined) {
+      if (
+        data.employeeType === "MANAGER" &&
+        data.part2.managerRemarks !== undefined
+      ) {
         results.managerOverallComment = await this.saveOverallComment({
           pdrId: data.pdrId,
           employeeType: "MANAGER",
@@ -961,4 +1081,3 @@ export class PdrService {
     return results;
   }
 }
-

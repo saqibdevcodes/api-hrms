@@ -208,7 +208,7 @@ export const createEmployeeValidation = [
   body("userRank")
     .optional()
     .isIn([
-      "DIRECTOR_LEVEL",
+      "DIRECTOR",
       "LINE_MANAGER",
       "EMPLOYEE",
       "SENIOR_MANAGER",
@@ -296,14 +296,14 @@ export const createEmployeeValidation = [
     .optional()
     .matches(/^\+92-\d{3}-\d{7}$/)
     .withMessage(
-      "Emergency contact alternate phone must be in format +92-321-1234567"
+      "Emergency contact alternate phone must be in format +92-321-1234567",
     ),
 
   body("emergencyContactRelation")
     .optional()
     .isLength({ min: 2, max: 50 })
     .withMessage(
-      "Emergency contact relation must be between 2 and 50 characters"
+      "Emergency contact relation must be between 2 and 50 characters",
     ),
 
   body("emergencyContactEmail")
@@ -316,7 +316,7 @@ export const createEmployeeValidation = [
     .optional()
     .isLength({ min: 5, max: 500 })
     .withMessage(
-      "Emergency contact address must be between 5 and 500 characters"
+      "Emergency contact address must be between 5 and 500 characters",
     ),
 ];
 
@@ -478,7 +478,7 @@ export const updateEmployeeValidation = [
   body("userRank")
     .optional()
     .isIn([
-      "DIRECTOR_LEVEL",
+      "DIRECTOR",
       "LINE_MANAGER",
       "EMPLOYEE",
       "SENIOR_MANAGER",
@@ -592,14 +592,14 @@ export const updateEmployeeValidation = [
     .optional()
     .matches(/^\+92-\d{3}-\d{7}$/)
     .withMessage(
-      "Emergency contact alternate phone must be in format +92-321-1234567"
+      "Emergency contact alternate phone must be in format +92-321-1234567",
     ),
 
   body("emergencyContactRelation")
     .optional()
     .isLength({ min: 2, max: 50 })
     .withMessage(
-      "Emergency contact relation must be between 2 and 50 characters"
+      "Emergency contact relation must be between 2 and 50 characters",
     ),
 
   body("emergencyContactEmail")
@@ -612,6 +612,6 @@ export const updateEmployeeValidation = [
     .optional()
     .isLength({ min: 5, max: 500 })
     .withMessage(
-      "Emergency contact address must be between 5 and 500 characters"
+      "Emergency contact address must be between 5 and 500 characters",
     ),
 ];

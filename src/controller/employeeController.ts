@@ -734,7 +734,7 @@ export class EmployeeController {
       }
       if (insuranceCardFile) {
         updateData.insuranceCardPicture = insuranceCardFile.path?.startsWith(
-          "http"
+          "http",
         )
           ? insuranceCardFile.path
           : `/uploads/${insuranceCardFile.filename}`;
@@ -1175,7 +1175,7 @@ export class EmployeeController {
         // Fetch all directors for line managers to report to
         supervisors = await prisma.user.findMany({
           where: {
-            userRank: "DIRECTOR_LEVEL",
+            userRank: "DIRECTOR",
             isActive: true,
             employeeId: { not: null },
           },

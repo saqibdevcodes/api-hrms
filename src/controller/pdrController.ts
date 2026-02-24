@@ -20,13 +20,13 @@ export class PdrController {
       const limit = parseInt((req.query.limit as string) || "10", 10);
       const status = req.query.status as PdrOverallStatus | undefined;
       const cycle = req.query.cycle as string | undefined;
-      const section = req.query.section as 'mine' | 'team' | 'all' | undefined; // New section parameter
+      const section = req.query.section as "mine" | "team" | "all" | undefined; // New section parameter
 
       const result = await PdrService.getPdrsForUser(
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle, section }
+        { page, limit, status, cycle, section },
       );
 
       res.status(200).json(result);
@@ -54,7 +54,7 @@ export class PdrController {
         pdrId,
         req.user.id,
         req.user.role,
-        req.user.userRank
+        req.user.userRank,
       );
 
       res.status(200).json({ success: true, data: pdr });
@@ -93,7 +93,7 @@ export class PdrController {
           directorId,
           pdrCycle,
         },
-        req.user.id
+        req.user.id,
       );
 
       res.status(201).json({
@@ -131,7 +131,7 @@ export class PdrController {
       const results = await PdrService.createBulkPdrs(
         pdrCycle,
         req.user.id,
-        departmentId
+        departmentId,
       );
 
       res.status(201).json({
@@ -171,14 +171,20 @@ export class PdrController {
 
       // Determine target status based on current status
       let targetStatus: PdrOverallStatus;
-      
-      if (pdr.overallStatus === PdrOverallStatus.CREATED_BY_HR ||
-          pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE) {
+
+      if (
+        pdr.overallStatus === PdrOverallStatus.CREATED_BY_HR ||
+        pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE
+      ) {
         targetStatus = PdrOverallStatus.EMPLOYEE_FILLING;
-      } else if (pdr.overallStatus === PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
-                 pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_MANAGER) {
+      } else if (
+        pdr.overallStatus === PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
+        pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_MANAGER
+      ) {
         targetStatus = PdrOverallStatus.MANAGER_FILLING;
-      } else if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER) {
+      } else if (
+        pdr.overallStatus === PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER
+      ) {
         targetStatus = PdrOverallStatus.MANAGER_REVISING;
       } else {
         return res.status(400).json({
@@ -194,8 +200,12 @@ export class PdrController {
       if (pdr.userId === req.user.id) {
         // User is filling their own PDR - they are the EMPLOYEE
         effectiveRole = "EMPLOYEE";
-      } else if (pdr.linemanager_id === req.user.id || 
-                 (req.user.role === "HR" && req.user.userRank === "LINE_MANAGER" && targetStatus === PdrOverallStatus.MANAGER_FILLING)) {
+      } else if (
+        pdr.linemanager_id === req.user.id ||
+        (req.user.role === "HR" &&
+          req.user.userRank === "LINE_MANAGER" &&
+          targetStatus === PdrOverallStatus.MANAGER_FILLING)
+      ) {
         // User is the line manager OR HR with LINE_MANAGER rank filling manager section
         // Use LINE_MANAGER for filling manager sections
         effectiveRole = "LINE_MANAGER";
@@ -212,7 +222,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -255,8 +265,10 @@ export class PdrController {
 
       if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_FILLING) {
         targetStatus = PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
-      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_FILLING ||
-                 pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING) {
+      } else if (
+        pdr.overallStatus === PdrOverallStatus.MANAGER_FILLING ||
+        pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING
+      ) {
         targetStatus = PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
       } else {
         return res.status(400).json({
@@ -270,8 +282,12 @@ export class PdrController {
       let effectiveRole: string;
       if (pdr.userId === req.user.id) {
         effectiveRole = "EMPLOYEE";
-      } else if (pdr.linemanager_id === req.user.id || 
-                 (req.user.role === "HR" && req.user.userRank === "LINE_MANAGER" && targetStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)) {
+      } else if (
+        pdr.linemanager_id === req.user.id ||
+        (req.user.role === "HR" &&
+          req.user.userRank === "LINE_MANAGER" &&
+          targetStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)
+      ) {
         // User is the line manager OR HR with LINE_MANAGER rank submitting manager section
         effectiveRole = "LINE_MANAGER";
       } else {
@@ -286,7 +302,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -337,12 +353,14 @@ export class PdrController {
             userRank: req.user.userRank || undefined,
             comment: "Starting review",
           },
-          PdrOverallStatus.HR_REVIEWING_EMPLOYEE
+          PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
         );
         targetStatus = PdrOverallStatus.HR_APPROVED_EMPLOYEE;
       } else if (pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
         targetStatus = PdrOverallStatus.HR_APPROVED_EMPLOYEE;
-      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR) {
+      } else if (
+        pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR
+      ) {
         await PdrService.transitionStatus(
           {
             pdrId,
@@ -351,7 +369,7 @@ export class PdrController {
             userRank: req.user.userRank || undefined,
             comment: "Starting review",
           },
-          PdrOverallStatus.HR_REVIEWING_MANAGER
+          PdrOverallStatus.HR_REVIEWING_MANAGER,
         );
         targetStatus = PdrOverallStatus.HR_APPROVED_MANAGER;
       } else if (pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_MANAGER) {
@@ -375,7 +393,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -423,18 +441,23 @@ export class PdrController {
       let targetStatus: PdrOverallStatus;
       let sentTo: string;
 
-      if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR ||
-          pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
+      if (
+        pdr.overallStatus === PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR ||
+        pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_EMPLOYEE
+      ) {
         targetStatus = PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE;
         sentTo = "EMPLOYEE";
-      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR ||
-                 pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_MANAGER) {
+      } else if (
+        pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR ||
+        pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_MANAGER
+      ) {
         targetStatus = PdrOverallStatus.HR_REVERTED_TO_MANAGER;
         sentTo = "LINE_MANAGER";
       } else {
         return res.status(400).json({
           success: false,
-          message: "Invalid status for revert. PDR must be submitted or under review.",
+          message:
+            "Invalid status for revert. PDR must be submitted or under review.",
         });
       }
 
@@ -445,7 +468,7 @@ export class PdrController {
         req.user.role,
         sentTo,
         message,
-        pdr.overallStatus
+        pdr.overallStatus,
       );
 
       // Transition status
@@ -458,7 +481,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment: comment || `Reverted with message: ${message}`,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -522,7 +545,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -551,13 +574,14 @@ export class PdrController {
       }
 
       const isDirectorLevelAdmin =
-        req.user.role === "ADMIN" && req.user.userRank === "DIRECTOR_LEVEL";
+        req.user.role === "ADMIN" && req.user.userRank === "DIRECTOR";
 
-      // ADMIN can only perform director review if they hold DIRECTOR_LEVEL rank
+      // ADMIN can only perform director review if they hold DIRECTOR rank
       if (req.user.role === "ADMIN" && !isDirectorLevelAdmin) {
         return res.status(403).json({
           success: false,
-          message: "ADMIN users without DIRECTOR_LEVEL rank cannot perform director review.",
+          message:
+            "ADMIN users without DIRECTOR rank cannot perform director review.",
         });
       }
 
@@ -606,7 +630,7 @@ export class PdrController {
           userRank: req.user.userRank || undefined,
           comment,
         },
-        targetStatus
+        targetStatus,
       );
 
       res.status(200).json({
@@ -659,8 +683,8 @@ export class PdrController {
       res.status(200).json({
         success: true,
         data: stats,
-        });
-   } catch (error: any) {
+      });
+    } catch (error: any) {
       console.error("❌ Error fetching PDR statistics:", error);
       res.status(500).json({
         success: false,
@@ -679,7 +703,8 @@ export class PdrController {
       }
 
       const pdrId = parseInt(req.params.id, 10);
-      const { personalQualities, goalsTasks, comments, overallComments } = req.body;
+      const { personalQualities, goalsTasks, comments, overallComments } =
+        req.body;
 
       const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
 
@@ -718,13 +743,10 @@ export class PdrController {
    */
   static async savePdrFormData(req: AuthenticatedRequest, res: Response) {
     try {
-
-
       console.log("🔵 Incoming PDR Save Request:");
       console.log("Params:", req.params);
       console.log("User:", req.user);
       console.log("Body:", req.body);
-
 
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -732,8 +754,14 @@ export class PdrController {
 
       const pdrId = parseInt(req.params.id, 10);
       // const { employeeType, part1, part2, managerRecommendations, directorOverallComment } = req.body;
-      const { employeeType, part1, part2, managerRecommendations, directorOverallComment, pdr_timeline } = req.body;
-
+      const {
+        employeeType,
+        part1,
+        part2,
+        managerRecommendations,
+        directorOverallComment,
+        pdr_timeline,
+      } = req.body;
 
       const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
 
@@ -810,6 +838,6 @@ export class PdrController {
         success: false,
         message: error.message || "Failed to resolve comment",
       });
-}
+    }
   }
 }

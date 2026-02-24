@@ -190,18 +190,6 @@ async function main() {
   });
 
   // Create emergency contact
-  console.log("Creating emergency contacts...");
-  const adminEmergencyContact = await prisma.emergencyDetail.create({
-    data: {
-      contactName: "Jane Smith",
-      contactPhone: "+92-300-1234567",
-      contactEmail: "jane.smith@example.com",
-      relationship: "Spouse",
-      contactAddress: "123 Main Street, Lahore, Pakistan",
-      alternatePhone: "+92-42-1234567",
-      isActive: true,
-    },
-  });
 
   const hrEmergencyContact = await prisma.emergencyDetail.create({
     data: {
@@ -262,86 +250,19 @@ async function main() {
     },
   });
 
-  // Create users with employee data
-  console.log("Creating admin user...");
-  const adminUser = await prisma.user.create({
-    data: {
-      // Basic info
-      email: "admin@iris-communications.com",
-      firstName: "Admin",
-      lastName: "User",
-      fatherHusbandName: "Muhammad Ali",
-      cnic: "42101-1234567-1",
-      cnicExpiry: new Date("2030-12-31"),
-      maritalStatus: MaritalStatus.MARRIED,
-      dateOfBirth: new Date("1985-01-15"),
-      bloodGroup: BloodGroup.A_POSITIVE,
-      gender: Gender.MALE,
-
-      // Education
-      education: EducationLevel.MASTERS,
-      educationInstitute: "University of Punjab",
-      educationGrade: "A",
-
-      // Contact
-      personalEmail: "admin.personal@gmail.com",
-      personalMobile: "+92-300-1234567",
-      officialMobile: "+92-300-1111111",
-      officialEmail: "admin@iris-communications.com",
-      phone: "+92-42-1234567",
-
-      // Address
-      personalAddress: "123 Main Street, Lahore, Pakistan",
-      address: "Iris Communications Office, Gulberg III, Lahore",
-      city: "Lahore",
-      state: "Punjab",
-      zipCode: "54000",
-      country: "Pakistan",
-
-      // Employment
-      employeeId: "IC-ADM001",
-      userRank: UserRank.EMPLOYEE,
-      password: await bcrypt.hash("admin123", 10),
-      role: Role.ADMIN,
-      position: "System Administrator",
-      department: "Engineering",
-      manager: null,
-      salary: 150000,
-      currency: "PKR",
-      dateOfJoining: new Date("2023-01-01"),
-      hireDate: new Date("2023-01-01"),
-      employmentTypeId: fullTimeType.id,
-
-      // Emergency contact
-
-      emergencyDetailId: adminEmergencyContact.id,
-
-      // Relations
-      departmentId: engineeringDept.id,
-      contractTypeId: permanentContract.id,
-      designationId: ceoDesignation.id,
-      shiftId: morningShift.id,
-      leaveId: standardLeavePolicy.id,
-
-      // System fields
-      status: UserStatus.ACTIVE,
-      isActive: true,
-    },
-  });
-
   console.log("Creating HR user...");
   const hrUser = await prisma.user.create({
     data: {
       // Basic info
-      email: "hr@iris-communications.com",
-      firstName: "Sarah",
-      lastName: "Johnson",
-      fatherHusbandName: "Robert Johnson",
-      cnic: "42101-7654321-2",
-      cnicExpiry: new Date("2029-06-30"),
-      maritalStatus: MaritalStatus.SINGLE,
-      dateOfBirth: new Date("1990-03-22"),
-      bloodGroup: BloodGroup.B_POSITIVE,
+      email: "nadia@iriscommunications.com.pk",
+      firstName: "Nadia",
+      lastName: "Hassan",
+      fatherHusbandName: "Rana Muhammad Afzal (late)",
+      cnic: "31202-3679738-6",
+      cnicExpiry: new Date("2030-09-09"),
+      maritalStatus: MaritalStatus.MARRIED,
+      dateOfBirth: new Date("1981-10-20"),
+      bloodGroup: BloodGroup.O_POSITIVE,
       gender: Gender.FEMALE,
 
       // Education
@@ -350,32 +271,32 @@ async function main() {
       educationGrade: "B+",
 
       // Contact
-      personalEmail: "sarah.personal@gmail.com",
-      personalMobile: "+92-301-7654321",
-      officialMobile: "+92-301-2222222",
-      officialEmail: "hr@iris-communications.com",
-      phone: "+92-42-7654321",
+      personalEmail: "nadiahassanlodhi@gmail.com",
+      personalMobile: "+92-334-5105890",
+      officialMobile: "+92-300-8456247",
+      officialEmail: "nadia@iriscommunications.com.pk",
+      phone: "+92-334-5105890",
 
       // Address
-      personalAddress: "456 Oak Avenue, Karachi, Pakistan",
-      address: "Iris Communications Office, Gulberg III, Lahore",
-      city: "Karachi",
-      state: "Sindh",
-      zipCode: "75000",
+      personalAddress: "215 & 216, Ahmedyar block, lahore, Pakistan",
+      address: "Iris Communications Office,Y bock ,DHA Phase III, Lahore",
+      city: "Lahore",
+      state: "Punjab",
+      zipCode: "45646",
       country: "Pakistan",
 
       // Employment
       employeeId: "IC-HR001",
       userRank: UserRank.LINE_MANAGER,
-      password: await bcrypt.hash("hr123123", 10),
+      password: await bcrypt.hash("NadiaH@123", 10),
       role: Role.HR,
       position: "HR Manager",
       department: "Human Resources",
       manager: "Admin User",
       salary: 80000,
       currency: "PKR",
-      dateOfJoining: new Date("2023-02-15"),
-      hireDate: new Date("2023-02-15"),
+      dateOfJoining: new Date("2022-04-01"),
+      hireDate: new Date("2022-04-01"),
       employmentTypeId: fullTimeType.id,
 
       // Emergency contact
@@ -688,7 +609,7 @@ async function main() {
 
       // Employment
       employeeId: "IC-DIRECTOR001",
-      userRank: UserRank.DIRECTOR_LEVEL,
+      userRank: UserRank.DIRECTOR,
       password: await bcrypt.hash("dir123123", 10),
       role: Role.ADMIN,
       position: "Director",
@@ -721,10 +642,10 @@ async function main() {
   console.log("Creating employee leave records...");
 
   await prisma.employeeLeave.upsert({
-    where: { userId: adminUser.id },
+    where: { userId: employeeUser.id },
     update: {},
     create: {
-      userId: adminUser.id,
+      userId: employeeUser.id,
       annualLeaves: 21,
       sickLeaves: 10,
       casualLeaves: 5, // This will be deducted when 2 half days = 1 full day
@@ -784,6 +705,22 @@ async function main() {
     },
   });
 
+  await prisma.employeeLeave.upsert({
+    where: { userId: directorUser.id },
+    update: {},
+    create: {
+      userId: directorUser.id,
+      annualLeaves: 21,
+      sickLeaves: 10,
+      casualLeaves: 5,
+      compensatoryLeaves: 0,
+      maternityLeaves: 0,
+      paternityLeaves: 0,
+      leavePolicyId: standardLeavePolicy.id,
+      datetime: new Date(),
+    },
+  });
+
   console.log(`📊 Created:`);
   console.log(`   - ${5} Employment Types`);
   console.log(`   - ${2} Departments`);
@@ -796,18 +733,18 @@ async function main() {
   console.log(`   - ${2} Employee Leave Records`);
 
   console.log("\n👤 Demo Accounts:");
-  console.log("   Admin: admin@iris-communications.com / admin123");
   console.log("   HR: hr@iris-communications.com / hr123123");
   console.log(
-    "   Super Admin: superadmin@iris-communications.com / superadmin123"
+    "   Super Admin: superadmin@iris-communications.com / superadmin123",
   );
 }
 
 main()
-  .catch((e) => {
-    console.error("❌ Error seeding database:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
+  .then(async () => {
     await prisma.$disconnect();
+  })
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
   });
