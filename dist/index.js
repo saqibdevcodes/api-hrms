@@ -47,7 +47,6 @@ const fs_1 = __importDefault(require("fs"));
 const http_1 = require("http");
 const node_cron_1 = __importDefault(require("node-cron"));
 const env_1 = require("./config/env");
-const database_1 = __importDefault(require("./config/database"));
 const routes_1 = __importDefault(require("./routes"));
 const zktecoRoutes_1 = __importDefault(require("./routes/zktecoRoutes"));
 const socketManager_1 = require("./socket/socketManager");
@@ -98,11 +97,7 @@ app.use((0, cors_1.default)({
         "Pragma",
         "Expires",
     ],
-    exposedHeaders: [
-        "Cache-Control",
-        "Pragma",
-        "Expires",
-    ],
+    exposedHeaders: ["Cache-Control", "Pragma", "Expires"],
 }));
 // Create uploads directory for local storage (only if Cloudinary not configured)
 // Skip in serverless environments (Vercel) as filesystem is read-only
@@ -274,7 +269,6 @@ app.use((error, req, res, next) => {
 const gracefulShutdown = async (signal) => {
     console.log(`\n${signal} received. Starting graceful shutdown...`);
     try {
-        await database_1.default.disconnect();
         console.log("✅ Database disconnected successfully");
         process.exit(0);
     }
@@ -302,7 +296,6 @@ let socketManager;
 const startServer = async () => {
     try {
         // Connect to database
-        await database_1.default.connect();
         // Create HTTP server
         const httpServer = (0, http_1.createServer)(app);
         // Initialize Socket.IO
@@ -347,14 +340,14 @@ const startServer = async () => {
                     console.error("🕐 ======================================");
                 }
             }, {
-                timezone: "Asia/Karachi" // Adjust to your timezone
+                timezone: "Asia/Karachi", // Adjust to your timezone
             });
             console.log("⏰ Automatic finalization scheduled: Daily at 2:00 AM (Asia/Karachi)");
             console.log("");
             // Schedule OTP cleanup (runs every 30 minutes)
             node_cron_1.default.schedule("*/30 * * * *", async () => {
                 try {
-                    const { AuthService } = await Promise.resolve().then(() => __importStar(require('./services/authService')));
+                    const { AuthService } = await Promise.resolve().then(() => __importStar(require("./services/authService")));
                     AuthService.cleanupExpiredOTPs();
                     console.log("🧹 Expired OTPs cleaned up");
                 }
@@ -366,7 +359,8 @@ const startServer = async () => {
             console.log("");
             // Run finalization immediately on server start to process any existing old records
             console.log("🔄 Running initial finalization check...");
-            finalizationService_1.finalizationService.finalizeStagingRecords()
+            finalizationService_1.finalizationService
+                .finalizeStagingRecords()
                 .then((result) => {
                 console.log(`✅ Initial finalization: ${result.finalized} records finalized, ${result.errors} errors`);
             })
@@ -393,17 +387,6 @@ const startServer = async () => {
 // Export socket manager for use in controllers
 const getSocketManager = () => socketManager;
 exports.getSocketManager = getSocketManager;
-// Initialize database connection for Vercel serverless
-if (process.env.VERCEL === "1") {
-    // Connect to database in serverless environment
-    database_1.default.connect()
-        .then(() => {
-        console.log("✅ Database connected for Vercel serverless");
-    })
-        .catch((error) => {
-        console.error("❌ Database connection failed:", error);
-    });
-}
 // Export the Express app for Vercel serverless
 exports.default = app;
 // Initialize server only if not in Vercel environment

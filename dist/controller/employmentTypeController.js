@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmploymentTypeController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class EmploymentTypeController {
     // Get all employment types
     static async getAllEmploymentTypes(req, res) {
@@ -24,7 +23,7 @@ class EmploymentTypeController {
                 where.isActive = isActive === "true";
             }
             const [employmentTypes, total] = await Promise.all([
-                prisma.employmentType.findMany({
+                prisma_1.prisma.employmentType.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -35,7 +34,7 @@ class EmploymentTypeController {
                         },
                     },
                 }),
-                prisma.employmentType.count({ where }),
+                prisma_1.prisma.employmentType.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -64,7 +63,7 @@ class EmploymentTypeController {
     static async getEmploymentTypeById(req, res) {
         try {
             const { id } = req.params;
-            const employmentType = await prisma.employmentType.findUnique({
+            const employmentType = await prisma_1.prisma.employmentType.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -115,7 +114,7 @@ class EmploymentTypeController {
                 });
             }
             const { name, description, isActive = true } = req.body;
-            const employmentType = await prisma.employmentType.create({
+            const employmentType = await prisma_1.prisma.employmentType.create({
                 data: {
                     name,
                     description,
@@ -156,7 +155,7 @@ class EmploymentTypeController {
                 });
             }
             const { name, description, isActive } = req.body;
-            const employmentType = await prisma.employmentType.findUnique({
+            const employmentType = await prisma_1.prisma.employmentType.findUnique({
                 where: { id },
             });
             if (!employmentType) {
@@ -165,7 +164,7 @@ class EmploymentTypeController {
                     message: "Employment type not found",
                 });
             }
-            const updatedEmploymentType = await prisma.employmentType.update({
+            const updatedEmploymentType = await prisma_1.prisma.employmentType.update({
                 where: { id },
                 data: {
                     name,
@@ -198,7 +197,7 @@ class EmploymentTypeController {
     static async deleteEmploymentType(req, res) {
         try {
             const { id } = req.params;
-            const employmentType = await prisma.employmentType.findUnique({
+            const employmentType = await prisma_1.prisma.employmentType.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -219,7 +218,7 @@ class EmploymentTypeController {
                     message: `Cannot delete employment type. It has ${employmentType._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.employmentType.delete({
+            await prisma_1.prisma.employmentType.delete({
                 where: { id },
             });
             res.json({
@@ -244,7 +243,7 @@ class EmploymentTypeController {
     static async toggleEmploymentTypeStatus(req, res) {
         try {
             const { id } = req.params;
-            const employmentType = await prisma.employmentType.findUnique({
+            const employmentType = await prisma_1.prisma.employmentType.findUnique({
                 where: { id },
             });
             if (!employmentType) {
@@ -253,7 +252,7 @@ class EmploymentTypeController {
                     message: "Employment type not found",
                 });
             }
-            const updatedEmploymentType = await prisma.employmentType.update({
+            const updatedEmploymentType = await prisma_1.prisma.employmentType.update({
                 where: { id },
                 data: {
                     isActive: !employmentType.isActive,

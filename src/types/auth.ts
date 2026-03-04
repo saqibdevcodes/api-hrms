@@ -1,5 +1,6 @@
 import { Request } from "express";
 import { Role, UserRank } from "../generated/prisma";
+import type { Decimal } from "../generated/prisma/runtime/client";
 
 // Authentication Types
 export interface LoginRequest {
@@ -21,58 +22,58 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  fatherHusbandName: string;
-  cnic: string;
-  cnicExpiry: Date;
-  maritalStatus: string;
-  dateOfBirth: Date;
-  bloodGroup: string;
-  gender: string;
-  education: string;
-  educationInstitute: string;
-  educationGrade: string;
-  personalEmail: string;
-  personalMobile: string;
-  officialMobile: string;
-  officialEmail: string;
-  phone: string;
-  personalAddress: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
+  fatherHusbandName: string | null;
+  cnic: string | null;
+  cnicExpiry: Date | null;
+  maritalStatus: string | null;
+  dateOfBirth: Date | null;
+  bloodGroup: string | null;
+  gender: string | null;
+  education: string | null;
+  educationInstitute: string | null;
+  educationGrade: string | null;
+  personalEmail: string | null;
+  personalMobile: string | null;
+  officialMobile: string | null;
+  officialEmail: string | null;
+  phone: string | null;
+  personalAddress: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
   country: string;
-  employeeId: string;
-  userRank: string;
+  employeeId: string | null;
+  userRank: string | null;
   password: string;
   status: string;
   role: string;
-  position: string;
-  department: string;
-  manager: string;
-  salary: number;
+  position: string | null;
+  department: string | null;
+  manager: string | null;
+  salary: Decimal | number | null;
   currency: string;
-  dateOfJoining: Date;
+  dateOfJoining: Date | null;
   dateOfExit: Date | null;
-  hireDate: Date;
+  hireDate: Date | null;
   endDate: Date | null;
-  employmentTypeId: string;
+  employmentTypeId: string | null;
   degreePicture: string | null;
   cnicPictureFront: string | null;
   cnicPictureBack: string | null;
   isActive: boolean;
-  lastLogin: Date;
+  lastLogin: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  emergencyDetailId: string;
-  departmentId: string;
-  contractTypeId: string;
-  designationId: string;
-  shiftId: string;
-  leaveId: string;
+  emergencyDetailId: string | null;
+  departmentId: string | null;
+  contractTypeId: string | null;
+  designationId: string | null;
+  shiftId: string | null;
+  leaveId: string | null;
   createdBy: string | null;
   updatedBy: string | null;
-  educationalDetailId: string | null;
+  educationalDetailId: number | null;
 }
 
 export interface UserProfile {
@@ -92,14 +93,14 @@ export interface EmployeeInfo {
   employeeId: string;
   firstName: string;
   lastName: string;
-  position: string;
-  department: string;
+  position: string | null;
+  department: string | null;
   avatar?: string;
   profilePicture?: string | null;
   designation?: string;
-  userRank?: string;
-  phone?: string;
-  personalMobile?: string;
+  userRank?: string | null;
+  phone?: string | null;
+  personalMobile?: string | null;
 }
 
 export interface JwtPayload {
@@ -175,7 +176,7 @@ export class ValidationError extends Error {
   constructor(
     message: string,
     errors: FieldError[] = [],
-    statusCode: number = 400
+    statusCode: number = 400,
   ) {
     super(message);
     this.name = "ValidationError";

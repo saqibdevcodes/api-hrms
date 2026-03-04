@@ -14,6 +14,7 @@ import offDaysRoutes from "./offDays";
 import zktecoRoutes from "./zktecoRoutes";
 import { authenticate, adminOnly, hrAndAdmin } from "../middleware/auth";
 import { AuthenticatedRequest } from "../types/auth";
+import { prisma } from "../lib/prisma";
 import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
@@ -75,8 +76,6 @@ router.use("/advanceSalary", ASRoutes);
  * @access  Private
  */
 router.get("/dashboard", authenticate, async (req: AuthenticatedRequest, res) => {
-  const { PrismaClient } = await import("../generated/prisma");
-  const prisma = new PrismaClient();
 
   try {
     // Get total employees
@@ -109,8 +108,8 @@ router.get("/dashboard", authenticate, async (req: AuthenticatedRequest, res) =>
     // Count by status
     let presentToday = 0;
     let onLeave = 0;
-    
-    todaysAttendance.forEach((record) => {
+
+    todaysAttendance.forEach((record: any) => {
       if (['PRESENT', 'LATE', 'HALF_DAY', 'WORK_FROM_HOME', 'EARLY_OUT'].includes(record.status)) {
         presentToday++;
       } else if (['ABSENT'].includes(record.status)) {
@@ -127,7 +126,7 @@ router.get("/dashboard", authenticate, async (req: AuthenticatedRequest, res) =>
         endDate: { gte: today },
       },
     });
-    
+
     onLeave = leavesToday;
 
     // Get pending leave requests count

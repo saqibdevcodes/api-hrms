@@ -1,10 +1,9 @@
 // controllers/pdrController.ts
 import { Response } from "express";
-import { PrismaClient, PdrOverallStatus } from "../generated/prisma";
+import { PdrOverallStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../types/auth";
 import { PdrService } from "../services/pdrService";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export class PdrController {
   /**

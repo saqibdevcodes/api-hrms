@@ -2,15 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PdrService = void 0;
 // services/pdrService.ts
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const client_1 = require("@prisma/client");
+const prisma_1 = require("../lib/prisma");
 class PdrService {
     /**
      * Create PDR for a specific employee
      */
     static async createPdr(data, createdBy) {
         // Check for duplicate PDR in the same cycle
-        const existingPdr = await prisma.pdr.findUnique({
+        const existingPdr = await prisma_1.prisma.pdr.findUnique({
             where: {
                 userId_pdr_cycle: {
                     userId: data.userId,
@@ -22,7 +22,7 @@ class PdrService {
             throw new Error(`PDR already exists for user ${data.userId} in cycle ${data.pdrCycle}`);
         }
         // Get user details to find line manager and director
-        const user = await prisma.user.findUnique({
+        const user = await prisma_1.prisma.user.findUnique({
             where: { id: data.userId },
             select: { id: true, manager: true },
         });
@@ -34,19 +34,19 @@ class PdrService {
         if (!linemanagerId && user.manager) {
             // The user.manager field stores the manager's USER ID (not employeeId)
             // First, check if it's a direct user ID
-            const managerById = await prisma.user.findUnique({
+            const managerById = await prisma_1.prisma.user.findUnique({
                 where: { id: user.manager },
                 select: { id: true, userRank: true },
             });
-            if (managerById && managerById.userRank === prisma_1.UserRank.LINE_MANAGER) {
+            if (managerById && managerById.userRank === client_1.UserRank.LINE_MANAGER) {
                 linemanagerId = managerById.id;
             }
             else {
                 // If not found by ID, try finding by employeeId (backward compatibility)
-                const managerByEmpId = await prisma.user.findFirst({
+                const managerByEmpId = await prisma_1.prisma.user.findFirst({
                     where: {
                         employeeId: user.manager,
-                        userRank: prisma_1.UserRank.LINE_MANAGER,
+                        userRank: client_1.UserRank.LINE_MANAGER,
                     },
                 });
                 linemanagerId = managerByEmpId?.id;
@@ -55,18 +55,18 @@ class PdrService {
         // Find director if not provided
         let directorId = data.directorId;
         if (!directorId) {
-            const director = await prisma.user.findFirst({
-                where: { userRank: prisma_1.UserRank.DIRECTOR },
+            const director = await prisma_1.prisma.user.findFirst({
+                where: { userRank: client_1.UserRank.DIRECTOR },
             });
             directorId = director?.id;
         }
-        const pdr = await prisma.pdr.create({
+        const pdr = await prisma_1.prisma.pdr.create({
             data: {
                 userId: data.userId,
                 pdr_cycle: data.pdrCycle,
                 linemanager_id: linemanagerId,
                 director_id: directorId,
-                overallStatus: prisma_1.PdrOverallStatus.CREATED_BY_HR,
+                overallStatus: client_1.PdrOverallStatus.CREATED_BY_HR,
                 lastModifiedBy: createdBy,
             },
             include: {
@@ -104,13 +104,13 @@ class PdrService {
      */
     static async createBulkPdrs(pdrCycle, createdBy, departmentId) {
         const whereClause = {
-            role: prisma_1.Role.EMPLOYEE,
+            role: client_1.Role.EMPLOYEE,
             isActive: true,
         };
         if (departmentId) {
             whereClause.departmentId = departmentId;
         }
-        const employees = await prisma.user.findMany({
+        const employees = await prisma_1.prisma.user.findMany({
             where: whereClause,
             select: { id: true, manager: true },
         });
@@ -169,7 +169,7 @@ class PdrService {
      * Transition PDR to next status
      */
     static async transitionStatus(data, targetStatus) {
-        const pdr = await prisma.pdr.findUnique({
+        const pdr = await prisma_1.prisma.pdr.findUnique({
             where: { id: data.pdrId },
             include: { user: true },
         });
@@ -185,7 +185,7 @@ class PdrService {
             throw new Error(`Invalid transition from ${pdr.overallStatus} to ${targetStatus} for role ${data.userRole}`);
         }
         // Update PDR status and create transition record
-        const updatedPdr = await prisma.$transaction(async (tx) => {
+        const updatedPdr = await prisma_1.prisma.$transaction(async (tx) => {
             // Create transition record
             await tx.pdrStatusTransition.create({
                 data: {
@@ -203,8 +203,8 @@ class PdrService {
                 data: {
                     overallStatus: targetStatus,
                     lastModifiedBy: data.userId,
-                    isCompleted: targetStatus === prisma_1.PdrOverallStatus.COMPLETED,
-                    completedAt: targetStatus === prisma_1.PdrOverallStatus.COMPLETED
+                    isCompleted: targetStatus === client_1.PdrOverallStatus.COMPLETED,
+                    completedAt: targetStatus === client_1.PdrOverallStatus.COMPLETED
                         ? new Date()
                         : undefined,
                 },
@@ -244,7 +244,7 @@ class PdrService {
      * Send revert message (HR to Employee/Manager) using PdrComment
      */
     static async sendRevertMessage(pdrId, sentBy, sentByRole, sentTo, message, currentStatus) {
-        const revertComment = await prisma.pdrComment.create({
+        const revertComment = await prisma_1.prisma.pdrComment.create({
             data: {
                 pdr_id: pdrId,
                 employee_type: sentByRole,
@@ -265,8 +265,8 @@ class PdrService {
         const limit = filters?.limit || 10;
         const skip = (page - 1) * limit;
         let whereClause = {};
-        const isHR = userRole === prisma_1.Role.HR; // HR role only
-        const isAdmin = userRole === prisma_1.Role.ADMIN; // ADMIN role
+        const isHR = userRole === client_1.Role.HR; // HR role only
+        const isAdmin = userRole === client_1.Role.ADMIN; // ADMIN role
         // Section-based filtering for HR users
         if (isHR && filters?.section) {
             if (filters.section === "mine") {
@@ -274,7 +274,7 @@ class PdrService {
                 whereClause.userId = userId;
             }
             else if (filters.section === "team" &&
-                userRank === prisma_1.UserRank.LINE_MANAGER) {
+                userRank === client_1.UserRank.LINE_MANAGER) {
                 // Section 2: Team PDRs (Only for HR with LINE_MANAGER rank)
                 // PDRs where HR is the line manager, but exclude HR's own PDRs
                 whereClause.AND = [
@@ -293,15 +293,15 @@ class PdrService {
         }
         else {
             // Non-HR users or HR without section filter - use role-based filtering
-            if (userRole === prisma_1.Role.EMPLOYEE &&
-                userRank !== prisma_1.UserRank.LINE_MANAGER &&
-                userRank !== prisma_1.UserRank.DIRECTOR) {
+            if (userRole === client_1.Role.EMPLOYEE &&
+                userRank !== client_1.UserRank.LINE_MANAGER &&
+                userRank !== client_1.UserRank.DIRECTOR) {
                 // Regular employees see only their own PDRs
                 whereClause.userId = userId;
             }
-            else if (userRank === prisma_1.UserRank.LINE_MANAGER) {
+            else if (userRank === client_1.UserRank.LINE_MANAGER) {
                 // Managers see BOTH their own PDRs AND subordinate PDRs
-                if (userRole === prisma_1.Role.EMPLOYEE) {
+                if (userRole === client_1.Role.EMPLOYEE) {
                     // Regular manager (not HR)
                     whereClause.OR = [
                         { userId: userId }, // Their own PDRs
@@ -313,9 +313,9 @@ class PdrService {
                     // No filter - shows all PDRs
                 }
             }
-            else if (userRank === prisma_1.UserRank.DIRECTOR) {
+            else if (userRank === client_1.UserRank.DIRECTOR) {
                 // Directors see their own PDRs AND PDRs where they are the director
-                if (userRole === prisma_1.Role.EMPLOYEE) {
+                if (userRole === client_1.Role.EMPLOYEE) {
                     // Regular director (not HR)
                     whereClause.OR = [
                         { userId: userId }, // Their own PDRs
@@ -340,7 +340,7 @@ class PdrService {
             whereClause.pdr_cycle = filters.cycle;
         }
         const [pdrs, total] = await Promise.all([
-            prisma.pdr.findMany({
+            prisma_1.prisma.pdr.findMany({
                 where: whereClause,
                 skip,
                 take: limit,
@@ -382,7 +382,7 @@ class PdrService {
                     },
                 },
             }),
-            prisma.pdr.count({ where: whereClause }),
+            prisma_1.prisma.pdr.count({ where: whereClause }),
         ]);
         return {
             data: pdrs,
@@ -398,7 +398,7 @@ class PdrService {
      * Get single PDR with full details
      */
     static async getPdrById(pdrId, userId, userRole, userRank) {
-        const pdr = await prisma.pdr.findUnique({
+        const pdr = await prisma_1.prisma.pdr.findUnique({
             where: { id: pdrId },
             include: {
                 user: true,
@@ -427,7 +427,7 @@ class PdrService {
         // Check access permissions
         // HR has access to all PDRs (can do HR tasks)
         // Also check if user is the owner, manager, or director
-        const hasAccess = userRole === prisma_1.Role.ADMIN || // Keep for backward compatibility
+        const hasAccess = userRole === client_1.Role.ADMIN || // Keep for backward compatibility
             userRole === "HR" || // HR role has access to all PDRs
             pdr.userId === userId ||
             pdr.linemanager_id === userId ||
@@ -441,7 +441,7 @@ class PdrService {
      * Delete PDR (HR only)
      */
     static async deletePdr(pdrId) {
-        const pdr = await prisma.pdr.findUnique({
+        const pdr = await prisma_1.prisma.pdr.findUnique({
             where: { id: pdrId },
         });
         if (!pdr) {
@@ -450,7 +450,7 @@ class PdrService {
         if (pdr.isCompleted) {
             throw new Error("Cannot delete completed PDR");
         }
-        await prisma.pdr.delete({
+        await prisma_1.prisma.pdr.delete({
             where: { id: pdrId },
         });
         return { success: true, message: "PDR deleted successfully" };
@@ -464,43 +464,43 @@ class PdrService {
             whereClause.pdr_cycle = filters.cycle;
         }
         const [total, completed, pendingAtEmployee, pendingAtManager, pendingAtDirector, pendingAtHR,] = await Promise.all([
-            prisma.pdr.count({ where: whereClause }),
-            prisma.pdr.count({ where: { ...whereClause, isCompleted: true } }),
-            prisma.pdr.count({
+            prisma_1.prisma.pdr.count({ where: whereClause }),
+            prisma_1.prisma.pdr.count({ where: { ...whereClause, isCompleted: true } }),
+            prisma_1.prisma.pdr.count({
                 where: {
                     ...whereClause,
                     overallStatus: {
                         in: [
-                            prisma_1.PdrOverallStatus.EMPLOYEE_FILLING,
-                            prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+                            client_1.PdrOverallStatus.EMPLOYEE_FILLING,
+                            client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
                         ],
                     },
                 },
             }),
-            prisma.pdr.count({
+            prisma_1.prisma.pdr.count({
                 where: {
                     ...whereClause,
                     overallStatus: {
                         in: [
-                            prisma_1.PdrOverallStatus.MANAGER_FILLING,
-                            prisma_1.PdrOverallStatus.MANAGER_REVISING,
+                            client_1.PdrOverallStatus.MANAGER_FILLING,
+                            client_1.PdrOverallStatus.MANAGER_REVISING,
                         ],
                     },
                 },
             }),
-            prisma.pdr.count({
+            prisma_1.prisma.pdr.count({
                 where: {
                     ...whereClause,
-                    overallStatus: prisma_1.PdrOverallStatus.DIRECTOR_REVIEWING,
+                    overallStatus: client_1.PdrOverallStatus.DIRECTOR_REVIEWING,
                 },
             }),
-            prisma.pdr.count({
+            prisma_1.prisma.pdr.count({
                 where: {
                     ...whereClause,
                     overallStatus: {
                         in: [
-                            prisma_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
-                            prisma_1.PdrOverallStatus.HR_REVIEWING_MANAGER,
+                            client_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
+                            client_1.PdrOverallStatus.HR_REVIEWING_MANAGER,
                         ],
                     },
                 },
@@ -522,7 +522,7 @@ class PdrService {
      */
     static async savePersonalQualities(data) {
         // Check if entry already exists for this PDR and employee type
-        const existing = await prisma.pdrPersonalQuality.findFirst({
+        const existing = await prisma_1.prisma.pdrPersonalQuality.findFirst({
             where: {
                 pdr_id: data.pdrId,
                 employee_type: data.employeeType,
@@ -530,7 +530,7 @@ class PdrService {
         });
         if (existing) {
             // Update existing
-            return await prisma.pdrPersonalQuality.update({
+            return await prisma_1.prisma.pdrPersonalQuality.update({
                 where: { id: existing.id },
                 data: {
                     communication: data.ratings.communication,
@@ -553,7 +553,7 @@ class PdrService {
         }
         else {
             // Create new
-            return await prisma.pdrPersonalQuality.create({
+            return await prisma_1.prisma.pdrPersonalQuality.create({
                 data: {
                     pdr_id: data.pdrId,
                     employee_type: data.employeeType,
@@ -581,7 +581,7 @@ class PdrService {
      */
     static async saveGoalsTasks(data) {
         // Delete existing goals for this PDR
-        await prisma.pdrGoalsTask.deleteMany({
+        await prisma_1.prisma.pdrGoalsTask.deleteMany({
             where: { pdr_id: data.pdrId },
         });
         // Filter out goals with empty tasks
@@ -591,7 +591,7 @@ class PdrService {
             return [];
         }
         // Create new goals
-        const createdGoals = await Promise.all(validGoals.map((goal) => prisma.pdrGoalsTask.create({
+        const createdGoals = await Promise.all(validGoals.map((goal) => prisma_1.prisma.pdrGoalsTask.create({
             data: {
                 pdr_id: data.pdrId,
                 task: goal.task.trim(),
@@ -607,14 +607,14 @@ class PdrService {
      */
     static async saveOverallComment(data) {
         // Check if entry already exists
-        const existing = await prisma.pdrOverallComment.findFirst({
+        const existing = await prisma_1.prisma.pdrOverallComment.findFirst({
             where: {
                 pdr_id: data.pdrId,
                 employee_type: data.employeeType,
             },
         });
         if (existing) {
-            return await prisma.pdrOverallComment.update({
+            return await prisma_1.prisma.pdrOverallComment.update({
                 where: { id: existing.id },
                 data: {
                     comment: data.comment,
@@ -623,7 +623,7 @@ class PdrService {
             });
         }
         else {
-            return await prisma.pdrOverallComment.create({
+            return await prisma_1.prisma.pdrOverallComment.create({
                 data: {
                     pdr_id: data.pdrId,
                     employee_type: data.employeeType,
@@ -662,7 +662,7 @@ class PdrService {
             updateData.director_overall_comment = data.directorOverallComment;
         }
         // Update PDR
-        await prisma.pdr.update({
+        await prisma_1.prisma.pdr.update({
             where: { id: data.pdrId },
             data: updateData,
         });
@@ -715,137 +715,137 @@ exports.PdrService = PdrService;
 PdrService.statusTransitions = {
     CREATED_BY_HR: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_FILLING,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_FILLING,
             allowedRoles: ["EMPLOYEE", "HR"],
         },
     ],
     EMPLOYEE_FILLING: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR,
             allowedRoles: ["EMPLOYEE"],
         },
     ],
     EMPLOYEE_SUBMITTED_TO_HR: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
+            nextStatus: client_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
             allowedRoles: ["HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
+            nextStatus: client_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
             allowedRoles: ["HR"],
         },
     ],
     HR_REVIEWING_EMPLOYEE: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE,
+            nextStatus: client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE,
             allowedRoles: ["HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
+            nextStatus: client_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
             allowedRoles: ["HR"],
         },
     ],
     HR_REVERTED_TO_EMPLOYEE: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_FILLING,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_FILLING,
             allowedRoles: ["EMPLOYEE"],
         },
     ],
     HR_APPROVED_EMPLOYEE: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.MANAGER_FILLING,
+            nextStatus: client_1.PdrOverallStatus.MANAGER_FILLING,
             allowedRoles: ["LINE_MANAGER", "HR"],
         },
     ],
     MANAGER_FILLING: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
+            nextStatus: client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
             allowedRoles: ["LINE_MANAGER"],
         },
     ],
     MANAGER_SUBMITTED_TO_HR: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVIEWING_MANAGER,
+            nextStatus: client_1.PdrOverallStatus.HR_REVIEWING_MANAGER,
             allowedRoles: ["HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+            nextStatus: client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER,
             allowedRoles: ["HR"],
         },
     ],
     HR_REVIEWING_MANAGER: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_APPROVED_MANAGER,
+            nextStatus: client_1.PdrOverallStatus.HR_APPROVED_MANAGER,
             allowedRoles: ["HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+            nextStatus: client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER,
             allowedRoles: ["HR"],
         },
     ],
     HR_REVERTED_TO_MANAGER: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.MANAGER_FILLING,
+            nextStatus: client_1.PdrOverallStatus.MANAGER_FILLING,
             allowedRoles: ["LINE_MANAGER"],
         },
     ],
     HR_APPROVED_MANAGER: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.DIRECTOR_REVIEWING,
+            nextStatus: client_1.PdrOverallStatus.DIRECTOR_REVIEWING,
             allowedRoles: ["DIRECTOR", "HR"],
         },
     ],
     DIRECTOR_REVIEWING: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.DIRECTOR_REVIEWED,
+            nextStatus: client_1.PdrOverallStatus.DIRECTOR_REVIEWED,
             allowedRoles: ["DIRECTOR", "HR"],
         },
     ],
     DIRECTOR_REVIEWED: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.COMPLETED,
+            nextStatus: client_1.PdrOverallStatus.COMPLETED,
             allowedRoles: ["EMPLOYEE", "HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_DISAGREED,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_DISAGREED,
             allowedRoles: ["EMPLOYEE", "HR"],
         },
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
             allowedRoles: ["HR"],
         }, // legacy support
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED,
             allowedRoles: ["HR"],
         }, // legacy support
     ],
     EMPLOYEE_ACKNOWLEDGING: [
-        { nextStatus: prisma_1.PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE"] },
+        { nextStatus: client_1.PdrOverallStatus.COMPLETED, allowedRoles: ["EMPLOYEE"] },
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_DISAGREED,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_DISAGREED,
             allowedRoles: ["EMPLOYEE"],
         },
     ],
     EMPLOYEE_DISAGREED: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER,
             allowedRoles: ["HR"],
         },
     ],
     EMPLOYEE_REVERT_TO_MANAGER: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.MANAGER_REVISING,
+            nextStatus: client_1.PdrOverallStatus.MANAGER_REVISING,
             allowedRoles: ["LINE_MANAGER"],
         },
     ],
     MANAGER_REVISING: [
         {
-            nextStatus: prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+            nextStatus: client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
             allowedRoles: ["LINE_MANAGER"],
         },
     ],
     EMPLOYEE_ACKNOWLEDGED: [
-        { nextStatus: prisma_1.PdrOverallStatus.COMPLETED, allowedRoles: ["HR"] },
+        { nextStatus: client_1.PdrOverallStatus.COMPLETED, allowedRoles: ["HR"] },
     ],
     COMPLETED: [], // No transitions from completed state
 };

@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateAdvaceSalaryStatus = exports.fetchAdvanceSalaryByUserId = exports.createAdvanceSalaryRequest = exports.fetchAllAdvanceSalary = void 0;
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 const createAdvanceSalaryRequest = async (req, res) => {
     const { employeeId, reason, daysCount, Status } = req.body;
     if (!req.body) {
@@ -13,7 +12,7 @@ const createAdvanceSalaryRequest = async (req, res) => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        const checkUserData = await prisma.advanceSalary.findFirst({
+        const checkUserData = await prisma_1.prisma.advanceSalary.findFirst({
             where: {
                 userId: employeeId,
                 createdAt: {
@@ -25,7 +24,7 @@ const createAdvanceSalaryRequest = async (req, res) => {
         });
         //now check if the user has not already a record then procees the record in the db
         if (checkUserData === null) {
-            const adavanceSalary = await prisma.advanceSalary.create({
+            const adavanceSalary = await prisma_1.prisma.advanceSalary.create({
                 data: {
                     user: {
                         connect: {
@@ -52,7 +51,7 @@ const createAdvanceSalaryRequest = async (req, res) => {
 exports.createAdvanceSalaryRequest = createAdvanceSalaryRequest;
 const fetchAllAdvanceSalary = async (req, res) => {
     //fetching all the advance salary data of users
-    const allAdvanceSalary = await prisma.advanceSalary.findMany();
+    const allAdvanceSalary = await prisma_1.prisma.advanceSalary.findMany();
     if (allAdvanceSalary) {
         return res.status(200).json({
             message: "Successfully fetched all the advance salary records",
@@ -69,7 +68,7 @@ exports.fetchAllAdvanceSalary = fetchAllAdvanceSalary;
 const fetchAdvanceSalaryByUserId = async (req, res) => {
     //fethcing with respect to the id
     const { id } = req.params;
-    const advanceSalaryById = await prisma.advanceSalary.findMany({
+    const advanceSalaryById = await prisma_1.prisma.advanceSalary.findMany({
         where: {
             userId: id,
         },
@@ -91,7 +90,7 @@ const updateAdvaceSalaryStatus = async (req, res) => {
     //update the status here
     const { id } = req.params;
     const { status } = req.body;
-    const statusChanged = await prisma.advanceSalary.update({
+    const statusChanged = await prisma_1.prisma.advanceSalary.update({
         where: {
             id: id,
         },

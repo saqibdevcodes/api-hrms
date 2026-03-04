@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export class DesignationController {
   // Get all designations
@@ -347,7 +345,7 @@ export class DesignationController {
       });
 
       const uniqueDepartments = departments
-        .map((d) => d.department)
+        .map((d: any) => d.department)
         .filter(Boolean)
         .sort();
 

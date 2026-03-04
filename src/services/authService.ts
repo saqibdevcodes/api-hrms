@@ -1,4 +1,4 @@
-import { prisma } from "../config/database";
+import { prisma } from "../lib/prisma";
 import { JwtUtils } from "../utils/jwt";
 import { PasswordUtils } from "../utils/password";
 import { EmailService } from "../utils/emailService";
@@ -52,7 +52,7 @@ export class AuthService {
       // Verify password
       const isPasswordValid = await PasswordUtils.verifyPassword(
         password,
-        user.password
+        user.password,
       );
       if (!isPasswordValid) {
         throw new AuthenticationError("Invalid email or password");
@@ -105,7 +105,7 @@ export class AuthService {
         userId: user.id,
         email: user.email,
         role: user.role,
-        employeeId: user.employee?.employeeId,
+        employeeId: user.employeeId ?? undefined,
       });
 
       return {
@@ -173,7 +173,7 @@ export class AuthService {
    */
   static async resetPassword(
     token: string,
-    password: string
+    password: string,
   ): Promise<boolean> {
     try {
       // Find user with valid token
@@ -289,7 +289,7 @@ export class AuthService {
    */
   static async verifyDemoCredentials(
     email: string,
-    password: string
+    password: string,
   ): Promise<UserProfile | null> {
     // Demo credentials for Iris Communications
     const demoUsers = [
@@ -299,7 +299,7 @@ export class AuthService {
         profile: {
           id: "demo-admin-001",
           email: "admin@iriscommunications.com",
-          role: "ADMIN" as Role,
+          role: "ADMIN" as any,
           employee: {
             id: "emp-admin-001",
             employeeId: "IC-ADM001",
@@ -316,7 +316,7 @@ export class AuthService {
         profile: {
           id: "demo-user-002",
           email: "user@iriscommunications.com",
-          role: "EMPLOYEE" as Role,
+          role: "EMPLOYEE" as any,
           employee: {
             id: "emp-user-002",
             employeeId: "IC-EMP002",
@@ -330,7 +330,8 @@ export class AuthService {
     ];
 
     const demoUser = demoUsers.find(
-      (user) => user.email === email.toLowerCase() && user.password === password
+      (user) =>
+        user.email === email.toLowerCase() && user.password === password,
     );
 
     return demoUser
@@ -449,7 +450,7 @@ export class AuthService {
   /**
    * Check if user has required role
    */
-  static hasRole(userRole: Role, requiredRoles: Role[]): boolean {
+  static hasRole(userRole: any, requiredRoles: any[]): boolean {
     return requiredRoles.includes(userRole);
   }
 
@@ -458,7 +459,7 @@ export class AuthService {
    */
   static canAccessEmployeeData(
     currentUser: UserProfile,
-    targetEmployeeId: string
+    targetEmployeeId: string,
   ): boolean {
     // Admins and HR can access all employee data
     if (["ADMIN", "HR", "SUPERADMIN"].includes(currentUser.role)) {
@@ -474,7 +475,7 @@ export class AuthService {
    */
   static async updateProfilePicture(
     userId: string,
-    profilePictureUrl: string
+    profilePictureUrl: string,
   ): Promise<UserProfile> {
     try {
       const user = await prisma.user.update({
@@ -535,7 +536,7 @@ export class AuthService {
       state: string;
       zipCode: string;
       country: string;
-    }>
+    }>,
   ): Promise<UserProfile> {
     try {
       const user = await prisma.user.update({
@@ -584,7 +585,7 @@ export class AuthService {
   static async changePassword(
     userId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
   ): Promise<void> {
     try {
       // Get user
@@ -599,7 +600,7 @@ export class AuthService {
       // Verify current password
       const isPasswordValid = await PasswordUtils.verifyPassword(
         currentPassword,
-        user.password
+        user.password,
       );
 
       if (!isPasswordValid) {
@@ -655,7 +656,7 @@ export class AuthService {
   static async verifyEmailOTP(
     email: string,
     otp: string,
-    emailType: string
+    emailType: string,
   ): Promise<boolean> {
     try {
       const otpKey = `${email.toLowerCase()}-${emailType}`;
@@ -675,7 +676,9 @@ export class AuthService {
 
       // Verify OTP
       if (storedOTP.otp !== otp) {
-        console.log(`Invalid OTP for ${email}. Expected: ${storedOTP.otp}, Got: ${otp}`);
+        console.log(
+          `Invalid OTP for ${email}. Expected: ${storedOTP.otp}, Got: ${otp}`,
+        );
         return false;
       }
 
@@ -709,7 +712,7 @@ export class AuthService {
     userId: string | null,
     event: string,
     details: Record<string, any>,
-    ipAddress?: string
+    ipAddress?: string,
   ): Promise<void> {
     try {
       // In a real application, you would log to a security audit table

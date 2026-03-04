@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PdrController = void 0;
-const prisma_1 = require("../generated/prisma");
+const client_1 = require("@prisma/client");
 const pdrService_1 = require("../services/pdrService");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class PdrController {
     /**
      * Get all PDRs (filtered by user role)
@@ -125,7 +125,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { comment } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -134,16 +134,16 @@ class PdrController {
             }
             // Determine target status based on current status
             let targetStatus;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.CREATED_BY_HR ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE) {
-                targetStatus = prisma_1.PdrOverallStatus.EMPLOYEE_FILLING;
+            if (pdr.overallStatus === client_1.PdrOverallStatus.CREATED_BY_HR ||
+                pdr.overallStatus === client_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE) {
+                targetStatus = client_1.PdrOverallStatus.EMPLOYEE_FILLING;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER) {
-                targetStatus = prisma_1.PdrOverallStatus.MANAGER_FILLING;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
+                pdr.overallStatus === client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER) {
+                targetStatus = client_1.PdrOverallStatus.MANAGER_FILLING;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER) {
-                targetStatus = prisma_1.PdrOverallStatus.MANAGER_REVISING;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER) {
+                targetStatus = client_1.PdrOverallStatus.MANAGER_REVISING;
             }
             else {
                 return res.status(400).json({
@@ -162,7 +162,7 @@ class PdrController {
             else if (pdr.linemanager_id === req.user.id ||
                 (req.user.role === "HR" &&
                     req.user.userRank === "LINE_MANAGER" &&
-                    targetStatus === prisma_1.PdrOverallStatus.MANAGER_FILLING)) {
+                    targetStatus === client_1.PdrOverallStatus.MANAGER_FILLING)) {
                 // User is the line manager OR HR with LINE_MANAGER rank filling manager section
                 // Use LINE_MANAGER for filling manager sections
                 effectiveRole = "LINE_MANAGER";
@@ -202,7 +202,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { comment } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -211,12 +211,12 @@ class PdrController {
             }
             // Determine target status
             let targetStatus;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_FILLING) {
-                targetStatus = prisma_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
+            if (pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_FILLING) {
+                targetStatus = client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.MANAGER_FILLING ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.MANAGER_REVISING) {
-                targetStatus = prisma_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_FILLING ||
+                pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_REVISING) {
+                targetStatus = client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
             }
             else {
                 return res.status(400).json({
@@ -233,7 +233,7 @@ class PdrController {
             else if (pdr.linemanager_id === req.user.id ||
                 (req.user.role === "HR" &&
                     req.user.userRank === "LINE_MANAGER" &&
-                    targetStatus === prisma_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)) {
+                    targetStatus === client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)) {
                 // User is the line manager OR HR with LINE_MANAGER rank submitting manager section
                 effectiveRole = "LINE_MANAGER";
             }
@@ -271,7 +271,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { comment } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -280,7 +280,7 @@ class PdrController {
             }
             // Determine workflow step
             let targetStatus;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR) {
+            if (pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR) {
                 // First transition to reviewing
                 await pdrService_1.PdrService.transitionStatus({
                     pdrId,
@@ -288,27 +288,27 @@ class PdrController {
                     userRole: req.user.role === "HR" ? "HR" : req.user.role,
                     userRank: req.user.userRank || undefined,
                     comment: "Starting review",
-                }, prisma_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE);
-                targetStatus = prisma_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE;
+                }, client_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE);
+                targetStatus = client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
-                targetStatus = prisma_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
+                targetStatus = client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR) {
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR) {
                 await pdrService_1.PdrService.transitionStatus({
                     pdrId,
                     userId: req.user.id,
                     userRole: req.user.role === "HR" ? "HR" : req.user.role,
                     userRank: req.user.userRank || undefined,
                     comment: "Starting review",
-                }, prisma_1.PdrOverallStatus.HR_REVIEWING_MANAGER);
-                targetStatus = prisma_1.PdrOverallStatus.HR_APPROVED_MANAGER;
+                }, client_1.PdrOverallStatus.HR_REVIEWING_MANAGER);
+                targetStatus = client_1.PdrOverallStatus.HR_APPROVED_MANAGER;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVIEWING_MANAGER) {
-                targetStatus = prisma_1.PdrOverallStatus.HR_APPROVED_MANAGER;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.HR_REVIEWING_MANAGER) {
+                targetStatus = client_1.PdrOverallStatus.HR_APPROVED_MANAGER;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.DIRECTOR_REVIEWED) {
-                targetStatus = prisma_1.PdrOverallStatus.COMPLETED;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.DIRECTOR_REVIEWED) {
+                targetStatus = client_1.PdrOverallStatus.COMPLETED;
             }
             else {
                 return res.status(400).json({
@@ -355,7 +355,7 @@ class PdrController {
                     message: "Revert message is required",
                 });
             }
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -364,14 +364,14 @@ class PdrController {
             }
             let targetStatus;
             let sentTo;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
-                targetStatus = prisma_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE;
+            if (pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR ||
+                pdr.overallStatus === client_1.PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
+                targetStatus = client_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE;
                 sentTo = "EMPLOYEE";
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.HR_REVIEWING_MANAGER) {
-                targetStatus = prisma_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR ||
+                pdr.overallStatus === client_1.PdrOverallStatus.HR_REVIEWING_MANAGER) {
+                targetStatus = client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER;
                 sentTo = "LINE_MANAGER";
             }
             else {
@@ -415,7 +415,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { comment, disagree } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -423,12 +423,12 @@ class PdrController {
                 });
             }
             let targetStatus;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.DIRECTOR_REVIEWED ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING ||
-                pdr.overallStatus === prisma_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED) {
+            if (pdr.overallStatus === client_1.PdrOverallStatus.DIRECTOR_REVIEWED ||
+                pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING ||
+                pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED) {
                 targetStatus = disagree
-                    ? prisma_1.PdrOverallStatus.EMPLOYEE_DISAGREED
-                    : prisma_1.PdrOverallStatus.COMPLETED;
+                    ? client_1.PdrOverallStatus.EMPLOYEE_DISAGREED
+                    : client_1.PdrOverallStatus.COMPLETED;
             }
             else {
                 return res.status(400).json({
@@ -478,7 +478,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { comment } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -486,11 +486,11 @@ class PdrController {
                 });
             }
             let targetStatus;
-            if (pdr.overallStatus === prisma_1.PdrOverallStatus.HR_APPROVED_MANAGER) {
-                targetStatus = prisma_1.PdrOverallStatus.DIRECTOR_REVIEWING;
+            if (pdr.overallStatus === client_1.PdrOverallStatus.HR_APPROVED_MANAGER) {
+                targetStatus = client_1.PdrOverallStatus.DIRECTOR_REVIEWING;
             }
-            else if (pdr.overallStatus === prisma_1.PdrOverallStatus.DIRECTOR_REVIEWING) {
-                targetStatus = prisma_1.PdrOverallStatus.DIRECTOR_REVIEWED;
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.DIRECTOR_REVIEWING) {
+                targetStatus = client_1.PdrOverallStatus.DIRECTOR_REVIEWED;
             }
             else {
                 return res.status(400).json({
@@ -500,7 +500,7 @@ class PdrController {
             }
             // Persist director overall comment if provided
             if (comment && comment.trim()) {
-                await prisma.pdr.update({
+                await prisma_1.prisma.pdr.update({
                     where: { id: pdrId },
                     data: {
                         director_overall_comment: comment.trim(),
@@ -581,7 +581,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             const { personalQualities, goalsTasks, comments, overallComments } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -624,7 +624,7 @@ class PdrController {
             const pdrId = parseInt(req.params.id, 10);
             // const { employeeType, part1, part2, managerRecommendations, directorOverallComment } = req.body;
             const { employeeType, part1, part2, managerRecommendations, directorOverallComment, pdr_timeline, } = req.body;
-            const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
                     success: false,
@@ -675,7 +675,7 @@ class PdrController {
                 return res.status(401).json({ message: "Unauthorized" });
             }
             const commentId = parseInt(req.params.commentId, 10);
-            const comment = await prisma.pdrComment.update({
+            const comment = await prisma_1.prisma.pdrComment.update({
                 where: { id: commentId },
                 data: {
                     isResolved: true,

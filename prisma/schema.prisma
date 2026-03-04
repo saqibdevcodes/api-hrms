@@ -1,12 +1,10 @@
-// Iris Communications HRMS Database Schema
-// This schema defines the database structure for the HRMS portal
 
 generator client {
-  provider      = "prisma-client"
-  output        = "../src/generated/prisma"
-  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"] // if working in windows this is recommended
-}
+  provider = "prisma-client-js"
 
+  engineType = "client"
+
+}
 datasource db {
   provider = "mysql"
 }

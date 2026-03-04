@@ -8,7 +8,6 @@ import fs from "fs";
 import { createServer } from "http";
 import cron from "node-cron";
 import { config, validateConfig } from "./config/env";
-import DatabaseConnection from "./config/database";
 import router from "./routes";
 import zktecoRoutes from "./routes/zktecoRoutes";
 import { SocketManager } from "./socket/socketManager";
@@ -41,7 +40,7 @@ app.use(
     },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
-  })
+  }),
 );
 
 // CORS configuration
@@ -67,12 +66,8 @@ app.use(
       "Pragma",
       "Expires",
     ],
-    exposedHeaders: [
-      "Cache-Control",
-      "Pragma",
-      "Expires",
-    ],
-  })
+    exposedHeaders: ["Cache-Control", "Pragma", "Expires"],
+  }),
 );
 
 // Create uploads directory for local storage (only if Cloudinary not configured)
@@ -98,14 +93,14 @@ if (!isCloudinaryConfigured && !isVercel) {
         res.setHeader("Access-Control-Allow-Origin", "*");
         next();
       },
-      express.static(uploadsDir)
+      express.static(uploadsDir),
     );
   } catch (error) {
     console.warn("⚠️  Could not create uploads directory:", error);
   }
 } else if (isCloudinaryConfigured) {
   console.log(
-    "✅ Using Cloudinary for file storage (no local uploads directory needed)"
+    "✅ Using Cloudinary for file storage (no local uploads directory needed)",
   );
 }
 
@@ -132,14 +127,14 @@ app.use(
   express.raw({
     type: "*/*",
     limit: "10mb",
-  })
+  }),
 );
 app.use(
   "/api/v1/zkteco/iclock",
   express.raw({
     type: "*/*",
     limit: "10mb",
-  })
+  }),
 );
 
 // Body parsing middleware
@@ -147,13 +142,13 @@ app.use(
   express.json({
     limit: "10mb",
     strict: true,
-  })
+  }),
 );
 app.use(
   express.urlencoded({
     extended: true,
     limit: "10mb",
-  })
+  }),
 );
 
 // Cookie parsing middleware
@@ -162,7 +157,7 @@ app.use(cookieParser(config.COOKIE_SECRET));
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(
-    `${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`
+    `${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`,
   );
   next();
 });
@@ -245,7 +240,7 @@ app.use(
     error: any,
     req: express.Request,
     res: express.Response,
-    next: express.NextFunction
+    next: express.NextFunction,
   ) => {
     console.error("Global error handler:", error);
 
@@ -279,7 +274,7 @@ app.use(
         timestamp: new Date().toISOString(),
       },
     });
-  }
+  },
 );
 
 // Graceful shutdown handler
@@ -287,7 +282,6 @@ const gracefulShutdown = async (signal: string) => {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
 
   try {
-    await DatabaseConnection.disconnect();
     console.log("✅ Database disconnected successfully");
 
     process.exit(0);
@@ -320,7 +314,6 @@ let socketManager: SocketManager;
 const startServer = async () => {
   try {
     // Connect to database
-    await DatabaseConnection.connect();
 
     // Create HTTP server
     const httpServer = createServer(app);
@@ -338,7 +331,7 @@ const startServer = async () => {
       console.log(`🌍 Environment: ${config.NODE_ENV}`);
       console.log(`📍 Base URL: http://localhost:${config.PORT}`);
       console.log(
-        `🔗 API Base: http://localhost:${config.PORT}${config.API_PREFIX}`
+        `🔗 API Base: http://localhost:${config.PORT}${config.API_PREFIX}`,
       );
       console.log(`🏥 Health Check: http://localhost:${config.PORT}/health`);
       console.log(`🔔 Socket.IO: Notifications enabled`);
@@ -349,54 +342,63 @@ const startServer = async () => {
       console.log("👤 Admin: admin@iris-communications.com / admin123");
       console.log("👥 HR: hr@iris-communications.com / hr123123");
       console.log("");
-      
+
       // Schedule automatic attendance finalization (runs daily at 2 AM)
       // This automatically finalizes staging records that are 3+ days old
-      cron.schedule("0 2 * * *", async () => {
-        console.log("");
-        console.log("🕐 ======================================");
-        console.log("🔄 Running Automatic Attendance Finalization");
-        console.log(`⏰ Time: ${new Date().toISOString()}`);
-        console.log("🕐 ======================================");
-        
-        try {
-          const result = await finalizationService.finalizeStagingRecords();
-          
-          console.log("📊 Finalization Results:");
-          console.log(`✅ Success: ${result.success}`);
-          console.log(`📝 Finalized: ${result.finalized} records`);
-          console.log(`❌ Errors: ${result.errors} records`);
+      cron.schedule(
+        "0 2 * * *",
+        async () => {
+          console.log("");
           console.log("🕐 ======================================");
-        } catch (error) {
-          console.error("❌ Automatic finalization failed:", error);
-          console.error("🕐 ======================================");
-        }
-      }, {
-        timezone: "Asia/Karachi" // Adjust to your timezone
-      });
-      
-      console.log("⏰ Automatic finalization scheduled: Daily at 2:00 AM (Asia/Karachi)");
+          console.log("🔄 Running Automatic Attendance Finalization");
+          console.log(`⏰ Time: ${new Date().toISOString()}`);
+          console.log("🕐 ======================================");
+
+          try {
+            const result = await finalizationService.finalizeStagingRecords();
+
+            console.log("📊 Finalization Results:");
+            console.log(`✅ Success: ${result.success}`);
+            console.log(`📝 Finalized: ${result.finalized} records`);
+            console.log(`❌ Errors: ${result.errors} records`);
+            console.log("🕐 ======================================");
+          } catch (error) {
+            console.error("❌ Automatic finalization failed:", error);
+            console.error("🕐 ======================================");
+          }
+        },
+        {
+          timezone: "Asia/Karachi", // Adjust to your timezone
+        },
+      );
+
+      console.log(
+        "⏰ Automatic finalization scheduled: Daily at 2:00 AM (Asia/Karachi)",
+      );
       console.log("");
-      
+
       // Schedule OTP cleanup (runs every 30 minutes)
       cron.schedule("*/30 * * * *", async () => {
         try {
-          const { AuthService } = await import('./services/authService');
+          const { AuthService } = await import("./services/authService");
           AuthService.cleanupExpiredOTPs();
           console.log("🧹 Expired OTPs cleaned up");
         } catch (error) {
           console.error("❌ OTP cleanup failed:", error);
         }
       });
-      
+
       console.log("🧹 OTP cleanup scheduled: Every 30 minutes");
       console.log("");
-      
+
       // Run finalization immediately on server start to process any existing old records
       console.log("🔄 Running initial finalization check...");
-      finalizationService.finalizeStagingRecords()
+      finalizationService
+        .finalizeStagingRecords()
         .then((result) => {
-          console.log(`✅ Initial finalization: ${result.finalized} records finalized, ${result.errors} errors`);
+          console.log(
+            `✅ Initial finalization: ${result.finalized} records finalized, ${result.errors} errors`,
+          );
         })
         .catch((error) => {
           console.error("❌ Initial finalization failed:", error);
@@ -420,18 +422,6 @@ const startServer = async () => {
 
 // Export socket manager for use in controllers
 export const getSocketManager = (): SocketManager => socketManager;
-
-// Initialize database connection for Vercel serverless
-if (process.env.VERCEL === "1") {
-  // Connect to database in serverless environment
-  DatabaseConnection.connect()
-    .then(() => {
-      console.log("✅ Database connected for Vercel serverless");
-    })
-    .catch((error) => {
-      console.error("❌ Database connection failed:", error);
-    });
-}
 
 // Export the Express app for Vercel serverless
 export default app;

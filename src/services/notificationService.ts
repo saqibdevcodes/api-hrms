@@ -1,7 +1,5 @@
-import { PrismaClient } from "../generated/prisma";
 import { SocketManager } from "../socket/socketManager";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export interface CreateNotificationData {
   title: string;
@@ -21,7 +19,6 @@ export interface CreateNotificationData {
     | "MEETING_SCHEDULED";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   data?: any;
-  fromUserId?: string; // Track who created/sent the notification
 }
 
 export class NotificationService {
@@ -34,7 +31,7 @@ export class NotificationService {
   // Create and send notification to a specific user
   async createNotificationForUser(
     userId: string,
-    notificationData: CreateNotificationData
+    notificationData: CreateNotificationData,
   ) {
     try {
       const notification = await prisma.notification.create({
@@ -45,7 +42,6 @@ export class NotificationService {
           type: notificationData.type,
           priority: notificationData.priority || "MEDIUM",
           data: notificationData.data || null,
-          fromUserId: notificationData.fromUserId || null,
         },
       });
 
@@ -53,7 +49,7 @@ export class NotificationService {
       if (this.socketManager) {
         await this.socketManager.sendNotificationToUser(
           userId,
-          notificationData
+          notificationData,
         );
       }
 
@@ -67,13 +63,13 @@ export class NotificationService {
   // Create and send notification to users with specific role
   async createNotificationForRole(
     role: string,
-    notificationData: CreateNotificationData
+    notificationData: CreateNotificationData,
   ) {
     try {
       if (this.socketManager) {
         return await this.socketManager.sendNotificationToRole(
           role,
-          notificationData
+          notificationData,
         );
       }
 
@@ -89,7 +85,7 @@ export class NotificationService {
       });
 
       const notifications = await Promise.all(
-        users.map((user) =>
+        users.map((user: any) =>
           prisma.notification.create({
             data: {
               userId: user.id,
@@ -99,8 +95,8 @@ export class NotificationService {
               priority: notificationData.priority || "MEDIUM",
               data: notificationData.data || null,
             },
-          })
-        )
+          }),
+        ),
       );
 
       return notifications;
@@ -128,7 +124,7 @@ export class NotificationService {
       });
 
       const notifications = await Promise.all(
-        users.map((user) =>
+        users.map((user: any) =>
           prisma.notification.create({
             data: {
               userId: user.id,
@@ -137,10 +133,9 @@ export class NotificationService {
               type: notificationData.type,
               priority: notificationData.priority || "MEDIUM",
               data: notificationData.data || null,
-              fromUserId: notificationData.fromUserId || null,
             },
-          })
-        )
+          }),
+        ),
       );
 
       return notifications;
@@ -159,7 +154,7 @@ export class NotificationService {
       isRead?: boolean;
       type?: string;
       userRole?: string;
-    }
+    },
   ) {
     try {
       const page = options?.page || 1;
@@ -170,7 +165,12 @@ export class NotificationService {
 
       // Filter notifications from specific user (e.g., user 1) - only show to admins
       // If current user is not admin or HR, exclude notifications from user 1
-      if (options?.userRole && options.userRole !== "ADMIN" && options.userRole !== "SUPERADMIN" && options.userRole !== "HR") {
+      if (
+        options?.userRole &&
+        options.userRole !== "ADMIN" &&
+        options.userRole !== "SUPERADMIN" &&
+        options.userRole !== "HR"
+      ) {
         // Find user 1 or system user
         const systemUser = await prisma.user.findFirst({
           where: {
@@ -306,7 +306,7 @@ export class NotificationService {
     employeeName: string,
     leaveType: string,
     startDate: string,
-    endDate: string
+    endDate: string,
   ) {
     // Notify HR and Admin about new leave request
     await this.createNotificationForRole("ADMIN", {
@@ -342,7 +342,7 @@ export class NotificationService {
     employeeId: string,
     leaveType: string,
     startDate: string,
-    endDate: string
+    endDate: string,
   ) {
     await this.createNotificationForUser(employeeId, {
       title: "Leave Request Approved",
@@ -363,7 +363,7 @@ export class NotificationService {
     leaveType: string,
     startDate: string,
     endDate: string,
-    reason?: string
+    reason?: string,
   ) {
     await this.createNotificationForUser(employeeId, {
       title: "Leave Request Rejected",
@@ -385,12 +385,12 @@ export class NotificationService {
   async sendPayrollProcessedNotification(
     employeeId: string,
     payPeriod: string,
-    amount: number
+    amount: number,
   ) {
     await this.createNotificationForUser(employeeId, {
       title: "Payroll Processed",
       message: `Your payroll for ${payPeriod} has been processed. Amount: $${amount.toFixed(
-        2
+        2,
       )}`,
       type: "PAYROLL_PROCESSED",
       priority: "MEDIUM",
@@ -403,7 +403,7 @@ export class NotificationService {
 
   async sendBirthdayReminderNotification(
     employeeId: string,
-    employeeName: string
+    employeeName: string,
   ) {
     // Send to HR to remind them about employee's birthday
     await this.createNotificationForRole("HR", {
@@ -421,7 +421,7 @@ export class NotificationService {
   async sendSystemAnnouncementNotification(
     title: string,
     message: string,
-    targetRole?: string
+    targetRole?: string,
   ) {
     if (targetRole) {
       await this.createNotificationForRole(targetRole, {

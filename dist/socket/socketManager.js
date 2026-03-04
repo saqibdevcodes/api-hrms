@@ -6,8 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SocketManager = void 0;
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class SocketManager {
     constructor(httpServer) {
         this.connectedUsers = new Map(); // userId -> socketId
@@ -37,7 +36,7 @@ class SocketManager {
                     role: decoded.role,
                 });
                 // Fetch user details from database
-                const user = await prisma.user.findUnique({
+                const user = await prisma_1.prisma.user.findUnique({
                     where: { id: decoded.userId },
                     select: {
                         id: true,
@@ -90,7 +89,7 @@ class SocketManager {
                 try {
                     if (!socket.user)
                         return;
-                    await prisma.notification.update({
+                    await prisma_1.prisma.notification.update({
                         where: {
                             id: notificationId,
                             userId: socket.user.id,
@@ -115,7 +114,7 @@ class SocketManager {
                 try {
                     if (!socket.user)
                         return;
-                    await prisma.notification.updateMany({
+                    await prisma_1.prisma.notification.updateMany({
                         where: {
                             userId: socket.user.id,
                             isRead: false,
@@ -139,7 +138,7 @@ class SocketManager {
                 try {
                     if (!socket.user)
                         return;
-                    const count = await prisma.notification.count({
+                    const count = await prisma_1.prisma.notification.count({
                         where: {
                             userId: socket.user.id,
                             isRead: false,
@@ -159,7 +158,7 @@ class SocketManager {
                 try {
                     if (!socket.user)
                         return;
-                    const notifications = await prisma.notification.findMany({
+                    const notifications = await prisma_1.prisma.notification.findMany({
                         where: {
                             userId: socket.user.id,
                         },
@@ -190,7 +189,7 @@ class SocketManager {
     async sendNotificationToUser(userId, notification) {
         try {
             // Save notification to database
-            const savedNotification = await prisma.notification.create({
+            const savedNotification = await prisma_1.prisma.notification.create({
                 data: {
                     userId,
                     title: notification.title,
@@ -217,7 +216,7 @@ class SocketManager {
     async sendNotificationToRole(role, notification) {
         try {
             // Get all users with the specified role
-            const users = await prisma.user.findMany({
+            const users = await prisma_1.prisma.user.findMany({
                 where: {
                     role: role,
                     isActive: true,
@@ -238,7 +237,7 @@ class SocketManager {
     async sendNotificationToAll(notification) {
         try {
             // Get all active users
-            const users = await prisma.user.findMany({
+            const users = await prisma_1.prisma.user.findMany({
                 where: {
                     isActive: true,
                 },

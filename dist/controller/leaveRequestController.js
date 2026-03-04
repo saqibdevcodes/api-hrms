@@ -2,10 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeaveRequestController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
+const prisma_1 = require("../lib/prisma");
 const notificationService_1 = require("../services/notificationService");
 const index_1 = require("../index");
-const prisma = new prisma_1.PrismaClient();
 class LeaveRequestController {
     // Get all leave requests (HR and Admin can see all, employees see only their own)
     static async getAllLeaveRequests(req, res) {
@@ -48,9 +47,9 @@ class LeaveRequestController {
                 ];
             }
             // Get total count
-            const total = await prisma.leaveRequest.count({ where });
+            const total = await prisma_1.prisma.leaveRequest.count({ where });
             // Get leave requests
-            const leaveRequests = await prisma.leaveRequest.findMany({
+            const leaveRequests = await prisma_1.prisma.leaveRequest.findMany({
                 where,
                 include: {
                     employee: {
@@ -108,7 +107,7 @@ class LeaveRequestController {
     static async getLeaveRequestById(req, res) {
         try {
             const { id } = req.params;
-            const leaveRequest = await prisma.leaveRequest.findUnique({
+            const leaveRequest = await prisma_1.prisma.leaveRequest.findUnique({
                 where: { id },
                 include: {
                     employee: {
@@ -189,7 +188,7 @@ class LeaveRequestController {
             // const employeeLeave = await prisma.employeeLeave.findUnique({
             //   where: { userId: req.user!.id }
             // });
-            const leaveRequest = await prisma.leaveRequest.create({
+            const leaveRequest = await prisma_1.prisma.leaveRequest.create({
                 data: {
                     employeeId: req.user.id,
                     leaveType,
@@ -258,7 +257,7 @@ class LeaveRequestController {
             }
             const { id } = req.params;
             const { leaveType, startDate, endDate, reason, comments } = req.body;
-            const existingRequest = await prisma.leaveRequest.findUnique({
+            const existingRequest = await prisma_1.prisma.leaveRequest.findUnique({
                 where: { id },
             });
             if (!existingRequest) {
@@ -296,7 +295,7 @@ class LeaveRequestController {
                     });
                 }
             }
-            const leaveRequest = await prisma.leaveRequest.update({
+            const leaveRequest = await prisma_1.prisma.leaveRequest.update({
                 where: { id },
                 data: {
                     ...(leaveType && { leaveType }),
@@ -342,7 +341,7 @@ class LeaveRequestController {
     static async deleteLeaveRequest(req, res) {
         try {
             const { id } = req.params;
-            const existingRequest = await prisma.leaveRequest.findUnique({
+            const existingRequest = await prisma_1.prisma.leaveRequest.findUnique({
                 where: { id },
             });
             if (!existingRequest) {
@@ -366,7 +365,7 @@ class LeaveRequestController {
                     message: "Cannot delete leave request that has already been processed",
                 });
             }
-            await prisma.leaveRequest.delete({
+            await prisma_1.prisma.leaveRequest.delete({
                 where: { id },
             });
             res.json({
@@ -388,7 +387,7 @@ class LeaveRequestController {
         try {
             const { id } = req.params;
             const { comments } = req.body;
-            const existingRequest = await prisma.leaveRequest.findUnique({
+            const existingRequest = await prisma_1.prisma.leaveRequest.findUnique({
                 where: { id },
             });
             if (!existingRequest) {
@@ -403,7 +402,7 @@ class LeaveRequestController {
                     message: "Leave request has already been processed",
                 });
             }
-            const leaveRequest = await prisma.leaveRequest.update({
+            const leaveRequest = await prisma_1.prisma.leaveRequest.update({
                 where: { id },
                 data: {
                     status: "APPROVED",
@@ -454,7 +453,7 @@ class LeaveRequestController {
         try {
             const { id } = req.params;
             const { comments } = req.body;
-            const existingRequest = await prisma.leaveRequest.findUnique({
+            const existingRequest = await prisma_1.prisma.leaveRequest.findUnique({
                 where: { id },
             });
             if (!existingRequest) {
@@ -469,7 +468,7 @@ class LeaveRequestController {
                     message: "Leave request has already been processed",
                 });
             }
-            const leaveRequest = await prisma.leaveRequest.update({
+            const leaveRequest = await prisma_1.prisma.leaveRequest.update({
                 where: { id },
                 data: {
                     status: "REJECTED",
@@ -536,20 +535,20 @@ class LeaveRequestController {
                 }
             }
             const [pending, approved, rejected, cancelled, total] = await Promise.all([
-                prisma.leaveRequest.count({ where: { ...where, status: "PENDING" } }),
-                prisma.leaveRequest.count({
+                prisma_1.prisma.leaveRequest.count({ where: { ...where, status: "PENDING" } }),
+                prisma_1.prisma.leaveRequest.count({
                     where: { ...where, status: "APPROVED" },
                 }),
-                prisma.leaveRequest.count({
+                prisma_1.prisma.leaveRequest.count({
                     where: { ...where, status: "REJECTED" },
                 }),
-                prisma.leaveRequest.count({
+                prisma_1.prisma.leaveRequest.count({
                     where: { ...where, status: "CANCELLED" },
                 }),
-                prisma.leaveRequest.count({ where }),
+                prisma_1.prisma.leaveRequest.count({ where }),
             ]);
             // Get employees currently on leave (approved requests where current date is between start and end date)
-            const onLeaveToday = await prisma.leaveRequest.count({
+            const onLeaveToday = await prisma_1.prisma.leaveRequest.count({
                 where: {
                     ...where,
                     status: "APPROVED",

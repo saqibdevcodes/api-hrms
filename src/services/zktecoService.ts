@@ -1,10 +1,8 @@
 import axios, { AxiosInstance } from "axios";
 import dgram from "dgram";
-import { PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import cron from "node-cron";
 import { getSocketManager } from "../index";
-
-const prisma = new PrismaClient();
 
 export interface ZKTecoDevice {
   id: string;
@@ -73,7 +71,7 @@ export class ZKTecoService {
 
     this.devices.set(device.id, device);
     console.log(
-      `ZKTeco device initialized: ${device.name} (${device.ip}:${device.port})`
+      `ZKTeco device initialized: ${device.name} (${device.ip}:${device.port})`,
     );
   }
 
@@ -85,7 +83,7 @@ export class ZKTecoService {
       // Note: iClock protocol uses HTTP, not UDP
       console.log("iClock HTTP server will be started via Express routes");
       console.log(
-        "Device should be configured to push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/"
+        "Device should be configured to push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/",
       );
     } catch (error) {
       console.error("Failed to start ADMS server:", error);
@@ -169,7 +167,7 @@ export class ZKTecoService {
    */
   public async processAttendanceData(
     attendanceData: AttendanceData,
-    deviceIp: string
+    deviceIp: string,
   ) {
     try {
       console.log("Processing attendance data:", attendanceData);
@@ -193,7 +191,7 @@ export class ZKTecoService {
       const dateOnly = new Date(
         attendanceDate.getFullYear(),
         attendanceDate.getMonth(),
-        attendanceDate.getDate()
+        attendanceDate.getDate(),
       );
 
       // Check if attendance record exists for this date
@@ -242,7 +240,7 @@ export class ZKTecoService {
       }
 
       console.log(
-        `Attendance recorded for employee ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`
+        `Attendance recorded for employee ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`,
       );
 
       // Emit real-time attendance update via Socket.IO
@@ -270,7 +268,7 @@ export class ZKTecoService {
             status: this.getAttendanceStatus(
               attendance.checkIn,
               attendance.checkOut,
-              attendanceDate
+              attendanceDate,
             ),
             checkType: attendanceData.checkType,
             timestamp: attendanceData.timestamp,
@@ -282,12 +280,12 @@ export class ZKTecoService {
           socketManager.emitToRole(
             "admin",
             "attendance:live_update",
-            attendanceUpdate
+            attendanceUpdate,
           );
           socketManager.emitToRole(
             "hr",
             "attendance:live_update",
-            attendanceUpdate
+            attendanceUpdate,
           );
 
           // Also emit to the specific employee
@@ -298,7 +296,7 @@ export class ZKTecoService {
           });
 
           console.log(
-            `Live attendance update emitted for ${employee.employeeId}`
+            `Live attendance update emitted for ${employee.employeeId}`,
           );
         }
       } catch (socketError) {
@@ -315,7 +313,7 @@ export class ZKTecoService {
   private getAttendanceStatus(
     checkIn: Date | null,
     checkOut: Date | null,
-    attendanceDate: Date
+    attendanceDate: Date,
   ): string {
     if (!checkIn && !checkOut) {
       return "Absent";
@@ -340,11 +338,11 @@ export class ZKTecoService {
    */
   private async processHeartbeat(deviceIp: string) {
     const device = Array.from(this.devices.values()).find(
-      (d) => d.ip === deviceIp
+      (d) => d.ip === deviceIp,
     );
     if (device) {
       console.log(
-        `Heartbeat received from device: ${device.name} (${deviceIp})`
+        `Heartbeat received from device: ${device.name} (${deviceIp})`,
       );
       // You can update device status, last seen time, etc.
     }
@@ -356,7 +354,7 @@ export class ZKTecoService {
   async fetchAttendanceFromDevice(
     deviceId: string,
     startDate?: Date,
-    endDate?: Date
+    endDate?: Date,
   ): Promise<AttendanceData[]> {
     const device = this.devices.get(deviceId);
     if (!device || !device.isActive) {
@@ -385,7 +383,7 @@ export class ZKTecoService {
     } catch (error) {
       console.error(
         `Error fetching attendance from device ${deviceId}:`,
-        error
+        error,
       );
       throw error;
     }
@@ -396,7 +394,7 @@ export class ZKTecoService {
    */
   private parseHttpAttendanceResponse(
     data: string,
-    deviceId: string
+    deviceId: string,
   ): AttendanceData[] {
     const attendanceRecords: AttendanceData[] = [];
 
@@ -438,7 +436,7 @@ export class ZKTecoService {
         const attendanceData = await this.fetchAttendanceFromDevice(
           device.id,
           startDate,
-          endDate
+          endDate,
         );
 
         for (const attendance of attendanceData) {
@@ -446,7 +444,7 @@ export class ZKTecoService {
         }
 
         console.log(
-          `Synced ${attendanceData.length} records from device ${device.name}`
+          `Synced ${attendanceData.length} records from device ${device.name}`,
         );
       } catch (error) {
         console.error(`Error syncing data from device ${device.name}:`, error);
@@ -511,7 +509,7 @@ export class ZKTecoService {
         {
           params: { password: device.password || "888888" },
           timeout: 5000,
-        }
+        },
       );
 
       if (response.data) {
@@ -527,7 +525,7 @@ export class ZKTecoService {
     } catch (error) {
       console.log(
         `Could not fetch device info for ${deviceId}:`,
-        (error as Error).message
+        (error as Error).message,
       );
       return null;
     }
@@ -573,7 +571,7 @@ export class ZKTecoService {
    */
   async uploadEmployeeToDevice(
     deviceId: string,
-    employee: EmployeeData
+    employee: EmployeeData,
   ): Promise<boolean> {
     const device = this.devices.get(deviceId);
     if (!device) {
@@ -597,7 +595,7 @@ export class ZKTecoService {
 
       await this.httpClient.post(url, data);
       console.log(
-        `Employee ${employee.name} uploaded to device ${device.name}`
+        `Employee ${employee.name} uploaded to device ${device.name}`,
       );
       return true;
     } catch (error) {
@@ -626,7 +624,7 @@ export class ZKTecoService {
     } catch (error) {
       console.error(
         `Error clearing attendance from device ${deviceId}:`,
-        error
+        error,
       );
       return false;
     }
@@ -654,13 +652,13 @@ export class ZKTecoService {
       try {
         await this.autoSyncDeviceDetails(sn);
         console.log(
-          `🔍 Device ${sn} is online - waiting for attendance data...`
+          `🔍 Device ${sn} is online - waiting for attendance data...`,
         );
         console.log(
-          `📡 Device should push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/`
+          `📡 Device should push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/`,
         );
         console.log(
-          `💡 Check device configuration: ADMS Server = 147.79.100.197, Port = 30000`
+          `💡 Check device configuration: ADMS Server = 147.79.100.197, Port = 30000`,
         );
       } catch (error) {
         console.error(`Error auto-syncing device ${sn}:`, error);
@@ -717,7 +715,7 @@ export class ZKTecoService {
       } catch (infoError) {
         console.log(
           `ℹ️ Could not fetch detailed info for device ${sn}:`,
-          (infoError as Error).message
+          (infoError as Error).message,
         );
       }
     } catch (error) {
@@ -758,7 +756,7 @@ export class ZKTecoService {
   async handleIClockCData(
     sn: string,
     table: string,
-    postData: Buffer
+    postData: Buffer,
   ): Promise<string> {
     console.log(`Device ${sn} uploading ${table} data`);
 
@@ -790,7 +788,7 @@ export class ZKTecoService {
    */
   private async processIClockAttendanceData(
     deviceSn: string,
-    data: Buffer
+    data: Buffer,
   ): Promise<void> {
     if (!data || data.length === 0) {
       return;
@@ -822,18 +820,13 @@ export class ZKTecoService {
             const verify = parts[3] || "1";
             const workCode = parts[4] || "0";
 
-            // Convert timestamp
+            // Convert timestamp - device sends local PKT time (UTC+5)
             let timestamp: Date;
             try {
-              timestamp = new Date(timestampStr);
+              const isoStr = timestampStr.trim().replace(" ", "T");
+              timestamp = new Date(isoStr + "+05:00");
               if (isNaN(timestamp.getTime())) {
-                // Try parsing as YYYY-MM-DD HH:MM:SS
-                const parsedDate = new Date(timestampStr.replace(" ", "T"));
-                if (!isNaN(parsedDate.getTime())) {
-                  timestamp = parsedDate;
-                } else {
-                  throw new Error("Invalid date format");
-                }
+                throw new Error("Invalid date format");
               }
             } catch (e) {
               console.warn(`Invalid timestamp format: ${timestampStr}`);
@@ -860,21 +853,21 @@ export class ZKTecoService {
             // Process the attendance data (this will save to DB and emit live updates)
             await this.processZKTecoAttendanceData(
               attendanceData,
-              this.devices.get(deviceSn)?.ip || "192.168.2.202"
+              this.devices.get(deviceSn)?.ip || "192.168.2.202",
             );
             recordsProcessed++;
           }
         } catch (error) {
           console.warn(
             `Error parsing attendance line '${trimmedLine}':`,
-            error
+            error,
           );
           continue;
         }
       }
 
       console.log(
-        `✅ Processed ${recordsProcessed} attendance records from ${deviceSn}`
+        `✅ Processed ${recordsProcessed} attendance records from ${deviceSn}`,
       );
       console.log(`📊 Processing completed at: ${new Date().toISOString()}`);
     } catch (error) {
@@ -903,7 +896,7 @@ export class ZKTecoService {
    */
   private async handleProgressiveDeductions(
     employeeId: string,
-    attendanceId: string
+    attendanceId: string,
   ): Promise<void> {
     try {
       // Get recent statuses that haven't been used for deductions (last 30 days)
@@ -931,7 +924,7 @@ export class ZKTecoService {
           },
           select: { id: true, timestamp: true, overallStatus: true },
           orderBy: { timestamp: "asc" },
-        }
+        },
       );
 
       // NEW: Get today's FULL_DAY_LEAVE records for automatic deduction
@@ -939,7 +932,7 @@ export class ZKTecoService {
       const todayStart = new Date(
         today.getFullYear(),
         today.getMonth(),
-        today.getDate()
+        today.getDate(),
       );
       const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
@@ -964,13 +957,13 @@ export class ZKTecoService {
         });
 
       console.log(
-        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`
+        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`,
       );
 
       // NEW: Automatic deduction for FULL_DAY_LEAVE status
       if (todayFullDayLeaveRecords.length > 0) {
         console.log(
-          `🚫 Processing automatic deduction for ${todayFullDayLeaveRecords.length} FULL_DAY_LEAVE record(s)`
+          `🚫 Processing automatic deduction for ${todayFullDayLeaveRecords.length} FULL_DAY_LEAVE record(s)`,
         );
 
         for (const record of todayFullDayLeaveRecords) {
@@ -981,7 +974,7 @@ export class ZKTecoService {
           await this.deductFromLeavePolicy(
             employeeId,
             1.0,
-            "FULL_DAY_LEAVE_AUTOMATIC"
+            "FULL_DAY_LEAVE_AUTOMATIC",
           );
 
           // Create deduction record
@@ -991,11 +984,11 @@ export class ZKTecoService {
             1.0, // Full day
             employeeId,
             [record.id],
-            "FULL_DAY_LEAVE_AUTOMATIC"
+            "FULL_DAY_LEAVE_AUTOMATIC",
           );
 
           console.log(
-            `⚠️ Applied automatic FULL_DAY_LEAVE deduction for employee ${employeeId}. Record: ${record.id}`
+            `⚠️ Applied automatic FULL_DAY_LEAVE deduction for employee ${employeeId}. Record: ${record.id}`,
           );
         }
       }
@@ -1004,7 +997,7 @@ export class ZKTecoService {
       if (unusedLateRecords.length >= 3) {
         // Take the first 3 unused late records
         const recordsToUse = unusedLateRecords.slice(0, 3);
-        const recordIds = recordsToUse.map((r) => r.id);
+        const recordIds = recordsToUse.map((r: any) => r.id);
 
         await this.createAttendanceDeduction(
           attendanceId,
@@ -1012,7 +1005,7 @@ export class ZKTecoService {
           0.5, // Half day
           employeeId,
           recordIds,
-          "LATE_TO_HALF_DAY"
+          "LATE_TO_HALF_DAY",
         );
 
         // Mark these records as used for deduction
@@ -1023,8 +1016,8 @@ export class ZKTecoService {
 
         console.log(
           `⚠️ Applied Half Day deduction for 3 late arrivals to employee ${employeeId}. Records: ${recordIds.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
       }
 
@@ -1032,7 +1025,7 @@ export class ZKTecoService {
       if (unusedHalfDayRecords.length >= 2) {
         // Take the first 2 unused half day records
         const recordsToUse = unusedHalfDayRecords.slice(0, 2);
-        const recordIds = recordsToUse.map((r) => r.id);
+        const recordIds = recordsToUse.map((r: any) => r.id);
 
         await this.createAttendanceDeduction(
           attendanceId,
@@ -1040,7 +1033,7 @@ export class ZKTecoService {
           1.0, // Full day
           employeeId,
           recordIds,
-          "HALF_DAY_TO_FULL_DAY"
+          "HALF_DAY_TO_FULL_DAY",
         );
 
         // Mark these records as used for deduction
@@ -1051,8 +1044,8 @@ export class ZKTecoService {
 
         console.log(
           `⚠️ Applied Full Day deduction and deducted from casual leaves for employee ${employeeId}. Records: ${recordIds.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
       }
     } catch (error) {
@@ -1069,7 +1062,7 @@ export class ZKTecoService {
     deductValue: number,
     employeeId: string,
     zktecoRecordIds: string[],
-    deductionType: string
+    deductionType: string,
   ): Promise<void> {
     // Get employee's leave record ID
 
@@ -1094,7 +1087,7 @@ export class ZKTecoService {
    * Mark ZKTeco records as used for deduction to prevent duplicate processing
    */
   private async markRecordsAsUsedForDeduction(
-    recordIds: string[]
+    recordIds: string[],
   ): Promise<void> {
     await prisma.zKTecoAttendanceRecord.updateMany({
       where: {
@@ -1116,7 +1109,7 @@ export class ZKTecoService {
     violationType:
       | "LATE_TO_HALF_DAY"
       | "HALF_DAY_TO_FULL_DAY"
-      | "FULL_DAY_LEAVE_AUTOMATIC"
+      | "FULL_DAY_LEAVE_AUTOMATIC",
   ): Promise<void> {
     try {
       // Get employee's leave policy and current balances
@@ -1133,7 +1126,7 @@ export class ZKTecoService {
 
       if (!employeeLeave) {
         console.warn(
-          `❌ No employee leave record found for user ${employeeId}`
+          `❌ No employee leave record found for user ${employeeId}`,
         );
         return;
       }
@@ -1174,7 +1167,7 @@ export class ZKTecoService {
           });
         } else {
           console.warn(
-            `⚠️ Insufficient leave balance for deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`
+            `⚠️ Insufficient leave balance for deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`,
           );
           return;
         }
@@ -1201,7 +1194,7 @@ export class ZKTecoService {
           });
         } else {
           console.warn(
-            `⚠️ Insufficient leave balance for deduction. Annual: ${employeeLeave.annualLeaves}, Casual: ${employeeLeave.casualLeaves}`
+            `⚠️ Insufficient leave balance for deduction. Annual: ${employeeLeave.annualLeaves}, Casual: ${employeeLeave.casualLeaves}`,
           );
           return;
         }
@@ -1228,19 +1221,19 @@ export class ZKTecoService {
           });
         } else {
           console.warn(
-            `⚠️ Insufficient leave balance for FULL_DAY_LEAVE deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`
+            `⚠️ Insufficient leave balance for FULL_DAY_LEAVE deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`,
           );
           return;
         }
       }
 
       console.log(
-        `📉 Deducted ${daysToDeduct} day(s) from ${leaveCategory}. Old balance: ${currentBalance}, New balance: ${newBalance}`
+        `📉 Deducted ${daysToDeduct} day(s) from ${leaveCategory}. Old balance: ${currentBalance}, New balance: ${newBalance}`,
       );
 
       // Log the deduction details for audit
       console.log(
-        `📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`
+        `📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`,
       );
 
       // Also log the updated leave balance summary
@@ -1255,13 +1248,13 @@ export class ZKTecoService {
 
       if (updatedBalance) {
         console.log(
-          `📊 Updated leave balance for ${employeeId}: Annual: ${updatedBalance.annualLeaves}, Casual: ${updatedBalance.casualLeaves}, Sick: ${updatedBalance.sickLeaves}`
+          `📊 Updated leave balance for ${employeeId}: Annual: ${updatedBalance.annualLeaves}, Casual: ${updatedBalance.casualLeaves}, Sick: ${updatedBalance.sickLeaves}`,
         );
       }
     } catch (error) {
       console.error(
         `❌ Error deducting from leave policy for user ${employeeId}:`,
-        error
+        error,
       );
     }
   }
@@ -1271,7 +1264,7 @@ export class ZKTecoService {
    */
   public async debugAttendanceRecords(
     employeeId: string,
-    date: string
+    date: string,
   ): Promise<any> {
     try {
       const targetDate = new Date(date);
@@ -1279,12 +1272,12 @@ export class ZKTecoService {
         Date.UTC(
           targetDate.getUTCFullYear(),
           targetDate.getUTCMonth(),
-          targetDate.getUTCDate()
-        )
+          targetDate.getUTCDate(),
+        ),
       );
 
       console.log(
-        `🔍 Debug: Searching for attendance on ${dateOnly.toISOString()}`
+        `🔍 Debug: Searching for attendance on ${dateOnly.toISOString()}`,
       );
 
       // Get attendance record
@@ -1322,7 +1315,7 @@ export class ZKTecoService {
               totalHours: attendance.totalHours,
             }
           : null,
-        zktecoRecords: zktecoRecords.map((record) => ({
+        zktecoRecords: zktecoRecords.map((record: any) => ({
           id: record.id,
           timestamp: record.timestamp.toISOString(),
           checkType: record.checkType,
@@ -1332,12 +1325,13 @@ export class ZKTecoService {
         })),
         summary: {
           totalRecords: zktecoRecords.length,
-          checkIns: zktecoRecords.filter((r) => r.checkType === "check_in")
+          checkIns: zktecoRecords.filter((r: any) => r.checkType === "check_in")
             .length,
-          checkOuts: zktecoRecords.filter((r) => r.checkType === "check_out")
-            .length,
-          processed: zktecoRecords.filter((r) => r.processed).length,
-          errors: zktecoRecords.filter((r) => r.processingError).length,
+          checkOuts: zktecoRecords.filter(
+            (r: any) => r.checkType === "check_out",
+          ).length,
+          processed: zktecoRecords.filter((r: any) => r.processed).length,
+          errors: zktecoRecords.filter((r: any) => r.processingError).length,
         },
       };
     } catch (error) {
@@ -1351,7 +1345,7 @@ export class ZKTecoService {
    */
   public async fixAttendanceRecords(
     employeeId: string,
-    date: string
+    date: string,
   ): Promise<any> {
     try {
       const targetDate = new Date(date);
@@ -1359,12 +1353,12 @@ export class ZKTecoService {
         Date.UTC(
           targetDate.getUTCFullYear(),
           targetDate.getUTCMonth(),
-          targetDate.getUTCDate()
-        )
+          targetDate.getUTCDate(),
+        ),
       );
 
       console.log(
-        `🔧 Fix: Processing attendance for ${employeeId} on ${dateOnly.toISOString()}`
+        `🔧 Fix: Processing attendance for ${employeeId} on ${dateOnly.toISOString()}`,
       );
 
       // Get all unprocessed ZKTeco records for this employee on this date
@@ -1399,7 +1393,7 @@ export class ZKTecoService {
 
           const result = await this.processZKTecoAttendanceData(
             attendanceData,
-            record.deviceId
+            record.deviceId,
           );
           if (result) {
             fixedCount++;
@@ -1483,7 +1477,7 @@ export class ZKTecoService {
     } catch (error) {
       console.error(
         `❌ Error getting leave balance for user ${employeeId}:`,
-        error
+        error,
       );
       return null;
     }
@@ -1509,7 +1503,7 @@ export class ZKTecoService {
 
     // Enhance with ZKTeco record details
     const enhancedDeductions = await Promise.all(
-      deductions.map(async (deduction) => {
+      deductions.map(async (deduction: any) => {
         let triggeringRecords: any[] = [];
 
         if (deduction.zktecoRecordIds) {
@@ -1535,7 +1529,7 @@ export class ZKTecoService {
           ...deduction,
           triggeringRecords,
         };
-      })
+      }),
     );
 
     return enhancedDeductions;
@@ -1562,11 +1556,11 @@ export class ZKTecoService {
     });
 
     const alreadyUsed = records
-      .filter((r) => r.usedForDeduction)
-      .map((r) => r.id);
+      .filter((r: any) => r.usedForDeduction)
+      .map((r: any) => r.id);
     const available = records
-      .filter((r) => !r.usedForDeduction)
-      .map((r) => r.id);
+      .filter((r: any) => !r.usedForDeduction)
+      .map((r: any) => r.id);
 
     return {
       canUse: alreadyUsed.length === 0,
@@ -1581,7 +1575,7 @@ export class ZKTecoService {
   private calculatePreciseAttendanceStatus(
     checkType: string,
     timestamp: Date,
-    shift: any
+    shift: any,
   ): string | null {
     if (!shift) return null;
     console.log("Calculating precise attendance status");
@@ -1612,7 +1606,7 @@ export class ZKTecoService {
       shiftStart.getHours(),
       shiftStart.getMinutes(),
       0,
-      0
+      0,
     );
     console.log("todayShiftStart", todayShiftStart);
     const todayHalfDayStart = halfDayStart ? new Date(attendanceDate) : null;
@@ -1621,7 +1615,7 @@ export class ZKTecoService {
         halfDayStart.getHours(),
         halfDayStart.getMinutes(),
         0,
-        0
+        0,
       );
     }
     console.log("todayHalfDayStart", todayHalfDayStart);
@@ -1631,7 +1625,7 @@ export class ZKTecoService {
         fullDayStart.getHours(),
         fullDayStart.getMinutes(),
         0,
-        0
+        0,
       );
     }
     console.log("todayFullDayStart", todayFullDayStart);
@@ -1728,26 +1722,35 @@ export class ZKTecoService {
    */
   public async processZKTecoAttendanceData(
     attendanceData: AttendanceData,
-    deviceIp: string
+    deviceIp: string,
   ): Promise<boolean> {
     try {
       console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
 
       // Step 1: Save to STAGING table first (3-day delay before finalization)
+      // Store all timestamps as PKT in the database so DB values match wall-clock time
+      const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+      const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
+      const pktTimestamp = new Date(attendanceData.timestamp.getTime() + PKT_OFFSET_MS);
+
       const stagingRecord = await prisma.zKTecoAttendanceStaging.create({
         data: {
           employeeId: attendanceData.employeeId,
           deviceId: attendanceData.deviceId,
-          timestamp: attendanceData.timestamp,
-          checkType: attendanceData.checkType, // Keep as lowercase (check_in, check_out)
+          timestamp: pktTimestamp,
+          checkType: attendanceData.checkType,
           verifyType: attendanceData.verifyType,
           workCode: (attendanceData as any).workCode || null,
           processed: false,
           isFinalized: false,
+          createdAt: pktNow(),
+          updatedAt: pktNow(),
         },
       });
 
-      console.log(`📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 3 days)`);
+      console.log(
+        `📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 3 days)`,
+      );
 
       // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
       const employee = await prisma.user.findFirst({
@@ -1767,11 +1770,12 @@ export class ZKTecoService {
           where: { id: stagingRecord.id },
           data: {
             processingError: `Employee not found for ID: ${attendanceData.employeeId}`,
-            overallStatus: "ABSENT", // Mark as absent if employee not found
+            overallStatus: "ABSENT",
+            updatedAt: pktNow(),
           },
         });
         console.warn(
-          `❌ Employee not found for ID: ${attendanceData.employeeId}`
+          `❌ Employee not found for ID: ${attendanceData.employeeId}`,
         );
         return false;
       }
@@ -1780,7 +1784,7 @@ export class ZKTecoService {
       let calculatedStatus = this.calculatePreciseAttendanceStatus(
         attendanceData.checkType,
         attendanceData.timestamp,
-        employee.shift
+        employee.shift,
       );
 
       // Special handling for FULL_DAY_LEAVE_POTENTIAL from check-in
@@ -1795,7 +1799,7 @@ export class ZKTecoService {
       console.log(
         `📊 Calculated status for ${employee.firstName} ${employee.lastName}: ${
           calculatedStatus || "No specific status"
-        }`
+        }`,
       );
 
       // Step 4: Update the staging record with calculated status
@@ -1803,7 +1807,8 @@ export class ZKTecoService {
         where: { id: stagingRecord.id },
         data: {
           userId: employee.id,
-          overallStatus: calculatedStatus as any, // Cast to any to avoid type issues until Prisma client is regenerated
+          overallStatus: calculatedStatus as any,
+          updatedAt: pktNow(),
         },
       });
 
@@ -1825,10 +1830,10 @@ export class ZKTecoService {
       const attendanceDate = new Date(attendanceData.timestamp);
       const todayDateOnly = new Date(
         Date.UTC(
-          attendanceDate.getUTCFullYear(),
-          attendanceDate.getUTCMonth(),
-          attendanceDate.getUTCDate()
-        )
+          attendanceDate.getFullYear(),
+          attendanceDate.getMonth(),
+          attendanceDate.getDate(),
+        ),
       );
 
       if (attendanceData.checkType === "check_out") {
@@ -1857,25 +1862,27 @@ export class ZKTecoService {
           // Get shift times for validation
           const shift = employee.shift;
           if (shift) {
+            // checkInTime from DB is already PKT-as-UTC; convert checkOutTime to match
             const checkInTime = new Date(todayCheckIn.timestamp);
-            const checkOutTime = new Date(attendanceData.timestamp);
+            const checkOutTime = new Date(attendanceData.timestamp.getTime() + PKT_OFFSET_MS);
 
-            // Create today's shift times
+            // Create today's shift times using setUTCHours with PKT hours
+            // (shift.startTime stored as real UTC, .getHours() returns PKT local hour)
             const todayShiftStart = new Date(todayDateOnly);
-            todayShiftStart.setHours(
+            todayShiftStart.setUTCHours(
               new Date(shift.startTime).getHours(),
               new Date(shift.startTime).getMinutes(),
               0,
-              0
+              0,
             );
 
             const todayFullDayStart = new Date(todayDateOnly);
             if (shift.fullDayStart) {
-              todayFullDayStart.setHours(
+              todayFullDayStart.setUTCHours(
                 new Date(shift.fullDayStart).getHours(),
                 new Date(shift.fullDayStart).getMinutes(),
                 0,
-                0
+                0,
               );
             }
 
@@ -1887,7 +1894,7 @@ export class ZKTecoService {
 
             if (toaValid && tolValid) {
               console.log(
-                `✅ FULL_DAY_LEAVE condition validated: toa >= fds AND tol < fds && > st`
+                `✅ FULL_DAY_LEAVE condition validated: toa >= fds AND tol < fds && > st`,
               );
 
               // Update check-in record to confirmed FULL_DAY_LEAVE
@@ -1895,6 +1902,7 @@ export class ZKTecoService {
                 where: { id: todayCheckIn.id },
                 data: {
                   overallStatus: "FULL_DAY_LEAVE",
+                  updatedAt: pktNow(),
                 },
               });
 
@@ -1903,6 +1911,7 @@ export class ZKTecoService {
                 where: { id: stagingRecord.id },
                 data: {
                   overallStatus: "FULL_DAY_LEAVE",
+                  updatedAt: pktNow(),
                 },
               });
 
@@ -1929,7 +1938,7 @@ export class ZKTecoService {
           attendanceData.checkType === "check_out"
         ) {
           console.log(
-            `🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`
+            `🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`,
           );
 
           // Mark current check-out record with processing error (deduction tracking only in final table)
@@ -1937,6 +1946,7 @@ export class ZKTecoService {
             where: { id: stagingRecord.id },
             data: {
               processingError: "Marked for FULL_DAY_LEAVE deduction",
+              updatedAt: pktNow(),
             },
           });
 
@@ -1946,17 +1956,18 @@ export class ZKTecoService {
               where: { id: todayCheckIn.id },
               data: {
                 processingError: "Marked for FULL_DAY_LEAVE deduction",
+                updatedAt: pktNow(),
               },
             });
             console.log(
-              `✅ Marked check-in record ${todayCheckIn.id} as used for deduction`
+              `✅ Marked check-in record ${todayCheckIn.id} as used for deduction`,
             );
           } else {
             console.log(`⚠️ No check-in record found to mark for deduction`);
           }
 
           console.log(
-            `✅ Both check-in and check-out records marked as used for deduction`
+            `✅ Both check-in and check-out records marked as used for deduction`,
           );
         }
 
@@ -1966,7 +1977,7 @@ export class ZKTecoService {
           calculatedStatus !== "FULL_DAY_LEAVE"
         ) {
           console.log(
-            `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`
+            `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`,
           );
 
           // Mark this checkout record as blocked
@@ -1974,7 +1985,9 @@ export class ZKTecoService {
             where: { id: stagingRecord.id },
             data: {
               overallStatus: todayCheckIn.overallStatus,
-              processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE (deduction in final table)",
+              processingError:
+                "Checkout blocked - Check-in was FULL_DAY_LEAVE (deduction in final table)",
+              updatedAt: pktNow(),
             },
           });
 
@@ -1982,12 +1995,14 @@ export class ZKTecoService {
           await prisma.zKTecoAttendanceStaging.update({
             where: { id: todayCheckIn.id },
             data: {
-              processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+              processingError:
+                "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+              updatedAt: pktNow(),
             },
           });
 
           console.log(
-            `🔒 Marked check-in record ${todayCheckIn.id} as used for deduction`
+            `🔒 Marked check-in record ${todayCheckIn.id} as used for deduction`,
           );
 
           return true; // Still return success but don't process further
@@ -2008,11 +2023,11 @@ export class ZKTecoService {
 
         if (todayCheckOut) {
           console.log(
-            `🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`
+            `🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`,
           );
           console.log(
             "todayCheckOut.overallStatus",
-            todayCheckOut.overallStatus
+            todayCheckOut.overallStatus,
           );
           // Mark this check-in record as blocked
           await prisma.zKTecoAttendanceStaging.update({
@@ -2021,6 +2036,7 @@ export class ZKTecoService {
               overallStatus: null,
               processingError:
                 "Check-in blocked - Check-out was FULL_DAY_LEAVE (deduction in final table)",
+              updatedAt: pktNow(),
             },
           });
 
@@ -2028,12 +2044,14 @@ export class ZKTecoService {
           await prisma.zKTecoAttendanceStaging.update({
             where: { id: todayCheckOut.id },
             data: {
-              processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+              processingError:
+                "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+              updatedAt: pktNow(),
             },
           });
 
           console.log(
-            `🔒 Marked checkout record ${todayCheckOut.id} as used for deduction`
+            `🔒 Marked checkout record ${todayCheckOut.id} as used for deduction`,
           );
 
           return true; // Still return success but don't process further
@@ -2047,13 +2065,16 @@ export class ZKTecoService {
         data: {
           processed: true,
           processingError: null,
+          updatedAt: pktNow(),
         },
       });
 
       console.log(
-        `✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`
+        `✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp.toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} PKT (DB stores UTC: ${attendanceData.timestamp.toISOString()})`,
       );
-      console.log(`⏳ Record will be finalized and moved to attendance after 3 days`);
+      console.log(
+        `⏳ Record will be finalized and moved to attendance after 3 days`,
+      );
 
       return true;
     } catch (error) {
@@ -2068,7 +2089,7 @@ export class ZKTecoService {
   private async emitAttendanceUpdate(
     employee: any,
     attendance: any,
-    attendanceData: AttendanceData
+    attendanceData: AttendanceData,
   ) {
     try {
       const socketManager = getSocketManager();
@@ -2092,7 +2113,7 @@ export class ZKTecoService {
         status: this.getAttendanceStatus(
           attendance.checkIn,
           attendance.checkOut,
-          attendance.date
+          attendance.date,
         ),
         timestamp: attendanceData.timestamp.toISOString(),
         checkType: attendanceData.checkType,
@@ -2109,12 +2130,12 @@ export class ZKTecoService {
       socketManager.emitToRole(
         "admin",
         "attendance:live_update",
-        attendanceUpdate
+        attendanceUpdate,
       );
       socketManager.emitToRole(
         "hr",
         "attendance:live_update",
-        attendanceUpdate
+        attendanceUpdate,
       );
 
       // Emit personal update
@@ -2128,7 +2149,7 @@ export class ZKTecoService {
       });
 
       console.log(
-        `📡 Live attendance update emitted for employee ${employee.employeeId}`
+        `📡 Live attendance update emitted for employee ${employee.employeeId}`,
       );
     } catch (error) {
       console.error("Error emitting attendance update:", error);

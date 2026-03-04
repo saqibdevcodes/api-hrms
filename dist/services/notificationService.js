@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationService = void 0;
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class NotificationService {
     constructor(socketManager) {
         this.socketManager = socketManager;
@@ -10,7 +9,7 @@ class NotificationService {
     // Create and send notification to a specific user
     async createNotificationForUser(userId, notificationData) {
         try {
-            const notification = await prisma.notification.create({
+            const notification = await prisma_1.prisma.notification.create({
                 data: {
                     userId,
                     title: notificationData.title,
@@ -18,7 +17,6 @@ class NotificationService {
                     type: notificationData.type,
                     priority: notificationData.priority || "MEDIUM",
                     data: notificationData.data || null,
-                    fromUserId: notificationData.fromUserId || null,
                 },
             });
             // Send real-time notification if socket manager is available
@@ -39,7 +37,7 @@ class NotificationService {
                 return await this.socketManager.sendNotificationToRole(role, notificationData);
             }
             // Fallback: create notifications without real-time sending
-            const users = await prisma.user.findMany({
+            const users = await prisma_1.prisma.user.findMany({
                 where: {
                     role: role,
                     isActive: true,
@@ -48,7 +46,7 @@ class NotificationService {
                     id: true,
                 },
             });
-            const notifications = await Promise.all(users.map((user) => prisma.notification.create({
+            const notifications = await Promise.all(users.map((user) => prisma_1.prisma.notification.create({
                 data: {
                     userId: user.id,
                     title: notificationData.title,
@@ -72,7 +70,7 @@ class NotificationService {
                 return await this.socketManager.sendNotificationToAll(notificationData);
             }
             // Fallback: create notifications without real-time sending
-            const users = await prisma.user.findMany({
+            const users = await prisma_1.prisma.user.findMany({
                 where: {
                     isActive: true,
                 },
@@ -80,7 +78,7 @@ class NotificationService {
                     id: true,
                 },
             });
-            const notifications = await Promise.all(users.map((user) => prisma.notification.create({
+            const notifications = await Promise.all(users.map((user) => prisma_1.prisma.notification.create({
                 data: {
                     userId: user.id,
                     title: notificationData.title,
@@ -88,7 +86,6 @@ class NotificationService {
                     type: notificationData.type,
                     priority: notificationData.priority || "MEDIUM",
                     data: notificationData.data || null,
-                    fromUserId: notificationData.fromUserId || null,
                 },
             })));
             return notifications;
@@ -107,9 +104,12 @@ class NotificationService {
             const where = { userId };
             // Filter notifications from specific user (e.g., user 1) - only show to admins
             // If current user is not admin or HR, exclude notifications from user 1
-            if (options?.userRole && options.userRole !== "ADMIN" && options.userRole !== "SUPERADMIN" && options.userRole !== "HR") {
+            if (options?.userRole &&
+                options.userRole !== "ADMIN" &&
+                options.userRole !== "SUPERADMIN" &&
+                options.userRole !== "HR") {
                 // Find user 1 or system user
-                const systemUser = await prisma.user.findFirst({
+                const systemUser = await prisma_1.prisma.user.findFirst({
                     where: {
                         OR: [
                             { email: "admin@iriscommunications.com" },
@@ -131,7 +131,7 @@ class NotificationService {
                 where.type = options.type;
             }
             const [notifications, total] = await Promise.all([
-                prisma.notification.findMany({
+                prisma_1.prisma.notification.findMany({
                     where,
                     orderBy: {
                         createdAt: "desc",
@@ -139,7 +139,7 @@ class NotificationService {
                     skip: offset,
                     take: limit,
                 }),
-                prisma.notification.count({ where }),
+                prisma_1.prisma.notification.count({ where }),
             ]);
             return {
                 notifications,
@@ -159,7 +159,7 @@ class NotificationService {
     // Mark notification as read
     async markAsRead(notificationId, userId) {
         try {
-            const notification = await prisma.notification.update({
+            const notification = await prisma_1.prisma.notification.update({
                 where: {
                     id: notificationId,
                     userId, // Ensure user can only mark their own notifications
@@ -179,7 +179,7 @@ class NotificationService {
     // Mark all notifications as read for a user
     async markAllAsRead(userId) {
         try {
-            const result = await prisma.notification.updateMany({
+            const result = await prisma_1.prisma.notification.updateMany({
                 where: {
                     userId,
                     isRead: false,
@@ -199,7 +199,7 @@ class NotificationService {
     // Get unread notifications count
     async getUnreadCount(userId) {
         try {
-            const count = await prisma.notification.count({
+            const count = await prisma_1.prisma.notification.count({
                 where: {
                     userId,
                     isRead: false,
@@ -215,7 +215,7 @@ class NotificationService {
     // Delete notification
     async deleteNotification(notificationId, userId) {
         try {
-            const notification = await prisma.notification.delete({
+            const notification = await prisma_1.prisma.notification.delete({
                 where: {
                     id: notificationId,
                     userId, // Ensure user can only delete their own notifications

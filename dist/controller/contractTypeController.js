@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ContractTypeController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class ContractTypeController {
     // Get all contract types
     static async getAllContractTypes(req, res) {
@@ -24,7 +23,7 @@ class ContractTypeController {
                 where.isActive = isActive === "true";
             }
             const [contractTypes, total] = await Promise.all([
-                prisma.contractType.findMany({
+                prisma_1.prisma.contractType.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -35,7 +34,7 @@ class ContractTypeController {
                         },
                     },
                 }),
-                prisma.contractType.count({ where }),
+                prisma_1.prisma.contractType.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -64,7 +63,7 @@ class ContractTypeController {
     static async getContractTypeById(req, res) {
         try {
             const { id } = req.params;
-            const contractType = await prisma.contractType.findUnique({
+            const contractType = await prisma_1.prisma.contractType.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -115,7 +114,7 @@ class ContractTypeController {
                 });
             }
             const { name, description, duration, isActive = true } = req.body;
-            const contractType = await prisma.contractType.create({
+            const contractType = await prisma_1.prisma.contractType.create({
                 data: {
                     name,
                     description,
@@ -157,7 +156,7 @@ class ContractTypeController {
                 });
             }
             const { name, description, duration, isActive } = req.body;
-            const contractType = await prisma.contractType.findUnique({
+            const contractType = await prisma_1.prisma.contractType.findUnique({
                 where: { id },
             });
             if (!contractType) {
@@ -166,7 +165,7 @@ class ContractTypeController {
                     message: "Contract type not found",
                 });
             }
-            const updatedContractType = await prisma.contractType.update({
+            const updatedContractType = await prisma_1.prisma.contractType.update({
                 where: { id },
                 data: {
                     name,
@@ -200,7 +199,7 @@ class ContractTypeController {
     static async deleteContractType(req, res) {
         try {
             const { id } = req.params;
-            const contractType = await prisma.contractType.findUnique({
+            const contractType = await prisma_1.prisma.contractType.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -221,7 +220,7 @@ class ContractTypeController {
                     message: `Cannot delete contract type. It has ${contractType._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.contractType.delete({
+            await prisma_1.prisma.contractType.delete({
                 where: { id },
             });
             res.json({
@@ -246,7 +245,7 @@ class ContractTypeController {
     static async toggleContractTypeStatus(req, res) {
         try {
             const { id } = req.params;
-            const contractType = await prisma.contractType.findUnique({
+            const contractType = await prisma_1.prisma.contractType.findUnique({
                 where: { id },
             });
             if (!contractType) {
@@ -255,7 +254,7 @@ class ContractTypeController {
                     message: "Contract type not found",
                 });
             }
-            const updatedContractType = await prisma.contractType.update({
+            const updatedContractType = await prisma_1.prisma.contractType.update({
                 where: { id },
                 data: {
                     isActive: !contractType.isActive,

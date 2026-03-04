@@ -1,11 +1,9 @@
 import { Response } from "express";
 import { validationResult } from "express-validator";
-import { PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 import { NotificationService } from "../services/notificationService";
 import { getSocketManager } from "../index";
-
-const prisma = new PrismaClient();
 
 export class LeaveRequestController {
   // Get all leave requests (HR and Admin can see all, employees see only their own)
@@ -265,12 +263,12 @@ export class LeaveRequestController {
           employeeName,
           leaveType,
           formattedStartDate,
-          formattedEndDate
+          formattedEndDate,
         );
       } catch (notificationError) {
         console.error(
           "Error sending leave request notification:",
-          notificationError
+          notificationError,
         );
         // Don't fail the request if notification fails
       }
@@ -507,12 +505,12 @@ export class LeaveRequestController {
           leaveRequest.employeeId,
           leaveRequest.leaveType,
           formattedStartDate,
-          formattedEndDate
+          formattedEndDate,
         );
       } catch (notificationError) {
         console.error(
           "Error sending approval notification:",
-          notificationError
+          notificationError,
         );
         // Don't fail the request if notification fails
       }
@@ -588,12 +586,12 @@ export class LeaveRequestController {
           leaveRequest.leaveType,
           formattedStartDate,
           formattedEndDate,
-          comments || undefined
+          comments || undefined,
         );
       } catch (notificationError) {
         console.error(
           "Error sending rejection notification:",
-          notificationError
+          notificationError,
         );
         // Don't fail the request if notification fails
       }
@@ -650,7 +648,7 @@ export class LeaveRequestController {
             where: { ...where, status: "CANCELLED" },
           }),
           prisma.leaveRequest.count({ where }),
-        ]
+        ],
       );
 
       // Get employees currently on leave (approved requests where current date is between start and end date)

@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-import { PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
-
-const prisma = new PrismaClient();
 
 export class EmployeeLeaveController {
   // Get employee leave balance by user ID

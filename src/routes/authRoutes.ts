@@ -26,31 +26,35 @@ const isCloudinaryConfigured = !!(
 // Configure storage based on environment
 const storage = isCloudinaryConfigured
   ? new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: async (req, file) => {
-      return {
-        folder: "hrms/profile-pictures",
-        allowed_formats: ["jpg", "jpeg", "png", "gif"],
-        public_id: `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-        resource_type: "image",
-        transformation: [{ width: 400, height: 400, crop: "limit" }],
-      };
-    },
-  })
+      cloudinary: cloudinary,
+      params: async (req, file) => {
+        return {
+          folder: "hrms/profile-pictures",
+          allowed_formats: ["jpg", "jpeg", "png", "gif"],
+          public_id: `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+          resource_type: "image",
+          transformation: [{ width: 400, height: 400, crop: "limit" }],
+        };
+      },
+    })
   : multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadPath = path.join(process.cwd(), "uploads", "profile-pictures");
-      if (!fs.existsSync(uploadPath)) {
-        fs.mkdirSync(uploadPath, { recursive: true });
-      }
-      cb(null, uploadPath);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      const extension = path.extname(file.originalname);
-      cb(null, "profile-" + uniqueSuffix + extension);
-    },
-  });
+      destination: (req, file, cb) => {
+        const uploadPath = path.join(
+          process.cwd(),
+          "uploads",
+          "profile-pictures",
+        );
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const extension = path.extname(file.originalname);
+        cb(null, "profile-" + uniqueSuffix + extension);
+      },
+    });
 
 // File filter for profile pictures
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
@@ -85,22 +89,6 @@ const authRateLimit = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
-// Stricter rate limiting for login attempts
-const loginRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 login attempts per 15 minutes
-  message: {
-    success: false,
-    message: "Too many login attempts, please try again in 15 minutes",
-    meta: {
-      timestamp: new Date().toISOString(),
-    },
-  },
-  skipSuccessfulRequests: true, // Don't count successful requests
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 /**
  * @route   GET /api/v1/auth/health
  * @desc    Health check endpoint
@@ -113,7 +101,7 @@ router.get("/health", AuthController.health);
  * @desc    Authenticate user and return JWT token
  * @access  Public
  */
-router.post("/login", loginRateLimit, loginValidation, AuthController.login);
+router.post("/login", loginValidation, AuthController.login);
 
 /**
  * @route   POST /api/v1/auth/logout
@@ -131,7 +119,7 @@ router.post(
   "/refresh",
   authRateLimit,
   refreshTokenValidation,
-  AuthController.refreshToken
+  AuthController.refreshToken,
 );
 
 /**
@@ -198,7 +186,7 @@ router.post(
   "/upload-profile-picture",
   authenticate,
   upload.single("profilePicture"),
-  AuthController.uploadProfilePicture
+  AuthController.uploadProfilePicture,
 );
 
 /**

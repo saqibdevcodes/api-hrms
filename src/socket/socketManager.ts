@@ -1,9 +1,7 @@
 import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 interface AuthenticatedSocket extends Socket {
   user?: {
@@ -70,7 +68,7 @@ export class SocketManager {
 
         socket.user = user;
         console.log(
-          `✅ Socket authenticated for user: ${user.email} (${user.role})`
+          `✅ Socket authenticated for user: ${user.email} (${user.role})`,
         );
         next();
       } catch (error) {
@@ -89,7 +87,7 @@ export class SocketManager {
   private setupEventHandlers() {
     this.io.on("connection", (socket: AuthenticatedSocket) => {
       console.log(
-        `User ${socket.user?.email} connected with socket ID: ${socket.id}`
+        `User ${socket.user?.email} connected with socket ID: ${socket.id}`,
       );
 
       // Store user connection
@@ -224,7 +222,7 @@ export class SocketManager {
       type: string;
       priority?: string;
       data?: any;
-    }
+    },
   ) {
     try {
       // Save notification to database
@@ -263,7 +261,7 @@ export class SocketManager {
       type: string;
       priority?: string;
       data?: any;
-    }
+    },
   ) {
     try {
       // Get all users with the specified role
@@ -279,7 +277,9 @@ export class SocketManager {
 
       // Send notification to each user
       const notifications = await Promise.all(
-        users.map((user) => this.sendNotificationToUser(user.id, notification))
+        users.map((user: any) =>
+          this.sendNotificationToUser(user.id, notification),
+        ),
       );
 
       return notifications;
@@ -309,7 +309,9 @@ export class SocketManager {
 
       // Send notification to each user
       const notifications = await Promise.all(
-        users.map((user) => this.sendNotificationToUser(user.id, notification))
+        users.map((user: any) =>
+          this.sendNotificationToUser(user.id, notification),
+        ),
       );
 
       return notifications;

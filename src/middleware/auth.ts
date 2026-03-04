@@ -308,12 +308,12 @@ export const SuperAdmin = authorize(["SUPERADMIN"]);
 /**
  * Admin-only middleware
  */
-export const adminOnly = authorize(["ADMIN", "SUPERADMIN"]);
+export const adminOnly = authorize(["ADMIN" as Role, "SUPERADMIN" as Role]);
 
 /**
  * HR and Admin middleware (HR role can do HR tasks, ADMIN retained for backward compatibility)
  */
-export const hrAndAdmin = authorize(["HR", "ADMIN", "SUPERADMIN"]);
+export const hrAndAdmin = authorize(["HR" as Role, "ADMIN" as Role, "SUPERADMIN" as Role]);
 
 /**
  * Manager and above middleware
@@ -333,7 +333,7 @@ export const hrAndAdmin = authorize(["HR", "ADMIN", "SUPERADMIN"]);
 /**
  * Employee-only middleware (all authenticated users)
  */
-export const employeeOnly = authorize(["EMPLOYEE", "ADMIN"]);
+export const employeeOnly = authorize(["EMPLOYEE" as Role, "ADMIN" as Role]);
 
 /**
  * Global error handler middleware

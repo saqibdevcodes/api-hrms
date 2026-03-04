@@ -2,9 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OffDayController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
+const prisma_1 = require("../lib/prisma");
 const emailService_1 = require("../utils/emailService");
-const prisma = new prisma_1.PrismaClient();
 class OffDayController {
     static async getAllOffDays(req, res) {
         try {
@@ -36,13 +35,13 @@ class OffDayController {
             }
             const where = whereConditions.length ? { OR: whereConditions } : {};
             const [offDays, total] = await Promise.all([
-                prisma.offDay.findMany({
+                prisma_1.prisma.offDay.findMany({
                     where,
                     skip,
                     take: limitNum,
                     orderBy: { date: "desc" },
                 }),
-                prisma.offDay.count({ where }),
+                prisma_1.prisma.offDay.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -66,7 +65,7 @@ class OffDayController {
     static async getOffDayById(req, res) {
         try {
             const { id } = req.params;
-            const offDay = await prisma.offDay.findUnique({
+            const offDay = await prisma_1.prisma.offDay.findUnique({
                 where: { id },
             });
             if (!offDay) {
@@ -100,7 +99,7 @@ class OffDayController {
             }
             const { date, reason } = req.body;
             // Check if off day already exists for the given date
-            const existingOffDay = await prisma.offDay.findFirst({
+            const existingOffDay = await prisma_1.prisma.offDay.findFirst({
                 where: {
                     date: new Date(date),
                 },
@@ -111,7 +110,7 @@ class OffDayController {
                     message: "Off day already exists for this date",
                 });
             }
-            const offDay = await prisma.offDay.create({
+            const offDay = await prisma_1.prisma.offDay.create({
                 data: {
                     date: new Date(date),
                     reason,
@@ -144,7 +143,7 @@ class OffDayController {
             const { id } = req.params;
             const { date, reason } = req.body;
             // Check if off day exists
-            const existingOffDay = await prisma.offDay.findUnique({
+            const existingOffDay = await prisma_1.prisma.offDay.findUnique({
                 where: { id },
             });
             if (!existingOffDay) {
@@ -155,7 +154,7 @@ class OffDayController {
             }
             // Check if another off day already exists for the new date (if date is being changed)
             if (date && date !== existingOffDay.date.toISOString().split("T")[0]) {
-                const duplicateOffDay = await prisma.offDay.findFirst({
+                const duplicateOffDay = await prisma_1.prisma.offDay.findFirst({
                     where: {
                         date: new Date(date),
                         id: { not: id },
@@ -173,7 +172,7 @@ class OffDayController {
                 updateData.date = new Date(date);
             if (reason)
                 updateData.reason = reason;
-            const offDay = await prisma.offDay.update({
+            const offDay = await prisma_1.prisma.offDay.update({
                 where: { id },
                 data: updateData,
             });
@@ -195,7 +194,7 @@ class OffDayController {
         try {
             const { id } = req.params;
             // Check if off day exists
-            const existingOffDay = await prisma.offDay.findUnique({
+            const existingOffDay = await prisma_1.prisma.offDay.findUnique({
                 where: { id },
             });
             if (!existingOffDay) {
@@ -204,7 +203,7 @@ class OffDayController {
                     message: "Off day not found",
                 });
             }
-            await prisma.offDay.delete({
+            await prisma_1.prisma.offDay.delete({
                 where: { id },
             });
             res.json({
@@ -229,7 +228,7 @@ class OffDayController {
                     message: "Start date and end date are required",
                 });
             }
-            const offDays = await prisma.offDay.findMany({
+            const offDays = await prisma_1.prisma.offDay.findMany({
                 where: {
                     date: {
                         gte: new Date(startDate),
@@ -266,7 +265,7 @@ class OffDayController {
             console.log("CC Emails:", ccEmails);
             console.log("BCC Emails:", bccEmails);
             // Get all employees to send email
-            const employees = await prisma.user.findMany({
+            const employees = await prisma_1.prisma.user.findMany({
                 where: {
                     isActive: true,
                 },
@@ -283,7 +282,7 @@ class OffDayController {
                 });
             }
             // Fetch all off days from database
-            const offDaysData = await prisma.offDay.findMany({
+            const offDaysData = await prisma_1.prisma.offDay.findMany({
                 orderBy: { date: "asc" },
             });
             console.log("===== EMAIL GENERATION DEBUG =====");

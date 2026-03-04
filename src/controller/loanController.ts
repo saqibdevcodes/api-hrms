@@ -1,7 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export class LoanController {
   static async createLoan(req: Request, res: Response) {

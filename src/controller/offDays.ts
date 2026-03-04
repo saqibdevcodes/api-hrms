@@ -1,9 +1,13 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-import { OffDay, PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import { EmailService } from "../utils/emailService";
 
-const prisma = new PrismaClient();
+type OffDay = {
+  id: string;
+  date: Date;
+  reason: string;
+};
 
 export class OffDayController {
   static async getAllOffDays(req: Request, res: Response) {
@@ -327,11 +331,11 @@ export class OffDayController {
       console.log(`Total off days in database: ${offDaysData.length}`);
       console.log(
         "Off days dates:",
-        offDaysData.map((od) => ({
+        offDaysData.map((od: OffDay) => ({
           date: od.date,
           dateString: od.date.toISOString().split("T")[0],
           reason: od.reason,
-        }))
+        })),
       );
 
       // Generate calendar data grouped by month
@@ -413,14 +417,14 @@ function generateCalendarData(offDays: OffDay[]) {
 
   // Convert offDays to Set for quick lookup (normalize dates to local timezone)
   const offDaysSet = new Set(
-    offDays.map((offDay) => {
+    offDays.map((offDay: OffDay) => {
       const date = new Date(offDay.date);
       // Format as YYYY-MM-DD in local timezone
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0");
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
-    })
+    }),
   );
 
   console.log("Off Days Set:", Array.from(offDaysSet));
@@ -429,13 +433,13 @@ function generateCalendarData(offDays: OffDay[]) {
   // Group Saturdays by month
   for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
     const monthSaturdays = allSaturdays.filter(
-      (saturday) => saturday.getMonth() === monthIndex
+      (saturday: Date) => saturday.getMonth() === monthIndex,
     );
 
     const offSaturdays: string[] = [];
     const onSaturdays: string[] = [];
 
-    monthSaturdays.forEach((saturday) => {
+    monthSaturdays.forEach((saturday: Date) => {
       // Format date as YYYY-MM-DD in local timezone
       const year = saturday.getFullYear();
       const month = String(saturday.getMonth() + 1).padStart(2, "0");
@@ -463,7 +467,7 @@ function generateCalendarData(offDays: OffDay[]) {
 
   console.log(
     "Calendar data generated:",
-    JSON.stringify(calendarData, null, 2)
+    JSON.stringify(calendarData, null, 2),
   );
   return calendarData;
 }
@@ -485,25 +489,30 @@ function generateOffDaysCalendarHTML(
     month: string;
     offSaturdays: string[];
     onSaturdays: string[];
-  }[]
+  }[],
 ): string {
   const currentYear = new Date().getFullYear();
 
   // Generate table rows
   const tableRows = calendarData
-    .map((monthData) => {
-      const maxRows = Math.max(
-        monthData.offSaturdays.length,
-        monthData.onSaturdays.length
-      );
+    .map(
+      (monthData: {
+        month: string;
+        offSaturdays: string[];
+        onSaturdays: string[];
+      }) => {
+        const maxRows = Math.max(
+          monthData.offSaturdays.length,
+          monthData.onSaturdays.length,
+        );
 
-      let rows = "";
-      for (let i = 0; i < maxRows; i++) {
-        const isFirstRow = i === 0;
-        const offSaturday = monthData.offSaturdays[i] || "";
-        const onSaturday = monthData.onSaturdays[i] || "";
+        let rows = "";
+        for (let i = 0; i < maxRows; i++) {
+          const isFirstRow = i === 0;
+          const offSaturday = monthData.offSaturdays[i] || "";
+          const onSaturday = monthData.onSaturdays[i] || "";
 
-        rows += `
+          rows += `
           <tr>
             ${
               isFirstRow
@@ -514,9 +523,10 @@ function generateOffDaysCalendarHTML(
             <td style="background-color: #ffffff; padding: 10px; text-align: center; border: 1px solid #e5e7eb;">${onSaturday}</td>
           </tr>
         `;
-      }
-      return rows;
-    })
+        }
+        return rows;
+      },
+    )
     .join("");
 
   return `

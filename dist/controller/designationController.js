@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DesignationController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class DesignationController {
     // Get all designations
     static async getAllDesignations(req, res) {
@@ -33,7 +32,7 @@ class DesignationController {
                 };
             }
             const [designations, total] = await Promise.all([
-                prisma.designation.findMany({
+                prisma_1.prisma.designation.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -44,7 +43,7 @@ class DesignationController {
                         },
                     },
                 }),
-                prisma.designation.count({ where }),
+                prisma_1.prisma.designation.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -73,7 +72,7 @@ class DesignationController {
     static async getDesignationById(req, res) {
         try {
             const { id } = req.params;
-            const designation = await prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id },
                 include: {
                     users: {
@@ -125,7 +124,7 @@ class DesignationController {
             }
             const { title, description, level, department } = req.body;
             // Check if designation title already exists
-            const existingDesignation = await prisma.designation.findUnique({
+            const existingDesignation = await prisma_1.prisma.designation.findUnique({
                 where: { title },
             });
             if (existingDesignation) {
@@ -134,7 +133,7 @@ class DesignationController {
                     message: "Designation with this title already exists",
                 });
             }
-            const designation = await prisma.designation.create({
+            const designation = await prisma_1.prisma.designation.create({
                 data: {
                     title,
                     description,
@@ -171,7 +170,7 @@ class DesignationController {
             const { id } = req.params;
             const { title, description, level, department, isActive } = req.body;
             // Check if designation exists
-            const existingDesignation = await prisma.designation.findUnique({
+            const existingDesignation = await prisma_1.prisma.designation.findUnique({
                 where: { id },
             });
             if (!existingDesignation) {
@@ -182,7 +181,7 @@ class DesignationController {
             }
             // Check if new title conflicts with existing designation
             if (title && title !== existingDesignation.title) {
-                const titleConflict = await prisma.designation.findUnique({
+                const titleConflict = await prisma_1.prisma.designation.findUnique({
                     where: { title },
                 });
                 if (titleConflict) {
@@ -192,7 +191,7 @@ class DesignationController {
                     });
                 }
             }
-            const designation = await prisma.designation.update({
+            const designation = await prisma_1.prisma.designation.update({
                 where: { id },
                 data: {
                     title,
@@ -222,7 +221,7 @@ class DesignationController {
         try {
             const { id } = req.params;
             // Check if designation exists
-            const designation = await prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -243,7 +242,7 @@ class DesignationController {
                     message: `Cannot delete designation. It has ${designation._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.designation.delete({
+            await prisma_1.prisma.designation.delete({
                 where: { id },
             });
             res.json({
@@ -264,7 +263,7 @@ class DesignationController {
     static async toggleDesignationStatus(req, res) {
         try {
             const { id } = req.params;
-            const designation = await prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id },
             });
             if (!designation) {
@@ -273,7 +272,7 @@ class DesignationController {
                     message: "Designation not found",
                 });
             }
-            const updatedDesignation = await prisma.designation.update({
+            const updatedDesignation = await prisma_1.prisma.designation.update({
                 where: { id },
                 data: {
                     isActive: !designation.isActive,
@@ -297,7 +296,7 @@ class DesignationController {
     // Get all departments for filter dropdown
     static async getDepartments(req, res) {
         try {
-            const departments = await prisma.designation.findMany({
+            const departments = await prisma_1.prisma.designation.findMany({
                 select: {
                     department: true,
                 },

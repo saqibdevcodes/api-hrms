@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShiftController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class ShiftController {
     // Get all shifts
     static async getAllShifts(req, res) {
@@ -21,7 +20,7 @@ class ShiftController {
                 where.isActive = isActive === "true";
             }
             const [shifts, total] = await Promise.all([
-                prisma.shift.findMany({
+                prisma_1.prisma.shift.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -32,7 +31,7 @@ class ShiftController {
                         },
                     },
                 }),
-                prisma.shift.count({ where }),
+                prisma_1.prisma.shift.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -61,7 +60,7 @@ class ShiftController {
     static async getShiftById(req, res) {
         try {
             const { id } = req.params;
-            const shift = await prisma.shift.findUnique({
+            const shift = await prisma_1.prisma.shift.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -112,7 +111,7 @@ class ShiftController {
                 });
             }
             const { name, startTime, endTime, earlyOut, halfDayStart, fullDayStart, breakTime, isActive = true, } = req.body;
-            const shift = await prisma.shift.create({
+            const shift = await prisma_1.prisma.shift.create({
                 data: {
                     name,
                     startTime: new Date(startTime),
@@ -158,7 +157,7 @@ class ShiftController {
                 });
             }
             const { name, startTime, endTime, earlyOut, halfDayStart, fullDayStart, breakTime, isActive, } = req.body;
-            const shift = await prisma.shift.findUnique({
+            const shift = await prisma_1.prisma.shift.findUnique({
                 where: { id },
             });
             if (!shift) {
@@ -167,7 +166,7 @@ class ShiftController {
                     message: "Shift not found",
                 });
             }
-            const updatedShift = await prisma.shift.update({
+            const updatedShift = await prisma_1.prisma.shift.update({
                 where: { id },
                 data: {
                     name,
@@ -205,7 +204,7 @@ class ShiftController {
     static async deleteShift(req, res) {
         try {
             const { id } = req.params;
-            const shift = await prisma.shift.findUnique({
+            const shift = await prisma_1.prisma.shift.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -226,7 +225,7 @@ class ShiftController {
                     message: `Cannot delete shift. It has ${shift._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.shift.delete({
+            await prisma_1.prisma.shift.delete({
                 where: { id },
             });
             res.json({
@@ -251,7 +250,7 @@ class ShiftController {
     static async toggleShiftStatus(req, res) {
         try {
             const { id } = req.params;
-            const shift = await prisma.shift.findUnique({
+            const shift = await prisma_1.prisma.shift.findUnique({
                 where: { id },
             });
             if (!shift) {
@@ -260,7 +259,7 @@ class ShiftController {
                     message: "Shift not found",
                 });
             }
-            const updatedShift = await prisma.shift.update({
+            const updatedShift = await prisma_1.prisma.shift.update({
                 where: { id },
                 data: {
                     isActive: !shift.isActive,

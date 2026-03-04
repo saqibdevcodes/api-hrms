@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmployeeLeaveController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class EmployeeLeaveController {
     // Get employee leave balance by user ID
     static async getEmployeeLeave(req, res) {
@@ -17,7 +16,7 @@ class EmployeeLeaveController {
                     message: "Access denied. You can only view your own leave balance.",
                 });
             }
-            const employeeLeave = await prisma.employeeLeave.findUnique({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId },
                 include: {
                     user: {
@@ -78,7 +77,7 @@ class EmployeeLeaveController {
                 };
             }
             const [employeeLeaves, total] = await Promise.all([
-                prisma.employeeLeave.findMany({
+                prisma_1.prisma.employeeLeave.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -107,7 +106,7 @@ class EmployeeLeaveController {
                         user: { firstName: "asc" },
                     },
                 }),
-                prisma.employeeLeave.count({ where }),
+                prisma_1.prisma.employeeLeave.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -145,7 +144,7 @@ class EmployeeLeaveController {
             }
             const { userId, annualLeaves, sickLeaves, casualLeaves, compensatoryLeaves, maternityLeaves, paternityLeaves, leavePolicyId, } = req.body;
             // Check if user exists
-            const user = await prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { id: userId },
             });
             if (!user) {
@@ -155,7 +154,7 @@ class EmployeeLeaveController {
                 });
             }
             // Check if employee leave already exists
-            const existingLeave = await prisma.employeeLeave.findUnique({
+            const existingLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId },
             });
             if (existingLeave) {
@@ -164,7 +163,7 @@ class EmployeeLeaveController {
                     message: "Employee leave record already exists for this user",
                 });
             }
-            const employeeLeave = await prisma.employeeLeave.create({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.create({
                 data: {
                     userId,
                     annualLeaves: parseInt(annualLeaves),
@@ -217,7 +216,7 @@ class EmployeeLeaveController {
                 });
             }
             const { annualLeaves, sickLeaves, casualLeaves, compensatoryLeaves, maternityLeaves, paternityLeaves, leavePolicyId, } = req.body;
-            const employeeLeave = await prisma.employeeLeave.findUnique({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId },
             });
             if (!employeeLeave) {
@@ -226,7 +225,7 @@ class EmployeeLeaveController {
                     message: "Employee leave record not found",
                 });
             }
-            const updatedEmployeeLeave = await prisma.employeeLeave.update({
+            const updatedEmployeeLeave = await prisma_1.prisma.employeeLeave.update({
                 where: { userId },
                 data: {
                     annualLeaves: parseInt(annualLeaves),
@@ -271,7 +270,7 @@ class EmployeeLeaveController {
         try {
             const { userId, leavePolicyId } = req.body;
             // Get leave policy
-            const leavePolicy = await prisma.leavePolicy.findUnique({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id: leavePolicyId },
             });
             if (!leavePolicy) {
@@ -281,7 +280,7 @@ class EmployeeLeaveController {
                 });
             }
             // Check if employee leave already exists
-            const existingLeave = await prisma.employeeLeave.findUnique({
+            const existingLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId },
             });
             if (existingLeave) {
@@ -290,7 +289,7 @@ class EmployeeLeaveController {
                     message: "Employee leave record already exists for this user",
                 });
             }
-            const employeeLeave = await prisma.employeeLeave.create({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.create({
                 data: {
                     userId,
                     annualLeaves: leavePolicy.annualLeaves,

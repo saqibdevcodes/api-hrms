@@ -1,21 +1,4 @@
 "use strict";
-/**
- * ZKTeco Controller - Handles all ZKTeco biometric device operations
- *
- * This controller manages:
- * - Device management (add, remove, status)
- * - Employee management (upload to devices)
- * - Attendance data synchronization
- * - iClock protocol handling (device communication)
- * - Real-time data processing
- *
- * Key Features:
- * - Automatic device status monitoring
- * - Real-time attendance data processing
- * - Employee enrollment on devices
- * - Device health monitoring
- * - Data export and reporting
- */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -53,30 +36,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ZKTecoController = void 0;
 const express_validator_1 = require("express-validator");
 const zktecoService_1 = require("../services/zktecoService");
-const prisma_1 = require("../generated/prisma");
+const prisma_1 = require("../lib/prisma");
 const emailService_1 = require("../utils/emailService");
-const prisma = new prisma_1.PrismaClient();
 class ZKTecoController {
-    /**
-     * ========================================
-     * DEVICE MANAGEMENT METHODS
-     * ========================================
-     */
-    /**
-     * Get all registered ZKTeco devices with their current status
-     *
-     * This method:
-     * 1. Retrieves all devices from the service
-     * 2. Checks each device's online/offline status
-     * 3. Fetches real-time device information
-     * 4. Returns comprehensive device status for the frontend
-     *
-     * Use case: Dashboard display, device monitoring
-     *
-     * @param req - Express request object
-     * @param res - Express response object
-     * @returns JSON with devices array and total count
-     */
     static async getDevices(req, res) {
         try {
             const devices = zktecoService_1.zktecoService.getDevices();
@@ -118,21 +80,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get detailed status of a specific ZKTeco device
-     *
-     * This method:
-     * 1. Takes a device ID from the request parameters
-     * 2. Attempts to connect to the device via HTTP
-     * 3. Fetches real-time device information (firmware, time, etc.)
-     * 4. Returns comprehensive device status including online/offline state
-     *
-     * Use case: Device detail page, troubleshooting, health monitoring
-     *
-     * @param req - Express request object with deviceId in params
-     * @param res - Express response object
-     * @returns JSON with device status, info, and online state
-     */
     static async getDeviceStatus(req, res) {
         try {
             const { deviceId } = req.params;
@@ -152,30 +99,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * ========================================
-     * ATTENDANCE SYNCHRONIZATION METHODS
-     * ========================================
-     */
-    /**
-     * Manually sync attendance data from ZKTeco devices
-     *
-     * ⚠️ IMPORTANT: This method is for MANUAL sync only
-     * Your UFace 800 device uses iClock push protocol, so this will always fail
-     * Real-time data comes automatically via iClock push (handleIClockCData)
-     *
-     * This method:
-     * 1. Accepts optional date range and device ID filters
-     * 2. Attempts to pull data from device via HTTP (not supported by UFace 800)
-     * 3. Returns error because UFace 800 doesn't support HTTP attendance retrieval
-     *
-     * Use case: Manual data sync (not recommended for UFace 800)
-     * Better alternative: Use real-time iClock push data
-     *
-     * @param req - Express request object with optional startDate, endDate, deviceId
-     * @param res - Express response object
-     * @returns JSON with sync results (will be error for UFace 800)
-     */
     static async syncAttendanceData(req, res) {
         try {
             const { startDate, endDate, deviceId } = req.body;
@@ -221,31 +144,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * ========================================
-     * ATTENDANCE DATA RETRIEVAL METHODS
-     * ========================================
-     */
-    /**
-     * Get processed attendance data from the database
-     *
-     * This method:
-     * 1. Accepts query parameters for filtering (deviceId, dates, employeeId, pagination)
-     * 2. Implements role-based access control (employees see only their data, admins see all)
-     * 3. Applies date range filtering if specified
-     * 4. Returns paginated attendance records with employee and shift information
-     * 5. Includes related ZKTeco raw records for debugging
-     *
-     * Use case: Attendance dashboard, reports, employee self-service
-     * Called by: Frontend attendance page, reports, mobile apps
-     *
-     * ⚠️ Note: This returns PROCESSED attendance data, not raw device data
-     * Raw device data is available via getZKTecoRecords endpoint
-     *
-     * @param req - Express request object with query parameters
-     * @param res - Express response object
-     * @returns JSON with paginated attendance records and total count
-     */
     static async getAttendanceData(req, res) {
         try {
             const { deviceId, startDate, endDate, employeeId, departmentId, page = 1, limit = 50, } = req.query;
@@ -298,11 +196,11 @@ class ZKTecoController {
             // So we show ALL attendance records immediately!
             console.log("📊 Fetching attendance records (all finalized data)");
             console.log(`   User: ${currentUser.email} (${currentUser.role})`);
-            console.log(`   Department Filter: ${departmentId || 'none'}`);
-            console.log(`   Employee Filter: ${employeeId || 'none'}`);
+            console.log(`   Department Filter: ${departmentId || "none"}`);
+            console.log(`   Employee Filter: ${employeeId || "none"}`);
             console.log(`   Where Clause:`, JSON.stringify(where, null, 2));
             const [attendanceRecords, total] = await Promise.all([
-                prisma.attendance.findMany({
+                prisma_1.prisma.attendance.findMany({
                     where,
                     select: {
                         id: true,
@@ -361,7 +259,7 @@ class ZKTecoController {
                     skip,
                     take,
                 }),
-                prisma.attendance.count({ where }),
+                prisma_1.prisma.attendance.count({ where }),
             ]);
             // Helper function to calculate attendance status based on shift timing
             const calculateAttendanceStatus = (record, shift) => {
@@ -376,7 +274,8 @@ class ZKTecoController {
                         const todayShiftEnd = new Date(attendanceDate);
                         todayShiftEnd.setHours(shiftEnd.getHours(), shiftEnd.getMinutes(), 0, 0);
                         const earlyOutMinutes = checkOutTime < todayShiftEnd
-                            ? Math.floor((todayShiftEnd.getTime() - checkOutTime.getTime()) / (1000 * 60))
+                            ? Math.floor((todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                                (1000 * 60))
                             : 0;
                         // Determine check-out status
                         let checkOutStatus = "ON_TIME_LEAVE";
@@ -386,7 +285,7 @@ class ZKTecoController {
                         return {
                             status: "ABSENT",
                             checkOutStatus: checkOutStatus,
-                            earlyOutMinutes: earlyOutMinutes
+                            earlyOutMinutes: earlyOutMinutes,
                         };
                     }
                     return { status: "ABSENT" };
@@ -521,8 +420,12 @@ class ZKTecoController {
                     earlyOutMinutes: calculatedStatus.earlyOutMinutes,
                     workingHours: calculatedStatus.workingHours,
                     // ZKTeco precise status details (use ZKTeco status if available, otherwise use calculated)
-                    checkInStatus: checkInRecord?.overallStatus || calculatedStatus.checkInStatus || null,
-                    checkOutStatus: checkOutRecord?.overallStatus || calculatedStatus.checkOutStatus || null,
+                    checkInStatus: checkInRecord?.overallStatus ||
+                        calculatedStatus.checkInStatus ||
+                        null,
+                    checkOutStatus: checkOutRecord?.overallStatus ||
+                        calculatedStatus.checkOutStatus ||
+                        null,
                     zktecoRecords: record.zktecoRecords.map((zkr) => ({
                         id: zkr.id,
                         timestamp: zkr.timestamp,
@@ -573,29 +476,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * ========================================
-     * EMPLOYEE MANAGEMENT METHODS
-     * ========================================
-     */
-    /**
-     * Upload a single employee to a ZKTeco device
-     *
-     * This method:
-     * 1. Validates the request data (deviceId, employeeId, cardNumber)
-     * 2. Finds the employee in the database by ID or employeeId
-     * 3. Prepares employee data for device upload
-     * 4. Calls the service to upload to the physical device
-     * 5. Returns success/failure response
-     *
-     * Use case: Adding individual employees to devices
-     * Called by: "Add Employee" button in frontend
-     *
-     * @param req - Authenticated request with deviceId, employeeId, cardNumber
-     * @param res - Express response object
-     * @returns JSON with upload success status and employee data
-     *
-     */
     static async uploadEmployeeToDevice(req, res) {
         try {
             const errors = (0, express_validator_1.validationResult)(req);
@@ -608,7 +488,7 @@ class ZKTecoController {
             }
             const { deviceId, employeeId, cardNumber } = req.body;
             // Find employee in database
-            const employee = await prisma.user.findFirst({
+            const employee = await prisma_1.prisma.user.findFirst({
                 where: {
                     OR: [{ id: employeeId }, { employeeId: employeeId }],
                 },
@@ -651,30 +531,11 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Upload all active employees to a ZKTeco device (bulk operation)
-     *
-     * This method:
-     * 1. Takes a deviceId from the request body
-     * 2. Fetches all active employees from the database
-     * 3. Attempts to upload each employee to the device
-     * 4. Tracks success/failure counts and errors
-     * 5. Returns comprehensive upload results
-     *
-     * Use case: Initial device setup, bulk employee enrollment
-     * Called by: "Upload All Employees" button in frontend
-     *
-     * ⚠️ Note: This can take a while for large employee databases
-     *
-     * @param req - Authenticated request with deviceId
-     * @param res - Express response object
-     * @returns JSON with upload counts, success status, and any errors
-     */
     static async uploadAllEmployeesToDevice(req, res) {
         try {
             const { deviceId } = req.body;
             // Get all active employees
-            const employees = await prisma.user.findMany({
+            const employees = await prisma_1.prisma.user.findMany({
                 where: {
                     employeeId: { not: null },
                     isActive: true,
@@ -730,9 +591,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Add a new ZKTeco device
-     */
     static async addDevice(req, res) {
         try {
             const errors = (0, express_validator_1.validationResult)(req);
@@ -769,9 +627,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Remove a ZKTeco device
-     */
     static async removeDevice(req, res) {
         try {
             const { deviceId } = req.params;
@@ -799,9 +654,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Clear attendance data from device
-     */
     static async clearDeviceAttendance(req, res) {
         try {
             const { deviceId } = req.body;
@@ -829,10 +681,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Fetch all attendance records for a specific device from database
-     * (Machine doesn't support HTTP attendance retrieval - data comes via iClock push)
-     */
     static async fetchAllAttendanceFromMachine(req, res) {
         try {
             const { deviceId, startDate, endDate, filter } = req.query;
@@ -890,7 +738,7 @@ class ZKTecoController {
             }
             // Fetch ZKTeco records for this device from database
             // (Machine doesn't support HTTP attendance retrieval - data comes via iClock push)
-            const zktecoRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const zktecoRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where,
                 include: {
                     User: {
@@ -947,26 +795,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get raw ZKTeco attendance records from the database
-     *
-     * This method:
-     * 1. Accepts query parameters for filtering (employeeId, deviceId, checkType, dates, pagination)
-     * 2. Returns UNPROCESSED raw data directly from the device
-     * 3. Includes employee information for each record
-    4. Applies comprehensive filtering and pagination
-     * 5. Returns data in a format suitable for debugging and analysis
-     *
-     * Use case: Debugging attendance issues, raw data analysis, troubleshooting
-     * Called by: Admin debugging tools, data export, system monitoring
-     *
-     * ⚠️ Note: This returns RAW device data, not processed attendance records
-     * Processed data is available via getAttendanceData endpoint
-     *
-     * @param req - Express request object with query parameters
-     * @param res - Express response object
-     * @returns JSON with paginated raw ZKTeco records and total count
-     */
     static async getAllZKTecoRecords(req, res) {
         try {
             const { page = 1, limit = 100, employeeId, deviceId, checkType, startDate, endDate, } = req.query;
@@ -993,7 +821,7 @@ class ZKTecoController {
                 }
             }
             const [zktecoRecords, total] = await Promise.all([
-                prisma.zKTecoAttendanceRecord.findMany({
+                prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                     where,
                     include: {
                         User: {
@@ -1012,7 +840,7 @@ class ZKTecoController {
                     skip,
                     take,
                 }),
-                prisma.zKTecoAttendanceRecord.count({ where }),
+                prisma_1.prisma.zKTecoAttendanceRecord.count({ where }),
             ]);
             // Transform data
             const transformedRecords = zktecoRecords.map((record) => ({
@@ -1059,9 +887,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get employee deduction history with details
-     */
     static async getEmployeeDeductionHistory(req, res) {
         try {
             const { employeeId } = req.params;
@@ -1085,9 +910,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Debug attendance records for a specific employee and date
-     */
     static async debugAttendanceRecords(req, res) {
         try {
             const { employeeId, date } = req.params;
@@ -1119,9 +941,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Fix attendance records by processing unprocessed ZKTeco records
-     */
     static async fixAttendanceRecords(req, res) {
         try {
             const { employeeId, date } = req.params;
@@ -1153,9 +972,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get employee's current leave balance
-     */
     static async getEmployeeLeaveBalance(req, res) {
         try {
             const { employeeId } = req.params;
@@ -1182,9 +998,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Validate if specific records can be used for deductions
-     */
     static async validateRecordsForDeduction(req, res) {
         try {
             const { recordIds } = req.body;
@@ -1211,9 +1024,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Export attendance data to CSV or XLSX
-     */
     static async exportAttendanceData(req, res) {
         try {
             const { deviceId, startDate, endDate, format = "csv" } = req.query;
@@ -1239,7 +1049,7 @@ class ZKTecoController {
                 };
             }
             // Fetch all records for export (no pagination)
-            const zktecoRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const zktecoRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where,
                 include: {
                     User: {
@@ -1325,9 +1135,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Create employee from ZKTeco data (helper function)
-     */
     static async createEmployeeFromZKTeco(req, res) {
         try {
             const { employeeId, firstName, lastName, email } = req.body;
@@ -1338,7 +1145,7 @@ class ZKTecoController {
                 });
             }
             // Check if employee already exists
-            const existingEmployee = await prisma.user.findFirst({
+            const existingEmployee = await prisma_1.prisma.user.findFirst({
                 where: {
                     OR: [
                         { employeeId: employeeId },
@@ -1361,7 +1168,7 @@ class ZKTecoController {
                 });
             }
             // Create new employee
-            const employee = await prisma.user.create({
+            const employee = await prisma_1.prisma.user.create({
                 data: {
                     employeeId: employeeId,
                     firstName: firstName,
@@ -1397,9 +1204,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get attendance statistics
-     */
     static async getAttendanceStats(req, res) {
         try {
             const { startDate, endDate, departmentId } = req.query;
@@ -1419,12 +1223,12 @@ class ZKTecoController {
                 };
             }
             const [totalRecords, presentCount, absentCount, lateCount, halfDayCount, wfhCount,] = await Promise.all([
-                prisma.attendance.count({ where }),
-                prisma.attendance.count({ where: { ...where, status: "PRESENT" } }),
-                prisma.attendance.count({ where: { ...where, status: "ABSENT" } }),
-                prisma.attendance.count({ where: { ...where, status: "LATE" } }),
-                prisma.attendance.count({ where: { ...where, status: "HALF_DAY" } }),
-                prisma.attendance.count({
+                prisma_1.prisma.attendance.count({ where }),
+                prisma_1.prisma.attendance.count({ where: { ...where, status: "PRESENT" } }),
+                prisma_1.prisma.attendance.count({ where: { ...where, status: "ABSENT" } }),
+                prisma_1.prisma.attendance.count({ where: { ...where, status: "LATE" } }),
+                prisma_1.prisma.attendance.count({ where: { ...where, status: "HALF_DAY" } }),
+                prisma_1.prisma.attendance.count({
                     where: { ...where, status: "WORK_FROM_HOME" },
                 }),
             ]);
@@ -1457,9 +1261,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Get real-time device info
-     */
     static async getDeviceInfo(req, res) {
         try {
             const { deviceId } = req.params;
@@ -1493,9 +1294,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Test endpoint to simulate attendance data from ZKTeco device
-     */
     static async simulateAttendance(req, res) {
         try {
             const { employeeId, checkType, deviceIp = "192.168.2.202", verifyType = 1, } = req.body;
@@ -1531,38 +1329,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * ========================================
-     * ICLOCK PROTOCOL HANDLERS
-     * ========================================
-     *
-     * These methods handle the iClock protocol communication with ZKTeco devices
-     * iClock is the HTTP-based protocol used by ZKTeco devices for real-time data exchange
-     *
-     * Protocol Flow:
-     * 1. Device sends GET /getrequest to check for commands
-     * 2. Device sends POST /ping for heartbeat/status
-     * 3. Device sends POST /cdata for attendance data
-     * 4. Device sends POST /fdata for face data
-     *
-     * Your UFace 800 device automatically sends these requests to your server
-     */
-    /**
-     * Handle iClock GET /getrequest - Device requesting commands
-     *
-     * This method:
-     * 1. Receives GET request from device when it connects
-     * 2. Extracts device serial number (SN) from query parameters
-     * 3. Calls service to handle device connection and auto-sync
-     * 4. Returns "OK" to acknowledge device connection
-     *
-     * Use case: Device connection, automatic device registration
-     * Called by: Device automatically when it connects to network
-     *
-     * @param req - Express request object with SN query parameter
-     * @param res - Express response object
-     * @returns "OK" response to acknowledge device
-     */
     static async handleIClockGetRequest(req, res) {
         try {
             // 🔍 EXTRACT DEVICE ID: Get serial number from query parameters
@@ -1579,22 +1345,6 @@ class ZKTecoController {
             res.status(500).send("Internal Server Error");
         }
     }
-    /**
-     * Handle iClock POST /ping - Device heartbeat/status update
-     *
-     * This method:
-     * 1. Receives POST request from device for heartbeat
-     * 2. Extracts device serial number (SN) from query parameters
-     * 3. Updates device status and last seen timestamp
-     * 4. Returns "OK" to acknowledge heartbeat
-     *
-     * Use case: Device health monitoring, online status tracking
-     * Called by: Device automatically every few minutes
-     *
-     * @param req - Express request object with SN query parameter
-     * @param res - Express response object
-     * @returns "OK" response to acknowledge heartbeat
-     */
     static async handleIClockPing(req, res) {
         try {
             const sn = req.query.SN;
@@ -1606,25 +1356,6 @@ class ZKTecoController {
             res.status(500).send("Internal Server Error");
         }
     }
-    /**
-     * Handle iClock POST /fdata - Device uploading face data
-     *
-     * This method:
-     * 1. Receives POST request from device with face data
-     * 2. Extracts device serial number (SN) and table type from query parameters
-     * 3. Logs detailed information about the request for debugging
-     * 4. Processes face data if needed (currently just logs)
-     * 5. Returns "OK" to acknowledge data receipt
-     *
-     * Use case: Face recognition data, employee face templates
-     * Called by: Device when uploading face data or user information
-     *
-     * ⚠️ Note: Currently just logs data, can be extended for face processing
-     *
-     * @param req - Express request object with SN, table query parameters and face data in body
-     * @param res - Express response object
-     * @returns "OK" response to acknowledge data receipt
-     */
     static async handleIClockFData(req, res) {
         try {
             const sn = req.query.SN;
@@ -1655,26 +1386,6 @@ class ZKTecoController {
             res.status(400).send("Face data processing error");
         }
     }
-    /**
-     * Handle iClock POST /cdata - Device uploading attendance data
-     *
-     * This method:
-     * 1. Receives POST request from device with attendance data
-     * 2. Extracts device serial number (SN) and table type from query parameters
-     * 3. Logs detailed information about the request for debugging
-     * 4. Processes attendance data via service (creates/updates attendance records)
-     * 5. Returns "OK" to acknowledge data receipt
-     *
-     * Use case: Real-time attendance data, punch in/out records
-     * Called by: Device automatically when attendance events occur
-     *
-     * ⚠️ This is the MAIN method for receiving attendance data from your UFace 800
-     * All punch in/out events come through this endpoint
-     *
-     * @param req - Express request object with SN, table query parameters and attendance data in body
-     * @param res - Express response object
-     * @returns "OK" response to acknowledge data receipt
-     */
     static async handleIClockCData(req, res) {
         try {
             const sn = req.query.SN;
@@ -1716,12 +1427,6 @@ class ZKTecoController {
             res.status(400).send("Data processing error");
         }
     }
-    /**
-     * Force finalize all staging records (SuperAdmin only)
-     *
-     * This endpoint allows SuperAdmin to immediately finalize all staging records
-     * without waiting for the 3-day delay
-     */
     static async forceFinalizeAll(req, res) {
         try {
             const authenticatedRequest = req;
@@ -1755,9 +1460,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Run finalization cron manually (SuperAdmin only)
-     */
     static async runFinalizationCron(req, res) {
         try {
             const authenticatedRequest = req;
@@ -1791,23 +1493,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * ========================================
-     * LATE REASON MANAGEMENT METHODS
-     * ========================================
-     */
-    /**
-     * Add or update a late reason for an attendance record
-     *
-     * This method allows employees to provide reasons for:
-     * - Late check-in
-     * - Early/late check-out
-     * - Overall attendance status issues
-     *
-     * @param req - Express request object with reason in body
-     * @param res - Express response object
-     * @returns JSON with success status
-     */
     static async addLateReason(req, res) {
         try {
             const authenticatedRequest = req;
@@ -1829,7 +1514,7 @@ class ZKTecoController {
                 return;
             }
             // Find the attendance record
-            const record = await prisma.attendance.findUnique({
+            const record = await prisma_1.prisma.attendance.findUnique({
                 where: { id: recordId },
                 include: {
                     employee: {
@@ -1853,7 +1538,9 @@ class ZKTecoController {
             // Security check: Only the employee themselves can add/update their reason
             // Unless they are HR or Admin
             const isOwnRecord = record.employeeId === currentUser?.id;
-            const isHROrAdmin = currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+            const isHROrAdmin = currentUser?.role === "HR" ||
+                currentUser?.role === "ADMIN" ||
+                currentUser?.role === "SUPERADMIN";
             if (!isOwnRecord && !isHROrAdmin) {
                 res.status(403).json({
                     success: false,
@@ -1862,7 +1549,7 @@ class ZKTecoController {
                 return;
             }
             // Update the record with the reason
-            const updatedRecord = await prisma.attendance.update({
+            const updatedRecord = await prisma_1.prisma.attendance.update({
                 where: { id: recordId },
                 data: {
                     reason: reason.trim(),
@@ -1894,13 +1581,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Update an existing late reason
-     *
-     * @param req - Express request object with id param and reason in body
-     * @param res - Express response object
-     * @returns JSON with success status
-     */
     static async updateLateReason(req, res) {
         try {
             const authenticatedRequest = req;
@@ -1923,7 +1603,7 @@ class ZKTecoController {
                 return;
             }
             // Find the attendance record
-            const record = await prisma.attendance.findUnique({
+            const record = await prisma_1.prisma.attendance.findUnique({
                 where: { id },
                 include: {
                     employee: {
@@ -1946,7 +1626,9 @@ class ZKTecoController {
             }
             // Security check
             const isOwnRecord = record.employeeId === currentUser?.id;
-            const isHROrAdmin = currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+            const isHROrAdmin = currentUser?.role === "HR" ||
+                currentUser?.role === "ADMIN" ||
+                currentUser?.role === "SUPERADMIN";
             if (!isOwnRecord && !isHROrAdmin) {
                 res.status(403).json({
                     success: false,
@@ -1955,7 +1637,7 @@ class ZKTecoController {
                 return;
             }
             // Update the record
-            const updatedRecord = await prisma.attendance.update({
+            const updatedRecord = await prisma_1.prisma.attendance.update({
                 where: { id },
                 data: {
                     reason: reason.trim(),
@@ -1987,22 +1669,14 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Send reminder emails to employees who need to provide reasons
-     *
-     * This method:
-     * 1. Finds all attendance records that need reasons but don't have them
-     * 2. Groups records by employee
-     * 3. Sends reminder emails to each employee
-     *
-     * @route POST /api/zkteco/attendance/late-reason-reminders
-     */
     static async sendLateReasonReminders(req, res) {
         try {
             const authenticatedRequest = req;
             const currentUser = authenticatedRequest.user;
             // Security check: Only HR and Admin can send reminders
-            const isHROrAdmin = currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+            const isHROrAdmin = currentUser?.role === "HR" ||
+                currentUser?.role === "ADMIN" ||
+                currentUser?.role === "SUPERADMIN";
             if (!isHROrAdmin) {
                 res.status(403).json({
                     success: false,
@@ -2011,20 +1685,14 @@ class ZKTecoController {
                 return;
             }
             // Find all attendance records without reasons
-            const allRecordsWithoutReasons = await prisma.attendance.findMany({
+            const allRecordsWithoutReasons = await prisma_1.prisma.attendance.findMany({
                 where: {
                     AND: [
                         {
-                            OR: [
-                                { reason: null },
-                                { reason: "" },
-                            ],
+                            OR: [{ reason: null }, { reason: "" }],
                         },
                         {
-                            OR: [
-                                { checkIn: { not: null } },
-                                { checkOut: { not: null } },
-                            ],
+                            OR: [{ checkIn: { not: null } }, { checkOut: { not: null } }],
                         },
                     ],
                 },
@@ -2133,7 +1801,8 @@ class ZKTecoController {
                     continue;
                 const employeeName = `${employee.firstName} ${employee.lastName}`;
                 // Build the list of dates and issues
-                const attendanceIssues = records.map((record) => {
+                const attendanceIssues = records
+                    .map((record) => {
                     const date = new Date(record.date).toLocaleDateString();
                     const issues = [];
                     // Check if no check-in (NULL)
@@ -2152,11 +1821,11 @@ class ZKTecoController {
                             const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
                             // Format time using UTC values
                             let hour = checkInHour;
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const ampm = hour >= 12 ? "PM" : "AM";
                             hour = hour % 12;
                             hour = hour ? hour : 12; // the hour '0' should be '12'
-                            const minuteStr = checkInMinute.toString().padStart(2, '0');
-                            const secondStr = checkInSecond.toString().padStart(2, '0');
+                            const minuteStr = checkInMinute.toString().padStart(2, "0");
+                            const secondStr = checkInSecond.toString().padStart(2, "0");
                             const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
                             issues.push(`Checked in late at ${checkInTimeStr} (${lateMinutes} min after 10:00 AM)`);
                         }
@@ -2177,22 +1846,24 @@ class ZKTecoController {
                             const earlyMinutes = sixPMInMinutes - checkOutMinutesFromMidnight;
                             // Format time using UTC values
                             let hour = checkOutHour;
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const ampm = hour >= 12 ? "PM" : "AM";
                             hour = hour % 12;
                             hour = hour ? hour : 12; // the hour '0' should be '12'
-                            const minuteStr = checkOutMinute.toString().padStart(2, '0');
-                            const secondStr = checkOutSecond.toString().padStart(2, '0');
+                            const minuteStr = checkOutMinute.toString().padStart(2, "0");
+                            const secondStr = checkOutSecond.toString().padStart(2, "0");
                             const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
                             issues.push(`Checked out early at ${checkOutTimeStr} (${earlyMinutes} min before 6:00 PM)`);
                         }
                     }
                     const issueText = issues.length > 0 ? issues.join(", ") : "Attendance irregularity";
                     return `  • ${date}: ${issueText}`;
-                }).join("\n");
+                })
+                    .join("\n");
                 // Create email content
                 const emailSubject = `Reminder: Attendance Reason Required (${records.length} record${records.length > 1 ? "s" : ""})`;
                 // Convert plain text issues to HTML list items
-                const htmlIssues = records.map((record) => {
+                const htmlIssues = records
+                    .map((record) => {
                     const date = new Date(record.date).toLocaleDateString();
                     const issues = [];
                     // Check if no check-in (NULL)
@@ -2210,11 +1881,11 @@ class ZKTecoController {
                         if (checkInMinutesFromMidnight > tenAMInMinutes) {
                             const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
                             let hour = checkInHour;
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const ampm = hour >= 12 ? "PM" : "AM";
                             hour = hour % 12;
                             hour = hour ? hour : 12;
-                            const minuteStr = checkInMinute.toString().padStart(2, '0');
-                            const secondStr = checkInSecond.toString().padStart(2, '0');
+                            const minuteStr = checkInMinute.toString().padStart(2, "0");
+                            const secondStr = checkInSecond.toString().padStart(2, "0");
                             const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
                             issues.push(`<span style='color: #ea580c;'>Checked in late at <strong>${checkInTimeStr}</strong> (${lateMinutes} min after 10:00 AM)</span>`);
                         }
@@ -2234,18 +1905,21 @@ class ZKTecoController {
                         if (checkOutMinutesFromMidnight < sixPMInMinutes) {
                             const earlyMinutes = sixPMInMinutes - checkOutMinutesFromMidnight;
                             let hour = checkOutHour;
-                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const ampm = hour >= 12 ? "PM" : "AM";
                             hour = hour % 12;
                             hour = hour ? hour : 12;
-                            const minuteStr = checkOutMinute.toString().padStart(2, '0');
-                            const secondStr = checkOutSecond.toString().padStart(2, '0');
+                            const minuteStr = checkOutMinute.toString().padStart(2, "0");
+                            const secondStr = checkOutSecond.toString().padStart(2, "0");
                             const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
                             issues.push(`<span style='color: #ea580c;'>Checked out early at <strong>${checkOutTimeStr}</strong> (${earlyMinutes} min before 6:00 PM)</span>`);
                         }
                     }
-                    const issueText = issues.length > 0 ? issues.join("<br/>") : "Attendance irregularity";
+                    const issueText = issues.length > 0
+                        ? issues.join("<br/>")
+                        : "Attendance irregularity";
                     return `<li style='margin-bottom: 12px;'><strong>${date}:</strong><br/>${issueText}</li>`;
-                }).join("");
+                })
+                    .join("");
                 const emailBody = `
 <!DOCTYPE html>
 <html>
@@ -2345,10 +2019,6 @@ class ZKTecoController {
             });
         }
     }
-    /**
-     * Request attendance reason from employee via email
-     * @route POST /api/zkteco/request-reason
-     */
     static async requestReason(req, res) {
         try {
             const { record } = req.body;
@@ -2380,7 +2050,8 @@ class ZKTecoController {
             if (!record.checkOut) {
                 issues.push("<li><strong style='color: #dc2626;'>⚠️ No check-out recorded</strong></li>");
             }
-            else if (record.checkOutStatus === "EARLY" && record.earlyOutMinutes > 0) {
+            else if (record.checkOutStatus === "EARLY" &&
+                record.earlyOutMinutes > 0) {
                 issues.push(`<li><span style='color: #ea580c;'>Check-out was <strong>early by ${record.earlyOutMinutes} minute(s)</strong></span></li>`);
             }
             if (record.status === "ABSENT") {
@@ -2429,9 +2100,9 @@ class ZKTecoController {
         <h3 style="margin-top: 0; color: #374151;">📊 Attendance Details:</h3>
         <ul>
           <li><strong>Date:</strong> ${record.date}</li>
-          ${record.checkIn ? `<li><strong>Check-In:</strong> ${record.checkIn} <span style='color: ${record.checkInStatus === 'LATE' ? '#ea580c' : '#059669'};'>(${record.checkInStatus || 'N/A'})</span></li>` : '<li><strong>Check-In:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
-          ${record.checkOut ? `<li><strong>Check-Out:</strong> ${record.checkOut} <span style='color: ${record.checkOutStatus === 'EARLY_OUT' ? '#ea580c' : '#059669'};'>(${record.checkOutStatus || 'N/A'})</span></li>` : '<li><strong>Check-Out:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
-          ${record.workingHours ? `<li><strong>Working Hours:</strong> ${record.workingHours}</li>` : ''}
+          ${record.checkIn ? `<li><strong>Check-In:</strong> ${record.checkIn} <span style='color: ${record.checkInStatus === "LATE" ? "#ea580c" : "#059669"};'>(${record.checkInStatus || "N/A"})</span></li>` : '<li><strong>Check-In:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
+          ${record.checkOut ? `<li><strong>Check-Out:</strong> ${record.checkOut} <span style='color: ${record.checkOutStatus === "EARLY_OUT" ? "#ea580c" : "#059669"};'>(${record.checkOutStatus || "N/A"})</span></li>` : '<li><strong>Check-Out:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
+          ${record.workingHours ? `<li><strong>Working Hours:</strong> ${record.workingHours}</li>` : ""}
         </ul>
       </div>
       

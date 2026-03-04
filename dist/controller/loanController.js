@@ -1,14 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LoanController = void 0;
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class LoanController {
     static async createLoan(req, res) {
         try {
             console.log(req.body);
             const { employeeId, amount, tenure, reason } = req.body;
-            const loan = await prisma.loan.create({
+            const loan = await prisma_1.prisma.loan.create({
                 data: {
                     user: {
                         connect: {
@@ -30,7 +29,7 @@ class LoanController {
     }
     static async getLoans(req, res) {
         try {
-            const loans = await prisma.loan.findMany({});
+            const loans = await prisma_1.prisma.loan.findMany({});
             res.json(loans);
         }
         catch (error) {

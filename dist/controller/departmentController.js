@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DepartmentController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class DepartmentController {
     // Get all departments
     static async getAllDepartments(req, res) {
@@ -25,7 +24,7 @@ class DepartmentController {
                 where.isActive = isActive === "true";
             }
             const [departments, total] = await Promise.all([
-                prisma.department.findMany({
+                prisma_1.prisma.department.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -36,7 +35,7 @@ class DepartmentController {
                         },
                     },
                 }),
-                prisma.department.count({ where }),
+                prisma_1.prisma.department.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -65,7 +64,7 @@ class DepartmentController {
     static async getDepartmentById(req, res) {
         try {
             const { id } = req.params;
-            const department = await prisma.department.findUnique({
+            const department = await prisma_1.prisma.department.findUnique({
                 where: { id },
                 include: {
                     users: {
@@ -117,7 +116,7 @@ class DepartmentController {
             }
             const { name, description, manager, budget } = req.body;
             // Check if department name already exists
-            const existingDepartment = await prisma.department.findUnique({
+            const existingDepartment = await prisma_1.prisma.department.findUnique({
                 where: { name },
             });
             if (existingDepartment) {
@@ -126,7 +125,7 @@ class DepartmentController {
                     message: "Department with this name already exists",
                 });
             }
-            const department = await prisma.department.create({
+            const department = await prisma_1.prisma.department.create({
                 data: {
                     name,
                     description,
@@ -163,7 +162,7 @@ class DepartmentController {
             const { id } = req.params;
             const { name, description, manager, budget, isActive } = req.body;
             // Check if department exists
-            const existingDepartment = await prisma.department.findUnique({
+            const existingDepartment = await prisma_1.prisma.department.findUnique({
                 where: { id },
             });
             if (!existingDepartment) {
@@ -174,7 +173,7 @@ class DepartmentController {
             }
             // Check if new name conflicts with existing department
             if (name && name !== existingDepartment.name) {
-                const nameConflict = await prisma.department.findUnique({
+                const nameConflict = await prisma_1.prisma.department.findUnique({
                     where: { name },
                 });
                 if (nameConflict) {
@@ -184,7 +183,7 @@ class DepartmentController {
                     });
                 }
             }
-            const department = await prisma.department.update({
+            const department = await prisma_1.prisma.department.update({
                 where: { id },
                 data: {
                     name,
@@ -214,7 +213,7 @@ class DepartmentController {
         try {
             const { id } = req.params;
             // Check if department exists
-            const department = await prisma.department.findUnique({
+            const department = await prisma_1.prisma.department.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -235,7 +234,7 @@ class DepartmentController {
                     message: `Cannot delete department. It has ${department._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.department.delete({
+            await prisma_1.prisma.department.delete({
                 where: { id },
             });
             res.json({
@@ -256,7 +255,7 @@ class DepartmentController {
     static async toggleDepartmentStatus(req, res) {
         try {
             const { id } = req.params;
-            const department = await prisma.department.findUnique({
+            const department = await prisma_1.prisma.department.findUnique({
                 where: { id },
             });
             if (!department) {
@@ -265,7 +264,7 @@ class DepartmentController {
                     message: "Department not found",
                 });
             }
-            const updatedDepartment = await prisma.department.update({
+            const updatedDepartment = await prisma_1.prisma.department.update({
                 where: { id },
                 data: {
                     isActive: !department.isActive,

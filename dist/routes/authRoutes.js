@@ -78,21 +78,6 @@ const authRateLimit = (0, express_rate_limit_1.default)({
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
-// Stricter rate limiting for login attempts
-const loginRateLimit = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 login attempts per 15 minutes
-    message: {
-        success: false,
-        message: "Too many login attempts, please try again in 15 minutes",
-        meta: {
-            timestamp: new Date().toISOString(),
-        },
-    },
-    skipSuccessfulRequests: true, // Don't count successful requests
-    standardHeaders: true,
-    legacyHeaders: false,
-});
 /**
  * @route   GET /api/v1/auth/health
  * @desc    Health check endpoint
@@ -104,7 +89,7 @@ router.get("/health", authController_1.AuthController.health);
  * @desc    Authenticate user and return JWT token
  * @access  Public
  */
-router.post("/login", loginRateLimit, authValidator_1.loginValidation, authController_1.AuthController.login);
+router.post("/login", authValidator_1.loginValidation, authController_1.AuthController.login);
 /**
  * @route   POST /api/v1/auth/logout
  * @desc    Logout user and clear authentication cookies

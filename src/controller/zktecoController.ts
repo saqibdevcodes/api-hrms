@@ -1,57 +1,15 @@
-/**
- * ZKTeco Controller - Handles all ZKTeco biometric device operations
- *
- * This controller manages:
- * - Device management (add, remove, status)
- * - Employee management (upload to devices)
- * - Attendance data synchronization
- * - iClock protocol handling (device communication)
- * - Real-time data processing
- *
- * Key Features:
- * - Automatic device status monitoring
- * - Real-time attendance data processing
- * - Employee enrollment on devices
- * - Device health monitoring
- * - Data export and reporting
- */
-
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import {
   zktecoService,
   ZKTecoDevice,
-  AttendanceData,
   EmployeeData,
 } from "../services/zktecoService";
-import { PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 import { EmailService } from "../utils/emailService";
 
-const prisma = new PrismaClient();
-
 export class ZKTecoController {
-  /**
-   * ========================================
-   * DEVICE MANAGEMENT METHODS
-   * ========================================
-   */
-
-  /**
-   * Get all registered ZKTeco devices with their current status
-   *
-   * This method:
-   * 1. Retrieves all devices from the service
-   * 2. Checks each device's online/offline status
-   * 3. Fetches real-time device information
-   * 4. Returns comprehensive device status for the frontend
-   *
-   * Use case: Dashboard display, device monitoring
-   *
-   * @param req - Express request object
-   * @param res - Express response object
-   * @returns JSON with devices array and total count
-   */
   static async getDevices(req: Request, res: Response) {
     try {
       const devices = zktecoService.getDevices();
@@ -75,7 +33,7 @@ export class ZKTecoController {
               error: error instanceof Error ? error.message : "Unknown error",
             };
           }
-        })
+        }),
       );
 
       res.json({
@@ -95,22 +53,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get detailed status of a specific ZKTeco device
-   *
-   * This method:
-   * 1. Takes a device ID from the request parameters
-   * 2. Attempts to connect to the device via HTTP
-   * 3. Fetches real-time device information (firmware, time, etc.)
-   * 4. Returns comprehensive device status including online/offline state
-   *
-   * Use case: Device detail page, troubleshooting, health monitoring
-   *
-   * @param req - Express request object with deviceId in params
-   * @param res - Express response object
-   * @returns JSON with device status, info, and online state
-   */
   static async getDeviceStatus(req: Request, res: Response) {
     try {
       const { deviceId } = req.params;
@@ -131,32 +73,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * ========================================
-   * ATTENDANCE SYNCHRONIZATION METHODS
-   * ========================================
-   */
-
-  /**
-   * Manually sync attendance data from ZKTeco devices
-   *
-   * ⚠️ IMPORTANT: This method is for MANUAL sync only
-   * Your UFace 800 device uses iClock push protocol, so this will always fail
-   * Real-time data comes automatically via iClock push (handleIClockCData)
-   *
-   * This method:
-   * 1. Accepts optional date range and device ID filters
-   * 2. Attempts to pull data from device via HTTP (not supported by UFace 800)
-   * 3. Returns error because UFace 800 doesn't support HTTP attendance retrieval
-   *
-   * Use case: Manual data sync (not recommended for UFace 800)
-   * Better alternative: Use real-time iClock push data
-   *
-   * @param req - Express request object with optional startDate, endDate, deviceId
-   * @param res - Express response object
-   * @returns JSON with sync results (will be error for UFace 800)
-   */
   static async syncAttendanceData(req: Request, res: Response) {
     try {
       const { startDate, endDate, deviceId } = req.body;
@@ -176,7 +92,7 @@ export class ZKTecoController {
         const attendanceData = await zktecoService.fetchAttendanceFromDevice(
           deviceId,
           start,
-          end
+          end,
         );
 
         res.json({
@@ -209,33 +125,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * ========================================
-   * ATTENDANCE DATA RETRIEVAL METHODS
-   * ========================================
-   */
-
-  /**
-   * Get processed attendance data from the database
-   *
-   * This method:
-   * 1. Accepts query parameters for filtering (deviceId, dates, employeeId, pagination)
-   * 2. Implements role-based access control (employees see only their data, admins see all)
-   * 3. Applies date range filtering if specified
-   * 4. Returns paginated attendance records with employee and shift information
-   * 5. Includes related ZKTeco raw records for debugging
-   *
-   * Use case: Attendance dashboard, reports, employee self-service
-   * Called by: Frontend attendance page, reports, mobile apps
-   *
-   * ⚠️ Note: This returns PROCESSED attendance data, not raw device data
-   * Raw device data is available via getZKTecoRecords endpoint
-   *
-   * @param req - Express request object with query parameters
-   * @param res - Express response object
-   * @returns JSON with paginated attendance records and total count
-   */
   static async getAttendanceData(req: Request, res: Response) {
     try {
       const {
@@ -261,7 +150,7 @@ export class ZKTecoController {
       // 👥 ROLE-BASED ACCESS CONTROL: Filter data based on user role
       // Define roles that can view ALL records
       const canViewAllRecords = ["ADMIN", "HR", "SUPERADMIN"].includes(
-        currentUser.role
+        currentUser.role,
       );
 
       if (canViewAllRecords) {
@@ -281,14 +170,14 @@ export class ZKTecoController {
         }
 
         console.log(
-          `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`
+          `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`,
         );
       } else {
         // 🔒 DEFAULT/EMPLOYEE ACCESS: STRICTLY restrict to own records
         // If user role is EMPLOYEE or any other unhandled role, they see ONLY their own data
         where.employeeId = currentUser.id;
         console.log(
-          `👤 User ${currentUser.email} (${currentUser.role}) viewing their own attendance`
+          `👤 User ${currentUser.email} (${currentUser.role}) viewing their own attendance`,
         );
       }
 
@@ -314,8 +203,8 @@ export class ZKTecoController {
 
       console.log("📊 Fetching attendance records (all finalized data)");
       console.log(`   User: ${currentUser.email} (${currentUser.role})`);
-      console.log(`   Department Filter: ${departmentId || 'none'}`);
-      console.log(`   Employee Filter: ${employeeId || 'none'}`);
+      console.log(`   Department Filter: ${departmentId || "none"}`);
+      console.log(`   Employee Filter: ${employeeId || "none"}`);
       console.log(`   Where Clause:`, JSON.stringify(where, null, 2));
 
       const [attendanceRecords, total] = await Promise.all([
@@ -384,7 +273,7 @@ export class ZKTecoController {
       // Helper function to calculate attendance status based on shift timing
       const calculateAttendanceStatus = (
         record: any,
-        shift: any
+        shift: any,
       ): {
         status: string;
         lateMinutes?: number;
@@ -408,12 +297,16 @@ export class ZKTecoController {
               shiftEnd.getHours(),
               shiftEnd.getMinutes(),
               0,
-              0
+              0,
             );
 
-            const earlyOutMinutes = checkOutTime < todayShiftEnd
-              ? Math.floor((todayShiftEnd.getTime() - checkOutTime.getTime()) / (1000 * 60))
-              : 0;
+            const earlyOutMinutes =
+              checkOutTime < todayShiftEnd
+                ? Math.floor(
+                    (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                      (1000 * 60),
+                  )
+                : 0;
 
             // Determine check-out status
             let checkOutStatus = "ON_TIME_LEAVE";
@@ -424,7 +317,7 @@ export class ZKTecoController {
             return {
               status: "ABSENT",
               checkOutStatus: checkOutStatus,
-              earlyOutMinutes: earlyOutMinutes
+              earlyOutMinutes: earlyOutMinutes,
             };
           }
           return { status: "ABSENT" };
@@ -453,7 +346,7 @@ export class ZKTecoController {
           shiftStart.getHours(),
           shiftStart.getMinutes(),
           0,
-          0
+          0,
         );
         console.log("todayShiftStart", todayShiftStart);
 
@@ -462,7 +355,7 @@ export class ZKTecoController {
           shiftEnd.getHours(),
           shiftEnd.getMinutes(),
           0,
-          0
+          0,
         );
         console.log("todayShiftEnd", todayShiftEnd);
 
@@ -470,9 +363,9 @@ export class ZKTecoController {
         const lateMinutes =
           checkInTime > todayShiftStart
             ? Math.floor(
-              (checkInTime.getTime() - todayShiftStart.getTime()) /
-              (1000 * 60)
-            )
+                (checkInTime.getTime() - todayShiftStart.getTime()) /
+                  (1000 * 60),
+              )
             : 0;
         console.log("checkInTime", new Date(checkInTime).toLocaleTimeString());
         console.log("checkOutTime", checkOutTime);
@@ -485,9 +378,9 @@ export class ZKTecoController {
           earlyOutMinutes =
             checkOutTime < todayShiftEnd
               ? Math.floor(
-                (todayShiftEnd.getTime() - checkOutTime.getTime()) /
-                (1000 * 60)
-              )
+                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                    (1000 * 60),
+                )
               : 0;
           console.log("earlyOutMinutes", earlyOutMinutes);
 
@@ -513,7 +406,7 @@ export class ZKTecoController {
             halfDayStart.getHours(),
             halfDayStart.getMinutes(),
             0,
-            0
+            0,
           );
 
           if (checkOutTime < todayHalfDayStart) {
@@ -554,19 +447,19 @@ export class ZKTecoController {
       };
 
       // Transform data to include employee details and precise status from ZKTeco records
-      const transformedRecords = attendanceRecords.map((record) => {
+      const transformedRecords = attendanceRecords.map((record: any) => {
         const calculatedStatus = calculateAttendanceStatus(
           record,
-          record.employee.shift
+          record.employee.shift,
         );
         console.log("record", record);
         console.log("record.zktecoRecords", record.zktecoRecords);
 
         // Get the most relevant precise status from ZKTeco records
         const checkInRecord = record.zktecoRecords.find(
-          (r) => r.checkType === "check_in"
+          (r: any) => r.checkType === "check_in",
         );
-        const checkOutRecord = record.zktecoRecords.find((r) => {
+        const checkOutRecord = record.zktecoRecords.find((r: any) => {
           console.log("rur", r);
           return r.checkType === "check_out";
         });
@@ -612,9 +505,15 @@ export class ZKTecoController {
           workingHours: calculatedStatus.workingHours,
 
           // ZKTeco precise status details (use ZKTeco status if available, otherwise use calculated)
-          checkInStatus: checkInRecord?.overallStatus || calculatedStatus.checkInStatus || null,
-          checkOutStatus: checkOutRecord?.overallStatus || calculatedStatus.checkOutStatus || null,
-          zktecoRecords: record.zktecoRecords.map((zkr) => ({
+          checkInStatus:
+            checkInRecord?.overallStatus ||
+            calculatedStatus.checkInStatus ||
+            null,
+          checkOutStatus:
+            checkOutRecord?.overallStatus ||
+            calculatedStatus.checkOutStatus ||
+            null,
+          zktecoRecords: record.zktecoRecords.map((zkr: any) => ({
             id: zkr.id,
             timestamp: zkr.timestamp,
             checkType: zkr.checkType,
@@ -630,12 +529,12 @@ export class ZKTecoController {
             departmentEntity: record.employee.departmentEntity,
             shift: record.employee.shift
               ? {
-                id: record.employee.shift.id,
-                name: record.employee.shift.name,
-                startTime: record.employee.shift.startTime,
-                endTime: record.employee.shift.endTime,
-                breakTime: record.employee.shift.breakTime,
-              }
+                  id: record.employee.shift.id,
+                  name: record.employee.shift.name,
+                  startTime: record.employee.shift.startTime,
+                  endTime: record.employee.shift.endTime,
+                  breakTime: record.employee.shift.breakTime,
+                }
               : null,
           },
           createdAt: record.createdAt,
@@ -665,34 +564,9 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * ========================================
-   * EMPLOYEE MANAGEMENT METHODS
-   * ========================================
-   */
-
-  /**
-   * Upload a single employee to a ZKTeco device
-   *
-   * This method:
-   * 1. Validates the request data (deviceId, employeeId, cardNumber)
-   * 2. Finds the employee in the database by ID or employeeId
-   * 3. Prepares employee data for device upload
-   * 4. Calls the service to upload to the physical device
-   * 5. Returns success/failure response
-   *
-   * Use case: Adding individual employees to devices
-   * Called by: "Add Employee" button in frontend
-   *
-   * @param req - Authenticated request with deviceId, employeeId, cardNumber
-   * @param res - Express response object
-   * @returns JSON with upload success status and employee data
-   *
-   */
   static async uploadEmployeeToDevice(
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ) {
     try {
       const errors = validationResult(req);
@@ -728,7 +602,7 @@ export class ZKTecoController {
 
       const success = await zktecoService.uploadEmployeeToDevice(
         deviceId,
-        employeeData
+        employeeData,
       );
 
       if (success) {
@@ -755,29 +629,9 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Upload all active employees to a ZKTeco device (bulk operation)
-   *
-   * This method:
-   * 1. Takes a deviceId from the request body
-   * 2. Fetches all active employees from the database
-   * 3. Attempts to upload each employee to the device
-   * 4. Tracks success/failure counts and errors
-   * 5. Returns comprehensive upload results
-   *
-   * Use case: Initial device setup, bulk employee enrollment
-   * Called by: "Upload All Employees" button in frontend
-   *
-   * ⚠️ Note: This can take a while for large employee databases
-   *
-   * @param req - Authenticated request with deviceId
-   * @param res - Express response object
-   * @returns JSON with upload counts, success status, and any errors
-   */
   static async uploadAllEmployeesToDevice(
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ) {
     try {
       const { deviceId } = req.body;
@@ -809,21 +663,22 @@ export class ZKTecoController {
 
           const success = await zktecoService.uploadEmployeeToDevice(
             deviceId,
-            employeeData
+            employeeData,
           );
           if (success) {
             successCount++;
           } else {
             failCount++;
             errors.push(
-              `Failed to upload ${employee.firstName} ${employee.lastName}`
+              `Failed to upload ${employee.firstName} ${employee.lastName}`,
             );
           }
         } catch (error) {
           failCount++;
           errors.push(
-            `Error uploading ${employee.firstName} ${employee.lastName}: ${error instanceof Error ? error.message : "Unknown error"
-            }`
+            `Error uploading ${employee.firstName} ${employee.lastName}: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
           );
         }
       }
@@ -848,10 +703,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Add a new ZKTeco device
-   */
   static async addDevice(req: AuthenticatedRequest, res: Response) {
     try {
       const errors = validationResult(req);
@@ -891,10 +742,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Remove a ZKTeco device
-   */
   static async removeDevice(req: AuthenticatedRequest, res: Response) {
     try {
       const { deviceId } = req.params;
@@ -922,10 +769,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Clear attendance data from device
-   */
   static async clearDeviceAttendance(req: AuthenticatedRequest, res: Response) {
     try {
       const { deviceId } = req.body;
@@ -953,11 +796,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Fetch all attendance records for a specific device from database
-   * (Machine doesn't support HTTP attendance retrieval - data comes via iClock push)
-   */
   static async fetchAllAttendanceFromMachine(req: Request, res: Response) {
     try {
       const { deviceId, startDate, endDate, filter } = req.query;
@@ -970,7 +808,7 @@ export class ZKTecoController {
       }
 
       console.log(
-        `🔄 Fetching attendance records for device: ${deviceId} with filter: ${filter}`
+        `🔄 Fetching attendance records for device: ${deviceId} with filter: ${filter}`,
       );
 
       // Build where clause with date filtering
@@ -989,7 +827,7 @@ export class ZKTecoController {
         end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999); // End of day
         console.log(
-          `📅 Custom date range: ${start.toISOString()} to ${end.toISOString()}`
+          `📅 Custom date range: ${start.toISOString()} to ${end.toISOString()}`,
         );
       }
       // Second priority: predefined filters
@@ -1005,7 +843,7 @@ export class ZKTecoController {
               0,
               23,
               59,
-              59
+              59,
             );
             break;
           case "last-month":
@@ -1022,7 +860,7 @@ export class ZKTecoController {
             break;
         }
         console.log(
-          `📅 Filter applied: ${filter} - ${start?.toISOString()} to ${end?.toISOString()}`
+          `📅 Filter applied: ${filter} - ${start?.toISOString()} to ${end?.toISOString()}`,
         );
       }
 
@@ -1055,7 +893,7 @@ export class ZKTecoController {
       });
 
       // Transform the data
-      const transformedRecords = zktecoRecords.map((record) => ({
+      const transformedRecords = zktecoRecords.map((record: any) => ({
         employeeId: record.employeeId,
         timestamp: record.timestamp,
         checkType: record.checkType,
@@ -1065,16 +903,16 @@ export class ZKTecoController {
         processingError: record.processingError,
         employee: record.User
           ? {
-            id: record.User.id,
-            employeeId: record.User.employeeId,
-            name: `${record.User.firstName} ${record.User.lastName}`,
-            email: record.User.email,
-          }
+              id: record.User.id,
+              employeeId: record.User.employeeId,
+              name: `${record.User.firstName} ${record.User.lastName}`,
+              email: record.User.email,
+            }
           : null,
       }));
 
       console.log(
-        `📊 Found ${transformedRecords.length} attendance records for device ${deviceId}`
+        `📊 Found ${transformedRecords.length} attendance records for device ${deviceId}`,
       );
 
       res.json({
@@ -1097,27 +935,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get raw ZKTeco attendance records from the database
-   * 
-   * This method:
-   * 1. Accepts query parameters for filtering (employeeId, deviceId, checkType, dates, pagination)
-   * 2. Returns UNPROCESSED raw data directly from the device
-   * 3. Includes employee information for each record
-  4. Applies comprehensive filtering and pagination
-   * 5. Returns data in a format suitable for debugging and analysis
-   * 
-   * Use case: Debugging attendance issues, raw data analysis, troubleshooting
-   * Called by: Admin debugging tools, data export, system monitoring
-   * 
-   * ⚠️ Note: This returns RAW device data, not processed attendance records
-   * Processed data is available via getAttendanceData endpoint
-   * 
-   * @param req - Express request object with query parameters
-   * @param res - Express response object
-   * @returns JSON with paginated raw ZKTeco records and total count
-   */
   static async getAllZKTecoRecords(req: Request, res: Response) {
     try {
       const {
@@ -1182,7 +999,7 @@ export class ZKTecoController {
       ]);
 
       // Transform data
-      const transformedRecords = zktecoRecords.map((record) => ({
+      const transformedRecords = zktecoRecords.map((record: any) => ({
         id: record.id,
         employeeId: record.employeeId,
         deviceId: record.deviceId,
@@ -1194,11 +1011,11 @@ export class ZKTecoController {
         processingError: record.processingError,
         employee: record.User
           ? {
-            id: record.User.id,
-            employeeId: record.User.employeeId,
-            name: `${record.User.firstName} ${record.User.lastName}`,
-            email: record.User.email,
-          }
+              id: record.User.id,
+              employeeId: record.User.employeeId,
+              name: `${record.User.firstName} ${record.User.lastName}`,
+              email: record.User.email,
+            }
           : null,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -1226,16 +1043,11 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get employee deduction history with details
-   */
   static async getEmployeeDeductionHistory(req: Request, res: Response) {
     try {
       const { employeeId } = req.params;
-      const deductionHistory = await zktecoService.getEmployeeDeductionHistory(
-        employeeId
-      );
+      const deductionHistory =
+        await zktecoService.getEmployeeDeductionHistory(employeeId);
 
       res.json({
         success: true,
@@ -1255,10 +1067,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Debug attendance records for a specific employee and date
-   */
   static async debugAttendanceRecords(req: Request, res: Response) {
     try {
       const { employeeId, date } = req.params;
@@ -1272,7 +1080,7 @@ export class ZKTecoController {
 
       const debugInfo = await zktecoService.debugAttendanceRecords(
         employeeId,
-        date
+        date,
       );
 
       if (!debugInfo) {
@@ -1296,10 +1104,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Fix attendance records by processing unprocessed ZKTeco records
-   */
   static async fixAttendanceRecords(req: Request, res: Response) {
     try {
       const { employeeId, date } = req.params;
@@ -1313,7 +1117,7 @@ export class ZKTecoController {
 
       const fixResult = await zktecoService.fixAttendanceRecords(
         employeeId,
-        date
+        date,
       );
 
       if (!fixResult) {
@@ -1337,16 +1141,11 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get employee's current leave balance
-   */
   static async getEmployeeLeaveBalance(req: Request, res: Response) {
     try {
       const { employeeId } = req.params;
-      const leaveBalance = await zktecoService.getEmployeeLeaveBalance(
-        employeeId
-      );
+      const leaveBalance =
+        await zktecoService.getEmployeeLeaveBalance(employeeId);
 
       console.log("leaveBalance", leaveBalance);
 
@@ -1371,10 +1170,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Validate if specific records can be used for deductions
-   */
   static async validateRecordsForDeduction(req: Request, res: Response) {
     try {
       const { recordIds } = req.body;
@@ -1387,9 +1182,8 @@ export class ZKTecoController {
         });
       }
 
-      const validation = await zktecoService.validateRecordsForDeduction(
-        recordIds
-      );
+      const validation =
+        await zktecoService.validateRecordsForDeduction(recordIds);
 
       res.json({
         success: true,
@@ -1405,10 +1199,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Export attendance data to CSV or XLSX
-   */
   static async exportAttendanceData(req: Request, res: Response) {
     try {
       const { deviceId, startDate, endDate, format = "csv" } = req.query;
@@ -1421,7 +1211,7 @@ export class ZKTecoController {
       }
 
       console.log(
-        `🔄 Exporting attendance data for device: ${deviceId} in ${format} format`
+        `🔄 Exporting attendance data for device: ${deviceId} in ${format} format`,
       );
 
       // Build where clause with date filtering
@@ -1461,7 +1251,7 @@ export class ZKTecoController {
       });
 
       // Transform data for export
-      const exportData = zktecoRecords.map((record) => ({
+      const exportData = zktecoRecords.map((record: any) => ({
         "Employee ID": record.employeeId,
         "Employee Name": record.User
           ? `${record.User.firstName} ${record.User.lastName}`
@@ -1490,7 +1280,7 @@ export class ZKTecoController {
         const headers = Object.keys(exportData[0] || {});
         const csvContent = [
           headers.join(","),
-          ...exportData.map((row) =>
+          ...exportData.map((row: any) =>
             headers
               .map((header) => {
                 const value = row[header as keyof typeof row];
@@ -1499,14 +1289,14 @@ export class ZKTecoController {
                   ? `"${value.replace(/"/g, '""')}"`
                   : value;
               })
-              .join(",")
+              .join(","),
           ),
         ].join("\n");
 
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}.csv"`
+          `attachment; filename="${filename}.csv"`,
         );
         res.send(csvContent);
       } else if (format === "xlsx") {
@@ -1514,7 +1304,7 @@ export class ZKTecoController {
         res.setHeader("Content-Type", "application/json");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}.json"`
+          `attachment; filename="${filename}.json"`,
         );
         res.json({
           success: true,
@@ -1530,7 +1320,7 @@ export class ZKTecoController {
       }
 
       console.log(
-        `📊 Exported ${exportData.length} attendance records in ${format} format`
+        `📊 Exported ${exportData.length} attendance records in ${format} format`,
       );
     } catch (error) {
       console.error("Error exporting attendance data:", error);
@@ -1541,10 +1331,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Create employee from ZKTeco data (helper function)
-   */
   static async createEmployeeFromZKTeco(req: Request, res: Response) {
     try {
       const { employeeId, firstName, lastName, email } = req.body;
@@ -1596,7 +1382,7 @@ export class ZKTecoController {
       });
 
       console.log(
-        `✅ Employee created: ${employee.employeeId} - ${employee.firstName} ${employee.lastName}`
+        `✅ Employee created: ${employee.employeeId} - ${employee.firstName} ${employee.lastName}`,
       );
 
       res.json({
@@ -1621,10 +1407,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get attendance statistics
-   */
   static async getAttendanceStats(req: Request, res: Response) {
     try {
       const { startDate, endDate, departmentId } = req.query;
@@ -1696,10 +1478,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Get real-time device info
-   */
   static async getDeviceInfo(req: Request, res: Response) {
     try {
       const { deviceId } = req.params;
@@ -1735,10 +1513,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Test endpoint to simulate attendance data from ZKTeco device
-   */
   static async simulateAttendance(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -1768,7 +1542,7 @@ export class ZKTecoController {
       // Process the attendance data (this will trigger live updates)
       await (zktecoService as any).processAttendanceData(
         attendanceData,
-        deviceIp
+        deviceIp,
       );
 
       res.status(200).json({
@@ -1785,43 +1559,9 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * ========================================
-   * ICLOCK PROTOCOL HANDLERS
-   * ========================================
-   *
-   * These methods handle the iClock protocol communication with ZKTeco devices
-   * iClock is the HTTP-based protocol used by ZKTeco devices for real-time data exchange
-   *
-   * Protocol Flow:
-   * 1. Device sends GET /getrequest to check for commands
-   * 2. Device sends POST /ping for heartbeat/status
-   * 3. Device sends POST /cdata for attendance data
-   * 4. Device sends POST /fdata for face data
-   *
-   * Your UFace 800 device automatically sends these requests to your server
-   */
-
-  /**
-   * Handle iClock GET /getrequest - Device requesting commands
-   *
-   * This method:
-   * 1. Receives GET request from device when it connects
-   * 2. Extracts device serial number (SN) from query parameters
-   * 3. Calls service to handle device connection and auto-sync
-   * 4. Returns "OK" to acknowledge device connection
-   *
-   * Use case: Device connection, automatic device registration
-   * Called by: Device automatically when it connects to network
-   *
-   * @param req - Express request object with SN query parameter
-   * @param res - Express response object
-   * @returns "OK" response to acknowledge device
-   */
   static async handleIClockGetRequest(
     req: Request,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       // 🔍 EXTRACT DEVICE ID: Get serial number from query parameters
@@ -1840,23 +1580,6 @@ export class ZKTecoController {
       res.status(500).send("Internal Server Error");
     }
   }
-
-  /**
-   * Handle iClock POST /ping - Device heartbeat/status update
-   *
-   * This method:
-   * 1. Receives POST request from device for heartbeat
-   * 2. Extracts device serial number (SN) from query parameters
-   * 3. Updates device status and last seen timestamp
-   * 4. Returns "OK" to acknowledge heartbeat
-   *
-   * Use case: Device health monitoring, online status tracking
-   * Called by: Device automatically every few minutes
-   *
-   * @param req - Express request object with SN query parameter
-   * @param res - Express response object
-   * @returns "OK" response to acknowledge heartbeat
-   */
   static async handleIClockPing(req: Request, res: Response): Promise<void> {
     try {
       const sn = req.query.SN as string;
@@ -1869,26 +1592,6 @@ export class ZKTecoController {
       res.status(500).send("Internal Server Error");
     }
   }
-
-  /**
-   * Handle iClock POST /fdata - Device uploading face data
-   *
-   * This method:
-   * 1. Receives POST request from device with face data
-   * 2. Extracts device serial number (SN) and table type from query parameters
-   * 3. Logs detailed information about the request for debugging
-   * 4. Processes face data if needed (currently just logs)
-   * 5. Returns "OK" to acknowledge data receipt
-   *
-   * Use case: Face recognition data, employee face templates
-   * Called by: Device when uploading face data or user information
-   *
-   * ⚠️ Note: Currently just logs data, can be extended for face processing
-   *
-   * @param req - Express request object with SN, table query parameters and face data in body
-   * @param res - Express response object
-   * @returns "OK" response to acknowledge data receipt
-   */
   static async handleIClockFData(req: Request, res: Response): Promise<void> {
     try {
       const sn = req.query.SN as string;
@@ -1921,27 +1624,6 @@ export class ZKTecoController {
       res.status(400).send("Face data processing error");
     }
   }
-
-  /**
-   * Handle iClock POST /cdata - Device uploading attendance data
-   *
-   * This method:
-   * 1. Receives POST request from device with attendance data
-   * 2. Extracts device serial number (SN) and table type from query parameters
-   * 3. Logs detailed information about the request for debugging
-   * 4. Processes attendance data via service (creates/updates attendance records)
-   * 5. Returns "OK" to acknowledge data receipt
-   *
-   * Use case: Real-time attendance data, punch in/out records
-   * Called by: Device automatically when attendance events occur
-   *
-   * ⚠️ This is the MAIN method for receiving attendance data from your UFace 800
-   * All punch in/out events come through this endpoint
-   *
-   * @param req - Express request object with SN, table query parameters and attendance data in body
-   * @param res - Express response object
-   * @returns "OK" response to acknowledge data receipt
-   */
   static async handleIClockCData(req: Request, res: Response): Promise<void> {
     try {
       const sn = req.query.SN as string;
@@ -1987,13 +1669,6 @@ export class ZKTecoController {
       res.status(400).send("Data processing error");
     }
   }
-
-  /**
-   * Force finalize all staging records (SuperAdmin only)
-   *
-   * This endpoint allows SuperAdmin to immediately finalize all staging records
-   * without waiting for the 3-day delay
-   */
   static async forceFinalizeAll(req: Request, res: Response): Promise<void> {
     try {
       const authenticatedRequest = req as any;
@@ -2009,14 +1684,13 @@ export class ZKTecoController {
       }
 
       console.log(
-        `🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`
+        `🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`,
       );
 
-      const { finalizationService } = await import(
-        "../services/finalizationService"
-      );
+      const { finalizationService } =
+        await import("../services/finalizationService");
       const result = await finalizationService.forceFinalizeAllStagingRecords(
-        currentUser.id
+        currentUser.id,
       );
 
       res.json({
@@ -2036,10 +1710,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Run finalization cron manually (SuperAdmin only)
-   */
   static async runFinalizationCron(req: Request, res: Response): Promise<void> {
     try {
       const authenticatedRequest = req as any;
@@ -2055,12 +1725,11 @@ export class ZKTecoController {
       }
 
       console.log(
-        `🔐 SuperAdmin ${currentUser.email} running finalization cron manually`
+        `🔐 SuperAdmin ${currentUser.email} running finalization cron manually`,
       );
 
-      const { finalizationService } = await import(
-        "../services/finalizationService"
-      );
+      const { finalizationService } =
+        await import("../services/finalizationService");
       const result = await finalizationService.finalizeStagingRecords();
 
       res.json({
@@ -2080,25 +1749,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * ========================================
-   * LATE REASON MANAGEMENT METHODS
-   * ========================================
-   */
-
-  /**
-   * Add or update a late reason for an attendance record
-   *
-   * This method allows employees to provide reasons for:
-   * - Late check-in
-   * - Early/late check-out
-   * - Overall attendance status issues
-   *
-   * @param req - Express request object with reason in body
-   * @param res - Express response object
-   * @returns JSON with success status
-   */
   static async addLateReason(req: Request, res: Response): Promise<void> {
     try {
       const authenticatedRequest = req as AuthenticatedRequest;
@@ -2150,7 +1800,9 @@ export class ZKTecoController {
       // Unless they are HR or Admin
       const isOwnRecord = record.employeeId === currentUser?.id;
       const isHROrAdmin =
-        currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+        currentUser?.role === "HR" ||
+        currentUser?.role === "ADMIN" ||
+        currentUser?.role === "SUPERADMIN";
 
       if (!isOwnRecord && !isHROrAdmin) {
         res.status(403).json({
@@ -2193,14 +1845,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Update an existing late reason
-   *
-   * @param req - Express request object with id param and reason in body
-   * @param res - Express response object
-   * @returns JSON with success status
-   */
   static async updateLateReason(req: Request, res: Response): Promise<void> {
     try {
       const authenticatedRequest = req as AuthenticatedRequest;
@@ -2252,12 +1896,15 @@ export class ZKTecoController {
       // Security check
       const isOwnRecord = record.employeeId === currentUser?.id;
       const isHROrAdmin =
-        currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+        currentUser?.role === "HR" ||
+        currentUser?.role === "ADMIN" ||
+        currentUser?.role === "SUPERADMIN";
 
       if (!isOwnRecord && !isHROrAdmin) {
         res.status(403).json({
           success: false,
-          message: "You can only update reasons for your own attendance records",
+          message:
+            "You can only update reasons for your own attendance records",
         });
         return;
       }
@@ -2295,25 +1942,19 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Send reminder emails to employees who need to provide reasons
-   *
-   * This method:
-   * 1. Finds all attendance records that need reasons but don't have them
-   * 2. Groups records by employee
-   * 3. Sends reminder emails to each employee
-   *
-   * @route POST /api/zkteco/attendance/late-reason-reminders
-   */
-  static async sendLateReasonReminders(req: Request, res: Response): Promise<void> {
+  static async sendLateReasonReminders(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     try {
       const authenticatedRequest = req as AuthenticatedRequest;
       const currentUser = authenticatedRequest.user;
 
       // Security check: Only HR and Admin can send reminders
       const isHROrAdmin =
-        currentUser?.role === "HR" || currentUser?.role === "ADMIN" || currentUser?.role === "SUPERADMIN";
+        currentUser?.role === "HR" ||
+        currentUser?.role === "ADMIN" ||
+        currentUser?.role === "SUPERADMIN";
 
       if (!isHROrAdmin) {
         res.status(403).json({
@@ -2328,16 +1969,10 @@ export class ZKTecoController {
         where: {
           AND: [
             {
-              OR: [
-                { reason: null },
-                { reason: "" },
-              ],
+              OR: [{ reason: null }, { reason: "" }],
             },
             {
-              OR: [
-                { checkIn: { not: null } },
-                { checkOut: { not: null } },
-              ],
+              OR: [{ checkIn: { not: null } }, { checkOut: { not: null } }],
             },
           ],
         },
@@ -2378,51 +2013,54 @@ export class ZKTecoController {
       // 2. No check-out (NULL)
       // 3. Check-in after 10:00 AM
       // 4. Check-out before 6:00 PM
-      const recordsNeedingReasons = allRecordsWithoutReasons.filter((record: any) => {
-        let needsReason = false;
+      const recordsNeedingReasons = allRecordsWithoutReasons.filter(
+        (record: any) => {
+          let needsReason = false;
 
-        // Check if no check-in (NULL)
-        if (!record.checkIn) {
-          needsReason = true;
-        }
-
-        // Check if no check-out (NULL)
-        if (!record.checkOut) {
-          needsReason = true;
-        }
-
-        // Check if check-in is after 10:00 AM (using UTC time from database)
-        if (record.checkIn) {
-          const checkInTime = new Date(record.checkIn);
-          const checkInHour = checkInTime.getUTCHours();
-          const checkInMinute = checkInTime.getUTCMinutes();
-
-          // Check if after 10:00 AM (10 hours * 60 + 0 minutes = 600 minutes from midnight)
-          const checkInMinutesFromMidnight = checkInHour * 60 + checkInMinute;
-          const tenAMInMinutes = 10 * 60; // 600 minutes
-
-          if (checkInMinutesFromMidnight > tenAMInMinutes) {
+          // Check if no check-in (NULL)
+          if (!record.checkIn) {
             needsReason = true;
           }
-        }
 
-        // Check if check-out is before 6:00 PM (using UTC time from database)
-        if (record.checkOut) {
-          const checkOutTime = new Date(record.checkOut);
-          const checkOutHour = checkOutTime.getUTCHours();
-          const checkOutMinute = checkOutTime.getUTCMinutes();
-
-          // Check if before 6:00 PM (18 hours * 60 + 0 minutes = 1080 minutes from midnight)
-          const checkOutMinutesFromMidnight = checkOutHour * 60 + checkOutMinute;
-          const sixPMInMinutes = 18 * 60; // 1080 minutes
-
-          if (checkOutMinutesFromMidnight < sixPMInMinutes) {
+          // Check if no check-out (NULL)
+          if (!record.checkOut) {
             needsReason = true;
           }
-        }
 
-        return needsReason;
-      });
+          // Check if check-in is after 10:00 AM (using UTC time from database)
+          if (record.checkIn) {
+            const checkInTime = new Date(record.checkIn);
+            const checkInHour = checkInTime.getUTCHours();
+            const checkInMinute = checkInTime.getUTCMinutes();
+
+            // Check if after 10:00 AM (10 hours * 60 + 0 minutes = 600 minutes from midnight)
+            const checkInMinutesFromMidnight = checkInHour * 60 + checkInMinute;
+            const tenAMInMinutes = 10 * 60; // 600 minutes
+
+            if (checkInMinutesFromMidnight > tenAMInMinutes) {
+              needsReason = true;
+            }
+          }
+
+          // Check if check-out is before 6:00 PM (using UTC time from database)
+          if (record.checkOut) {
+            const checkOutTime = new Date(record.checkOut);
+            const checkOutHour = checkOutTime.getUTCHours();
+            const checkOutMinute = checkOutTime.getUTCMinutes();
+
+            // Check if before 6:00 PM (18 hours * 60 + 0 minutes = 1080 minutes from midnight)
+            const checkOutMinutesFromMidnight =
+              checkOutHour * 60 + checkOutMinute;
+            const sixPMInMinutes = 18 * 60; // 1080 minutes
+
+            if (checkOutMinutesFromMidnight < sixPMInMinutes) {
+              needsReason = true;
+            }
+          }
+
+          return needsReason;
+        },
+      );
 
       if (recordsNeedingReasons.length === 0) {
         res.json({
@@ -2462,134 +2100,160 @@ export class ZKTecoController {
         const employeeName = `${employee.firstName} ${employee.lastName}`;
 
         // Build the list of dates and issues
-        const attendanceIssues = records.map((record: any) => {
-          const date = new Date(record.date).toLocaleDateString();
-          const issues: string[] = [];
+        const attendanceIssues = records
+          .map((record: any) => {
+            const date = new Date(record.date).toLocaleDateString();
+            const issues: string[] = [];
 
-          // Check if no check-in (NULL)
-          if (!record.checkIn) {
-            issues.push("⚠️ No check-in recorded");
-          } else {
-            // Check if check-in is after 10:00 AM (using UTC time from database)
-            const checkInTime = new Date(record.checkIn);
-            const checkInHour = checkInTime.getUTCHours();
-            const checkInMinute = checkInTime.getUTCMinutes();
-            const checkInSecond = checkInTime.getUTCSeconds();
-            const checkInMinutesFromMidnight = checkInHour * 60 + checkInMinute;
-            const tenAMInMinutes = 10 * 60;
+            // Check if no check-in (NULL)
+            if (!record.checkIn) {
+              issues.push("⚠️ No check-in recorded");
+            } else {
+              // Check if check-in is after 10:00 AM (using UTC time from database)
+              const checkInTime = new Date(record.checkIn);
+              const checkInHour = checkInTime.getUTCHours();
+              const checkInMinute = checkInTime.getUTCMinutes();
+              const checkInSecond = checkInTime.getUTCSeconds();
+              const checkInMinutesFromMidnight =
+                checkInHour * 60 + checkInMinute;
+              const tenAMInMinutes = 10 * 60;
 
-            if (checkInMinutesFromMidnight > tenAMInMinutes) {
-              const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
+              if (checkInMinutesFromMidnight > tenAMInMinutes) {
+                const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
 
-              // Format time using UTC values
-              let hour = checkInHour;
-              const ampm = hour >= 12 ? 'PM' : 'AM';
-              hour = hour % 12;
-              hour = hour ? hour : 12; // the hour '0' should be '12'
-              const minuteStr = checkInMinute.toString().padStart(2, '0');
-              const secondStr = checkInSecond.toString().padStart(2, '0');
-              const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
+                // Format time using UTC values
+                let hour = checkInHour;
+                const ampm = hour >= 12 ? "PM" : "AM";
+                hour = hour % 12;
+                hour = hour ? hour : 12; // the hour '0' should be '12'
+                const minuteStr = checkInMinute.toString().padStart(2, "0");
+                const secondStr = checkInSecond.toString().padStart(2, "0");
+                const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
 
-              issues.push(`Checked in late at ${checkInTimeStr} (${lateMinutes} min after 10:00 AM)`);
+                issues.push(
+                  `Checked in late at ${checkInTimeStr} (${lateMinutes} min after 10:00 AM)`,
+                );
+              }
             }
-          }
 
-          // Check if no check-out (NULL)
-          if (!record.checkOut) {
-            issues.push("⚠️ No check-out recorded");
-          } else {
-            // Check if check-out is before 6:00 PM (using UTC time from database)
-            const checkOutTime = new Date(record.checkOut);
-            const checkOutHour = checkOutTime.getUTCHours();
-            const checkOutMinute = checkOutTime.getUTCMinutes();
-            const checkOutSecond = checkOutTime.getUTCSeconds();
-            const checkOutMinutesFromMidnight = checkOutHour * 60 + checkOutMinute;
-            const sixPMInMinutes = 18 * 60;
+            // Check if no check-out (NULL)
+            if (!record.checkOut) {
+              issues.push("⚠️ No check-out recorded");
+            } else {
+              // Check if check-out is before 6:00 PM (using UTC time from database)
+              const checkOutTime = new Date(record.checkOut);
+              const checkOutHour = checkOutTime.getUTCHours();
+              const checkOutMinute = checkOutTime.getUTCMinutes();
+              const checkOutSecond = checkOutTime.getUTCSeconds();
+              const checkOutMinutesFromMidnight =
+                checkOutHour * 60 + checkOutMinute;
+              const sixPMInMinutes = 18 * 60;
 
-            if (checkOutMinutesFromMidnight < sixPMInMinutes) {
-              const earlyMinutes = sixPMInMinutes - checkOutMinutesFromMidnight;
+              if (checkOutMinutesFromMidnight < sixPMInMinutes) {
+                const earlyMinutes =
+                  sixPMInMinutes - checkOutMinutesFromMidnight;
 
-              // Format time using UTC values
-              let hour = checkOutHour;
-              const ampm = hour >= 12 ? 'PM' : 'AM';
-              hour = hour % 12;
-              hour = hour ? hour : 12; // the hour '0' should be '12'
-              const minuteStr = checkOutMinute.toString().padStart(2, '0');
-              const secondStr = checkOutSecond.toString().padStart(2, '0');
-              const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
+                // Format time using UTC values
+                let hour = checkOutHour;
+                const ampm = hour >= 12 ? "PM" : "AM";
+                hour = hour % 12;
+                hour = hour ? hour : 12; // the hour '0' should be '12'
+                const minuteStr = checkOutMinute.toString().padStart(2, "0");
+                const secondStr = checkOutSecond.toString().padStart(2, "0");
+                const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
 
-              issues.push(`Checked out early at ${checkOutTimeStr} (${earlyMinutes} min before 6:00 PM)`);
+                issues.push(
+                  `Checked out early at ${checkOutTimeStr} (${earlyMinutes} min before 6:00 PM)`,
+                );
+              }
             }
-          }
 
-          const issueText = issues.length > 0 ? issues.join(", ") : "Attendance irregularity";
+            const issueText =
+              issues.length > 0 ? issues.join(", ") : "Attendance irregularity";
 
-          return `  • ${date}: ${issueText}`;
-        }).join("\n");
+            return `  • ${date}: ${issueText}`;
+          })
+          .join("\n");
 
         // Create email content
         const emailSubject = `Reminder: Attendance Reason Required (${records.length} record${records.length > 1 ? "s" : ""})`;
 
         // Convert plain text issues to HTML list items
-        const htmlIssues = records.map((record: any) => {
-          const date = new Date(record.date).toLocaleDateString();
-          const issues: string[] = [];
+        const htmlIssues = records
+          .map((record: any) => {
+            const date = new Date(record.date).toLocaleDateString();
+            const issues: string[] = [];
 
-          // Check if no check-in (NULL)
-          if (!record.checkIn) {
-            issues.push("<strong style='color: #dc2626;'>⚠️ No check-in recorded</strong>");
-          } else {
-            // Check if check-in is after 10:00 AM
-            const checkInTime = new Date(record.checkIn);
-            const checkInHour = checkInTime.getUTCHours();
-            const checkInMinute = checkInTime.getUTCMinutes();
-            const checkInSecond = checkInTime.getUTCSeconds();
-            const checkInMinutesFromMidnight = checkInHour * 60 + checkInMinute;
-            const tenAMInMinutes = 10 * 60;
+            // Check if no check-in (NULL)
+            if (!record.checkIn) {
+              issues.push(
+                "<strong style='color: #dc2626;'>⚠️ No check-in recorded</strong>",
+              );
+            } else {
+              // Check if check-in is after 10:00 AM
+              const checkInTime = new Date(record.checkIn);
+              const checkInHour = checkInTime.getUTCHours();
+              const checkInMinute = checkInTime.getUTCMinutes();
+              const checkInSecond = checkInTime.getUTCSeconds();
+              const checkInMinutesFromMidnight =
+                checkInHour * 60 + checkInMinute;
+              const tenAMInMinutes = 10 * 60;
 
-            if (checkInMinutesFromMidnight > tenAMInMinutes) {
-              const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
-              let hour = checkInHour;
-              const ampm = hour >= 12 ? 'PM' : 'AM';
-              hour = hour % 12;
-              hour = hour ? hour : 12;
-              const minuteStr = checkInMinute.toString().padStart(2, '0');
-              const secondStr = checkInSecond.toString().padStart(2, '0');
-              const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
+              if (checkInMinutesFromMidnight > tenAMInMinutes) {
+                const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
+                let hour = checkInHour;
+                const ampm = hour >= 12 ? "PM" : "AM";
+                hour = hour % 12;
+                hour = hour ? hour : 12;
+                const minuteStr = checkInMinute.toString().padStart(2, "0");
+                const secondStr = checkInSecond.toString().padStart(2, "0");
+                const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
 
-              issues.push(`<span style='color: #ea580c;'>Checked in late at <strong>${checkInTimeStr}</strong> (${lateMinutes} min after 10:00 AM)</span>`);
+                issues.push(
+                  `<span style='color: #ea580c;'>Checked in late at <strong>${checkInTimeStr}</strong> (${lateMinutes} min after 10:00 AM)</span>`,
+                );
+              }
             }
-          }
 
-          // Check if no check-out (NULL)
-          if (!record.checkOut) {
-            issues.push("<strong style='color: #dc2626;'>⚠️ No check-out recorded</strong>");
-          } else {
-            // Check if check-out is before 6:00 PM
-            const checkOutTime = new Date(record.checkOut);
-            const checkOutHour = checkOutTime.getUTCHours();
-            const checkOutMinute = checkOutTime.getUTCMinutes();
-            const checkOutSecond = checkOutTime.getUTCSeconds();
-            const checkOutMinutesFromMidnight = checkOutHour * 60 + checkOutMinute;
-            const sixPMInMinutes = 18 * 60;
+            // Check if no check-out (NULL)
+            if (!record.checkOut) {
+              issues.push(
+                "<strong style='color: #dc2626;'>⚠️ No check-out recorded</strong>",
+              );
+            } else {
+              // Check if check-out is before 6:00 PM
+              const checkOutTime = new Date(record.checkOut);
+              const checkOutHour = checkOutTime.getUTCHours();
+              const checkOutMinute = checkOutTime.getUTCMinutes();
+              const checkOutSecond = checkOutTime.getUTCSeconds();
+              const checkOutMinutesFromMidnight =
+                checkOutHour * 60 + checkOutMinute;
+              const sixPMInMinutes = 18 * 60;
 
-            if (checkOutMinutesFromMidnight < sixPMInMinutes) {
-              const earlyMinutes = sixPMInMinutes - checkOutMinutesFromMidnight;
-              let hour = checkOutHour;
-              const ampm = hour >= 12 ? 'PM' : 'AM';
-              hour = hour % 12;
-              hour = hour ? hour : 12;
-              const minuteStr = checkOutMinute.toString().padStart(2, '0');
-              const secondStr = checkOutSecond.toString().padStart(2, '0');
-              const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
+              if (checkOutMinutesFromMidnight < sixPMInMinutes) {
+                const earlyMinutes =
+                  sixPMInMinutes - checkOutMinutesFromMidnight;
+                let hour = checkOutHour;
+                const ampm = hour >= 12 ? "PM" : "AM";
+                hour = hour % 12;
+                hour = hour ? hour : 12;
+                const minuteStr = checkOutMinute.toString().padStart(2, "0");
+                const secondStr = checkOutSecond.toString().padStart(2, "0");
+                const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
 
-              issues.push(`<span style='color: #ea580c;'>Checked out early at <strong>${checkOutTimeStr}</strong> (${earlyMinutes} min before 6:00 PM)</span>`);
+                issues.push(
+                  `<span style='color: #ea580c;'>Checked out early at <strong>${checkOutTimeStr}</strong> (${earlyMinutes} min before 6:00 PM)</span>`,
+                );
+              }
             }
-          }
 
-          const issueText = issues.length > 0 ? issues.join("<br/>") : "Attendance irregularity";
-          return `<li style='margin-bottom: 12px;'><strong>${date}:</strong><br/>${issueText}</li>`;
-        }).join("");
+            const issueText =
+              issues.length > 0
+                ? issues.join("<br/>")
+                : "Attendance irregularity";
+            return `<li style='margin-bottom: 12px;'><strong>${date}:</strong><br/>${issueText}</li>`;
+          })
+          .join("");
 
         const emailBody = `
 <!DOCTYPE html>
@@ -2652,14 +2316,23 @@ export class ZKTecoController {
 </html>`;
 
         // Queue email sending
-        const emailPromise = EmailService.sendEmail(employee.email, emailSubject, emailBody)
+        const emailPromise = EmailService.sendEmail(
+          employee.email,
+          emailSubject,
+          emailBody,
+        )
           .then(() => {
             emailsSent++;
-            console.log(`✅ Reminder email sent to ${employeeName} (${employee.email}) for ${records.length} record(s)`);
+            console.log(
+              `✅ Reminder email sent to ${employeeName} (${employee.email}) for ${records.length} record(s)`,
+            );
           })
           .catch((error) => {
             emailsFailed++;
-            console.error(`❌ Failed to send reminder to ${employeeName} (${employee.email}):`, error);
+            console.error(
+              `❌ Failed to send reminder to ${employeeName} (${employee.email}):`,
+              error,
+            );
           });
 
         emailPromises.push(emailPromise);
@@ -2675,13 +2348,15 @@ export class ZKTecoController {
           remindersSent: recordsNeedingReasons.length,
           employeesNotified: emailsSent,
           emailsFailed: emailsFailed,
-          records: Array.from(recordsByEmployee.entries()).map(([userId, records]) => ({
-            userId,
-            employeeName: `${records[0].employee?.firstName} ${records[0].employee?.lastName}`,
-            email: records[0].employee?.email,
-            recordCount: records.length,
-            dates: records.map((r) => new Date(r.date).toLocaleDateString()),
-          })),
+          records: Array.from(recordsByEmployee.entries()).map(
+            ([userId, records]) => ({
+              userId,
+              employeeName: `${records[0].employee?.firstName} ${records[0].employee?.lastName}`,
+              email: records[0].employee?.email,
+              recordCount: records.length,
+              dates: records.map((r) => new Date(r.date).toLocaleDateString()),
+            }),
+          ),
         },
       });
     } catch (error) {
@@ -2693,11 +2368,6 @@ export class ZKTecoController {
       });
     }
   }
-
-  /**
-   * Request attendance reason from employee via email
-   * @route POST /api/zkteco/request-reason
-   */
   static async requestReason(req: Request, res: Response): Promise<void> {
     try {
       const { record } = req.body;
@@ -2725,24 +2395,38 @@ export class ZKTecoController {
       const issues = [];
 
       if (!record.checkIn) {
-        issues.push("<li><strong style='color: #dc2626;'>⚠️ No check-in recorded</strong></li>");
+        issues.push(
+          "<li><strong style='color: #dc2626;'>⚠️ No check-in recorded</strong></li>",
+        );
       } else if (record.checkInStatus === "LATE" && record.lateMinutes > 0) {
-        issues.push(`<li><span style='color: #ea580c;'>Check-in was <strong>late by ${record.lateMinutes} minute(s)</strong></span></li>`);
+        issues.push(
+          `<li><span style='color: #ea580c;'>Check-in was <strong>late by ${record.lateMinutes} minute(s)</strong></span></li>`,
+        );
       }
 
       if (!record.checkOut) {
-        issues.push("<li><strong style='color: #dc2626;'>⚠️ No check-out recorded</strong></li>");
-      } else if (record.checkOutStatus === "EARLY" && record.earlyOutMinutes > 0) {
-        issues.push(`<li><span style='color: #ea580c;'>Check-out was <strong>early by ${record.earlyOutMinutes} minute(s)</strong></span></li>`);
+        issues.push(
+          "<li><strong style='color: #dc2626;'>⚠️ No check-out recorded</strong></li>",
+        );
+      } else if (
+        record.checkOutStatus === "EARLY" &&
+        record.earlyOutMinutes > 0
+      ) {
+        issues.push(
+          `<li><span style='color: #ea580c;'>Check-out was <strong>early by ${record.earlyOutMinutes} minute(s)</strong></span></li>`,
+        );
       }
 
       if (record.status === "ABSENT") {
-        issues.push("<li><strong style='color: #dc2626;'>You were marked as ABSENT</strong></li>");
+        issues.push(
+          "<li><strong style='color: #dc2626;'>You were marked as ABSENT</strong></li>",
+        );
       }
 
-      const issuesHtml = issues.length > 0
-        ? `<ul style='list-style-type: none; padding-left: 0;'>${issues.join("")}</ul>`
-        : "<p>There was an irregularity in your attendance.</p>";
+      const issuesHtml =
+        issues.length > 0
+          ? `<ul style='list-style-type: none; padding-left: 0;'>${issues.join("")}</ul>`
+          : "<p>There was an irregularity in your attendance.</p>";
 
       // Send email notification to employee
       const emailSubject = "Attendance Reason Required";
@@ -2784,9 +2468,9 @@ export class ZKTecoController {
         <h3 style="margin-top: 0; color: #374151;">📊 Attendance Details:</h3>
         <ul>
           <li><strong>Date:</strong> ${record.date}</li>
-          ${record.checkIn ? `<li><strong>Check-In:</strong> ${record.checkIn} <span style='color: ${record.checkInStatus === 'LATE' ? '#ea580c' : '#059669'};'>(${record.checkInStatus || 'N/A'})</span></li>` : '<li><strong>Check-In:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
-          ${record.checkOut ? `<li><strong>Check-Out:</strong> ${record.checkOut} <span style='color: ${record.checkOutStatus === 'EARLY_OUT' ? '#ea580c' : '#059669'};'>(${record.checkOutStatus || 'N/A'})</span></li>` : '<li><strong>Check-Out:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
-          ${record.workingHours ? `<li><strong>Working Hours:</strong> ${record.workingHours}</li>` : ''}
+          ${record.checkIn ? `<li><strong>Check-In:</strong> ${record.checkIn} <span style='color: ${record.checkInStatus === "LATE" ? "#ea580c" : "#059669"};'>(${record.checkInStatus || "N/A"})</span></li>` : '<li><strong>Check-In:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
+          ${record.checkOut ? `<li><strong>Check-Out:</strong> ${record.checkOut} <span style='color: ${record.checkOutStatus === "EARLY_OUT" ? "#ea580c" : "#059669"};'>(${record.checkOutStatus || "N/A"})</span></li>` : '<li><strong>Check-Out:</strong> <span style="color: #dc2626;">Not recorded</span></li>'}
+          ${record.workingHours ? `<li><strong>Working Hours:</strong> ${record.workingHours}</li>` : ""}
         </ul>
       </div>
       

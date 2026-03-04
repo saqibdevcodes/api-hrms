@@ -8,34 +8,33 @@ const express_validator_1 = require("express-validator");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class EmployeeController {
     // Get form dropdown data
     static async getFormData(req, res) {
         try {
             const [departments, designations, contractTypes, shifts, leavePolicies, employmentTypes,] = await Promise.all([
-                prisma.department.findMany({
+                prisma_1.prisma.department.findMany({
                     where: { isActive: true },
                     orderBy: { name: "asc" },
                 }),
-                prisma.designation.findMany({
+                prisma_1.prisma.designation.findMany({
                     where: { isActive: true },
                     orderBy: [{ level: "asc" }, { title: "asc" }],
                 }),
-                prisma.contractType.findMany({
+                prisma_1.prisma.contractType.findMany({
                     where: { isActive: true },
                     orderBy: { name: "asc" },
                 }),
-                prisma.shift.findMany({
+                prisma_1.prisma.shift.findMany({
                     where: { isActive: true },
                     orderBy: { name: "asc" },
                 }),
-                prisma.leavePolicy.findMany({
+                prisma_1.prisma.leavePolicy.findMany({
                     where: { isActive: true },
                     orderBy: { name: "asc" },
                 }),
-                prisma.employmentType.findMany({
+                prisma_1.prisma.employmentType.findMany({
                     where: { isActive: true },
                     orderBy: { name: "asc" },
                 }),
@@ -92,7 +91,7 @@ class EmployeeController {
             }
             // Get employees with proper filtering BEFORE pagination
             const [employees, total] = await Promise.all([
-                prisma.user.findMany({
+                prisma_1.prisma.user.findMany({
                     where,
                     skip,
                     take,
@@ -106,7 +105,7 @@ class EmployeeController {
                         [sortBy]: sortOrder,
                     },
                 }),
-                prisma.user.count({ where }),
+                prisma_1.prisma.user.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -165,7 +164,7 @@ class EmployeeController {
             // Insurance fields
             hasInsurance, insuranceCardNo, insuranceInsuredName, insuranceEmployeeNo, insuranceValidUpto, insuranceSpouseChildren, insuranceHospitalization, insuranceRoomLimit, insuranceNormalDelivery, insuranceComplicatedDelivery, } = req.body;
             // Check if user already exists
-            const existingUser = await prisma.user.findFirst({
+            const existingUser = await prisma_1.prisma.user.findFirst({
                 where: {
                     OR: [{ email }, { cnic: cnic || undefined }],
                 },
@@ -181,7 +180,7 @@ class EmployeeController {
             // Create emergency detail if provided
             let emergencyDetail = null;
             if (emergencyContactName && emergencyContactPhone) {
-                emergencyDetail = await prisma.emergencyDetail.create({
+                emergencyDetail = await prisma_1.prisma.emergencyDetail.create({
                     data: {
                         contactName: emergencyContactName,
                         contactPhone: emergencyContactPhone,
@@ -193,7 +192,7 @@ class EmployeeController {
                 });
             }
             // Generate employee ID
-            const departmentCode = await prisma.department.findUnique({
+            const departmentCode = await prisma_1.prisma.department.findUnique({
                 where: { id: departmentId },
             });
             const deptPrefix = departmentCode?.name
@@ -201,7 +200,7 @@ class EmployeeController {
                 : "GEN";
             // Ensure uniqueness with timestamp if collision occurs
             // Create user in a transaction
-            const result = await prisma.$transaction(async (tx) => {
+            const result = await prisma_1.prisma.$transaction(async (tx) => {
                 // Create user with all employee data
                 const user = await tx.user.create({
                     data: {
@@ -354,7 +353,7 @@ class EmployeeController {
             if (userRank === "LINE_MANAGER" &&
                 supervisorIds &&
                 supervisorIds.length > 0) {
-                const supervisorsData = await prisma.user.findMany({
+                const supervisorsData = await prisma_1.prisma.user.findMany({
                     where: { id: { in: supervisorIds } },
                     select: {
                         id: true,
@@ -368,7 +367,7 @@ class EmployeeController {
                 supervisorIdsArray = supervisorsData.map((s) => s.id);
             }
             else if (userRank === "EMPLOYEE" && supervisorId) {
-                const supervisor = await prisma.user.findUnique({
+                const supervisor = await prisma_1.prisma.user.findUnique({
                     where: { id: supervisorId },
                     select: {
                         id: true,
@@ -461,7 +460,7 @@ class EmployeeController {
     static async getEmployeeById(req, res) {
         try {
             const { id } = req.params;
-            const user = await prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { id },
                 include: {
                     departmentEntity: true,
@@ -490,7 +489,7 @@ class EmployeeController {
                 const managerEmails = user.manager
                     .split(",")
                     .map((email) => email.trim());
-                const supervisorsData = await prisma.user.findMany({
+                const supervisorsData = await prisma_1.prisma.user.findMany({
                     where: { email: { in: managerEmails } },
                     select: {
                         id: true,
@@ -536,7 +535,7 @@ class EmployeeController {
                 });
             }
             // Check if user exists and is an employee
-            const existingUser = await prisma.user.findUnique({
+            const existingUser = await prisma_1.prisma.user.findUnique({
                 where: { id },
             });
             if (!existingUser || !existingUser.employeeId) {
@@ -620,7 +619,7 @@ class EmployeeController {
             if (departmentId) {
                 updateData.departmentEntity = { connect: { id: departmentId } };
                 // Also update the department name field
-                const dept = await prisma.department.findUnique({
+                const dept = await prisma_1.prisma.department.findUnique({
                     where: { id: departmentId },
                 });
                 if (dept) {
@@ -650,7 +649,7 @@ class EmployeeController {
                 supervisorIds.length > 0) {
                 // For line managers with multiple supervisors
                 // Fetch all supervisors to get their emails
-                const supervisorsData = await prisma.user.findMany({
+                const supervisorsData = await prisma_1.prisma.user.findMany({
                     where: { id: { in: supervisorIds } },
                     select: {
                         id: true,
@@ -662,12 +661,14 @@ class EmployeeController {
                 });
                 supervisorsList = supervisorsData;
                 // Store all supervisor emails comma-separated
-                const supervisorEmails = supervisorsData.map((s) => s.email).join(", ");
+                const supervisorEmails = supervisorsData
+                    .map((s) => s.email)
+                    .join(", ");
                 updateData.manager = supervisorEmails;
             }
             else if (updateData.userRank === "EMPLOYEE" && supervisorId) {
                 // For employees with single supervisor
-                const supervisor = await prisma.user.findUnique({
+                const supervisor = await prisma_1.prisma.user.findUnique({
                     where: { id: supervisorId },
                     select: {
                         id: true,
@@ -686,7 +687,7 @@ class EmployeeController {
             if (emergencyContactName || emergencyContactPhone) {
                 if (existingUser.emergencyDetailId) {
                     // Update existing emergency detail
-                    await prisma.emergencyDetail.update({
+                    await prisma_1.prisma.emergencyDetail.update({
                         where: { id: existingUser.emergencyDetailId },
                         data: {
                             contactName: emergencyContactName || undefined,
@@ -700,7 +701,7 @@ class EmployeeController {
                 }
                 else {
                     // Create new emergency detail
-                    const emergencyDetail = await prisma.emergencyDetail.create({
+                    const emergencyDetail = await prisma_1.prisma.emergencyDetail.create({
                         data: {
                             contactName: emergencyContactName,
                             contactPhone: emergencyContactPhone,
@@ -714,7 +715,7 @@ class EmployeeController {
                 }
             }
             updateData.updatedBy = req.user?.id;
-            const updatedUser = await prisma.user.update({
+            const updatedUser = await prisma_1.prisma.user.update({
                 where: { id },
                 data: updateData,
                 include: {
@@ -803,7 +804,7 @@ class EmployeeController {
         try {
             const { id } = req.params;
             // Find the employee
-            const employee = await prisma.user.findUnique({
+            const employee = await prisma_1.prisma.user.findUnique({
                 where: { id },
             });
             if (!employee) {
@@ -815,7 +816,7 @@ class EmployeeController {
             // Toggle status
             const newStatus = employee.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
             // Update employee status
-            const updatedEmployee = await prisma.user.update({
+            const updatedEmployee = await prisma_1.prisma.user.update({
                 where: { id },
                 data: {
                     status: newStatus,
@@ -847,7 +848,7 @@ class EmployeeController {
         try {
             const { id } = req.params;
             // First, fetch the employee with all related data to get file paths
-            const user = await prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { id },
                 include: {
                     emergencyDetail: true,
@@ -869,21 +870,21 @@ class EmployeeController {
                 filePaths.push(user.degreePicture);
             // Get related record counts
             const relatedCounts = {
-                attendances: await prisma.attendance.count({
+                attendances: await prisma_1.prisma.attendance.count({
                     where: { employeeId: id },
                 }),
-                leaveRequests: await prisma.leaveRequest.count({
+                leaveRequests: await prisma_1.prisma.leaveRequest.count({
                     where: { employeeId: id },
                 }),
-                payrollRecords: await prisma.payrollRecord.count({
+                payrollRecords: await prisma_1.prisma.payrollRecord.count({
                     where: { employeeId: id },
                 }),
-                performanceReviews: await prisma.performanceReview.count({
+                performanceReviews: await prisma_1.prisma.performanceReview.count({
                     where: { employeeId: id },
                 }),
             };
             // Delete in a transaction
-            const result = await prisma.$transaction(async (tx) => {
+            const result = await prisma_1.prisma.$transaction(async (tx) => {
                 // Delete related records
                 await tx.attendance.deleteMany({ where: { employeeId: id } });
                 await tx.leaveRequest.deleteMany({ where: { employeeId: id } });
@@ -946,7 +947,7 @@ class EmployeeController {
                     .status(400)
                     .json({ success: false, message: "Department name is required" });
             }
-            const designations = await prisma.designation.findMany({
+            const designations = await prisma_1.prisma.designation.findMany({
                 where: { department: departmentName, isActive: true },
                 orderBy: [{ level: "asc" }, { title: "asc" }],
             });
@@ -978,7 +979,7 @@ class EmployeeController {
             let supervisors = [];
             if (rank === "LINE_MANAGER") {
                 // Fetch all directors for line managers to report to
-                supervisors = await prisma.user.findMany({
+                supervisors = await prisma_1.prisma.user.findMany({
                     where: {
                         userRank: "DIRECTOR",
                         isActive: true,
@@ -997,7 +998,7 @@ class EmployeeController {
             }
             else if (rank === "EMPLOYEE") {
                 // Fetch all line managers for employees to report to
-                supervisors = await prisma.user.findMany({
+                supervisors = await prisma_1.prisma.user.findMany({
                     where: {
                         userRank: "LINE_MANAGER",
                         isActive: true,

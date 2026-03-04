@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
-const database_1 = require("../config/database");
+const prisma_1 = require("../lib/prisma");
 const jwt_1 = require("../utils/jwt");
 const password_1 = require("../utils/password");
 const emailService_1 = require("../utils/emailService");
@@ -25,7 +25,7 @@ class AuthService {
             }
             console.log("loginData= ", loginData);
             // Find user by email with employee data
-            const user = await database_1.prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: {
                     email: email.toLowerCase(),
                     isActive: true,
@@ -41,12 +41,12 @@ class AuthService {
                 throw new auth_1.AuthenticationError("Invalid email or password");
             }
             // Update last login
-            await database_1.prisma.user.update({
+            await prisma_1.prisma.user.update({
                 where: { id: user.id },
                 data: { lastLogin: new Date() },
             });
             console.log("user= ", user);
-            const designation = await database_1.prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id: user.designationId || "" },
             });
             if (designation) {
@@ -83,7 +83,7 @@ class AuthService {
                 userId: user.id,
                 email: user.email,
                 role: user.role,
-                employeeId: user.employee?.employeeId,
+                employeeId: user.employeeId ?? undefined,
             });
             return {
                 success: true,
@@ -107,7 +107,7 @@ class AuthService {
     static async forgotPassword(email) {
         try {
             console.log(`Attempting password reset for: ${email}`);
-            const user = await database_1.prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { email: email.toLowerCase() },
             });
             if (!user) {
@@ -120,7 +120,7 @@ class AuthService {
             const resetToken = crypto_1.default.randomBytes(32).toString("hex");
             const resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
             // Save token to user
-            await database_1.prisma.user.update({
+            await prisma_1.prisma.user.update({
                 where: { id: user.id },
                 data: {
                     resetPasswordToken: resetToken,
@@ -144,7 +144,7 @@ class AuthService {
     static async resetPassword(token, password) {
         try {
             // Find user with valid token
-            const user = await database_1.prisma.user.findFirst({
+            const user = await prisma_1.prisma.user.findFirst({
                 where: {
                     resetPasswordToken: token,
                     resetPasswordExpires: {
@@ -158,7 +158,7 @@ class AuthService {
             // Hash new password
             const hashedPassword = await password_1.PasswordUtils.hashPassword(password);
             // Update user password and clear token
-            await database_1.prisma.user.update({
+            await prisma_1.prisma.user.update({
                 where: { id: user.id },
                 data: {
                     password: hashedPassword,
@@ -182,7 +182,7 @@ class AuthService {
     static async refreshToken(refreshToken) {
         try {
             return await jwt_1.JwtUtils.refreshAccessToken(refreshToken, async (userId) => {
-                const user = await database_1.prisma.user.findUnique({
+                const user = await prisma_1.prisma.user.findUnique({
                     where: {
                         id: userId,
                         isActive: true,
@@ -211,7 +211,7 @@ class AuthService {
      */
     static async getUserProfile(userId) {
         try {
-            const user = await database_1.prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: {
                     id: userId,
                     isActive: true,
@@ -413,11 +413,11 @@ class AuthService {
      */
     static async updateProfilePicture(userId, profilePictureUrl) {
         try {
-            const user = await database_1.prisma.user.update({
+            const user = await prisma_1.prisma.user.update({
                 where: { id: userId },
                 data: { profilePicture: profilePictureUrl },
             });
-            const designation = await database_1.prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id: user.designationId || "" },
             });
             return {
@@ -456,11 +456,11 @@ class AuthService {
      */
     static async updateProfile(userId, updateData) {
         try {
-            const user = await database_1.prisma.user.update({
+            const user = await prisma_1.prisma.user.update({
                 where: { id: userId },
                 data: updateData,
             });
-            const designation = await database_1.prisma.designation.findUnique({
+            const designation = await prisma_1.prisma.designation.findUnique({
                 where: { id: user.designationId || "" },
             });
             return {
@@ -500,7 +500,7 @@ class AuthService {
     static async changePassword(userId, currentPassword, newPassword) {
         try {
             // Get user
-            const user = await database_1.prisma.user.findUnique({
+            const user = await prisma_1.prisma.user.findUnique({
                 where: { id: userId },
             });
             if (!user) {
@@ -514,7 +514,7 @@ class AuthService {
             // Hash new password
             const hashedPassword = await password_1.PasswordUtils.hashPassword(newPassword);
             // Update password
-            await database_1.prisma.user.update({
+            await prisma_1.prisma.user.update({
                 where: { id: userId },
                 data: {
                     password: hashedPassword,

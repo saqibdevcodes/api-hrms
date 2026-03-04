@@ -11,8 +11,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.finalizationService = exports.FinalizationService = void 0;
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class FinalizationService {
     /**
      * Finalize staging records that are 3+ days old
@@ -22,9 +21,11 @@ class FinalizationService {
         try {
             console.log("🔄 Starting finalization process...");
             // Find all staging records that are 3+ days old and not yet finalized
-            const threeDaysAgo = new Date();
+            // createdAt is stored as PKT, so compare with PKT "now"
+            const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+            const threeDaysAgo = new Date(Date.now() + PKT_OFFSET_MS);
             threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-            const stagingRecords = await prisma.zKTecoAttendanceStaging.findMany({
+            const stagingRecords = await prisma_1.prisma.zKTecoAttendanceStaging.findMany({
                 where: {
                     isFinalized: false,
                     createdAt: {
@@ -69,8 +70,10 @@ class FinalizationService {
      */
     async finalizeSingleRecord(stagingRecord) {
         console.log(`\n🔄 Finalizing record ${stagingRecord.id}...`);
+        const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+        const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
         // Step 1: Create final ZKTeco record
-        const finalRecord = await prisma.zKTecoAttendanceRecord.create({
+        const finalRecord = await prisma_1.prisma.zKTecoAttendanceRecord.create({
             data: {
                 employeeId: stagingRecord.employeeId,
                 deviceId: stagingRecord.deviceId,
@@ -79,11 +82,11 @@ class FinalizationService {
                 verifyType: stagingRecord.verifyType,
                 workCode: stagingRecord.workCode,
                 overallStatus: stagingRecord.overallStatus,
-                processed: false, // Will be processed when creating attendance
+                processed: false,
                 processingError: stagingRecord.processingError,
                 userId: stagingRecord.userId,
                 finalizedFrom: stagingRecord.id,
-                finalizedAt: new Date(),
+                finalizedAt: pktNow(),
             },
         });
         console.log(`✅ Created final record: ${finalRecord.id}`);
@@ -93,20 +96,20 @@ class FinalizationService {
         console.log(`   processingError: ${stagingRecord.processingError}`);
         // Skip only if there's a real error (not just tracking notes)
         const isRealError = stagingRecord.processingError &&
-            !stagingRecord.processingError.includes('(deduction in final table)') &&
-            !stagingRecord.processingError.includes('(will apply in final table)');
+            !stagingRecord.processingError.includes("(deduction in final table)") &&
+            !stagingRecord.processingError.includes("(will apply in final table)");
         if (stagingRecord.userId && !isRealError) {
             console.log(`✅ Conditions met, finding employee...`);
-            const employee = await prisma.user.findUnique({
+            const employee = await prisma_1.prisma.user.findUnique({
                 where: { id: stagingRecord.userId },
                 include: { shift: true },
             });
-            console.log(`   Employee found: ${employee ? 'Yes' : 'No'}`);
+            console.log(`   Employee found: ${employee ? "Yes" : "No"}`);
             if (employee) {
                 console.log(`   Employee: ${employee.firstName} ${employee.lastName} (${employee.id})`);
                 const attendanceDate = new Date(stagingRecord.timestamp);
                 const dateOnly = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate()));
-                let attendance = await prisma.attendance.findFirst({
+                let attendance = await prisma_1.prisma.attendance.findFirst({
                     where: {
                         employeeId: employee.id,
                         date: dateOnly,
@@ -114,7 +117,7 @@ class FinalizationService {
                 });
                 if (!attendance) {
                     // Create new attendance record
-                    attendance = await prisma.attendance.create({
+                    attendance = await prisma_1.prisma.attendance.create({
                         data: {
                             employeeId: employee.id,
                             date: dateOnly,
@@ -127,7 +130,7 @@ class FinalizationService {
                             status: "PRESENT",
                             deviceCheckIns: stagingRecord.checkType === "check_in" ? 1 : 0,
                             deviceCheckOuts: stagingRecord.checkType === "check_out" ? 1 : 0,
-                            lastDeviceSync: new Date(),
+                            lastDeviceSync: pktNow(),
                             notes: `Finalized from staging record ${stagingRecord.id}`,
                         },
                     });
@@ -137,10 +140,9 @@ class FinalizationService {
                     // Update existing attendance record
                     const updateData = {
                         status: "PRESENT",
-                        lastDeviceSync: new Date(),
+                        lastDeviceSync: pktNow(),
                     };
-                    if (stagingRecord.checkType === "check_in" &&
-                        !attendance.checkIn) {
+                    if (stagingRecord.checkType === "check_in" && !attendance.checkIn) {
                         updateData.checkIn = stagingRecord.timestamp;
                         updateData.deviceCheckIns = (attendance.deviceCheckIns || 0) + 1;
                     }
@@ -154,14 +156,14 @@ class FinalizationService {
                             updateData.totalHours = Math.round(workingHours * 100) / 100;
                         }
                     }
-                    attendance = await prisma.attendance.update({
+                    attendance = await prisma_1.prisma.attendance.update({
                         where: { id: attendance.id },
                         data: updateData,
                     });
                     console.log(`✅ Updated attendance record: ${attendance.id}`);
                 }
                 // Link final record to attendance
-                await prisma.zKTecoAttendanceRecord.update({
+                await prisma_1.prisma.zKTecoAttendanceRecord.update({
                     where: { id: finalRecord.id },
                     data: {
                         attendanceId: attendance.id,
@@ -171,11 +173,12 @@ class FinalizationService {
             }
         }
         // Step 3: Mark staging record as finalized
-        await prisma.zKTecoAttendanceStaging.update({
+        await prisma_1.prisma.zKTecoAttendanceStaging.update({
             where: { id: stagingRecord.id },
             data: {
                 isFinalized: true,
-                finalizedAt: new Date(),
+                finalizedAt: pktNow(),
+                updatedAt: pktNow(),
             },
         });
         console.log(`✅ Marked staging record as finalized`);
@@ -185,7 +188,7 @@ class FinalizationService {
      */
     async forceFinalizeStagingRecord(stagingRecordId, userId) {
         try {
-            const stagingRecord = await prisma.zKTecoAttendanceStaging.findUnique({
+            const stagingRecord = await prisma_1.prisma.zKTecoAttendanceStaging.findUnique({
                 where: { id: stagingRecordId },
             });
             if (!stagingRecord) {
@@ -196,10 +199,12 @@ class FinalizationService {
             }
             await this.finalizeSingleRecord(stagingRecord);
             // Update with who forced the finalization
-            await prisma.zKTecoAttendanceStaging.update({
+            const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+            await prisma_1.prisma.zKTecoAttendanceStaging.update({
                 where: { id: stagingRecordId },
                 data: {
                     finalizedBy: userId,
+                    updatedAt: new Date(Date.now() + PKT_OFFSET_MS),
                 },
             });
             return true;
@@ -215,7 +220,7 @@ class FinalizationService {
     async forceFinalizeAllStagingRecords(userId) {
         try {
             console.log("🔄 Force finalizing all staging records...");
-            const stagingRecords = await prisma.zKTecoAttendanceStaging.findMany({
+            const stagingRecords = await prisma_1.prisma.zKTecoAttendanceStaging.findMany({
                 where: {
                     isFinalized: false,
                 },
@@ -230,10 +235,12 @@ class FinalizationService {
                 try {
                     await this.finalizeSingleRecord(stagingRecord);
                     // Mark who forced the finalization
-                    await prisma.zKTecoAttendanceStaging.update({
+                    const PKT_MS = 5 * 60 * 60 * 1000;
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: stagingRecord.id },
                         data: {
                             finalizedBy: userId,
+                            updatedAt: new Date(Date.now() + PKT_MS),
                         },
                     });
                     finalizedCount++;

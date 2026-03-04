@@ -1,14 +1,6 @@
 // services/pdrService.ts
-import {
-  PrismaClient,
-  PdrOverallStatus,
-  PdrStatus,
-  UserRank,
-  Role,
-} from "../generated/prisma";
-import { AuthenticatedRequest } from "../types/auth";
-
-const prisma = new PrismaClient();
+import { PdrOverallStatus, PdrStatus, UserRank, Role } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 
 export interface PdrCreationData {
   userId: string;
@@ -400,7 +392,7 @@ export class PdrService {
     }
 
     // Update PDR status and create transition record
-    const updatedPdr = await prisma.$transaction(async (tx) => {
+    const updatedPdr = await prisma.$transaction(async (tx: any) => {
       // Create transition record
       await tx.pdrStatusTransition.create({
         data: {

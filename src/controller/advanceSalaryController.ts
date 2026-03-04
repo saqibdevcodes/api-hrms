@@ -1,8 +1,5 @@
-import { resourceUsage } from "process";
-import { PrismaClient } from "../generated/prisma";
 import { Request, Response } from "express";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 const createAdvanceSalaryRequest = async (req: Request, res: Response) => {
   const { employeeId, reason, daysCount, Status } = req.body;

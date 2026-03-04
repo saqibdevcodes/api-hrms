@@ -2,8 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeavePolicyController = void 0;
 const express_validator_1 = require("express-validator");
-const prisma_1 = require("../generated/prisma");
-const prisma = new prisma_1.PrismaClient();
+const prisma_1 = require("../lib/prisma");
 class LeavePolicyController {
     // Get all leave policies
     static async getAllLeavePolicies(req, res) {
@@ -21,7 +20,7 @@ class LeavePolicyController {
                 where.isActive = isActive === "true";
             }
             const [leavePolicies, total] = await Promise.all([
-                prisma.leavePolicy.findMany({
+                prisma_1.prisma.leavePolicy.findMany({
                     where,
                     skip,
                     take: limitNum,
@@ -32,7 +31,7 @@ class LeavePolicyController {
                         },
                     },
                 }),
-                prisma.leavePolicy.count({ where }),
+                prisma_1.prisma.leavePolicy.count({ where }),
             ]);
             res.json({
                 success: true,
@@ -61,7 +60,7 @@ class LeavePolicyController {
     static async getLeavePolicyById(req, res) {
         try {
             const { id } = req.params;
-            const leavePolicy = await prisma.leavePolicy.findUnique({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -112,7 +111,7 @@ class LeavePolicyController {
                 });
             }
             const { name, annualLeaves, sickLeaves, casualLeaves, maternityLeaves, paternityLeaves, isActive = true, } = req.body;
-            const leavePolicy = await prisma.leavePolicy.create({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.create({
                 data: {
                     name,
                     annualLeaves: parseInt(annualLeaves),
@@ -157,7 +156,7 @@ class LeavePolicyController {
                 });
             }
             const { name, annualLeaves, sickLeaves, casualLeaves, maternityLeaves, paternityLeaves, isActive, } = req.body;
-            const leavePolicy = await prisma.leavePolicy.findUnique({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id },
             });
             if (!leavePolicy) {
@@ -166,7 +165,7 @@ class LeavePolicyController {
                     message: "Leave policy not found",
                 });
             }
-            const updatedLeavePolicy = await prisma.leavePolicy.update({
+            const updatedLeavePolicy = await prisma_1.prisma.leavePolicy.update({
                 where: { id },
                 data: {
                     name,
@@ -203,7 +202,7 @@ class LeavePolicyController {
     static async deleteLeavePolicy(req, res) {
         try {
             const { id } = req.params;
-            const leavePolicy = await prisma.leavePolicy.findUnique({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id },
                 include: {
                     _count: {
@@ -224,7 +223,7 @@ class LeavePolicyController {
                     message: `Cannot delete leave policy. It has ${leavePolicy._count.users} user(s) assigned. Please reassign users first.`,
                 });
             }
-            await prisma.leavePolicy.delete({
+            await prisma_1.prisma.leavePolicy.delete({
                 where: { id },
             });
             res.json({
@@ -249,7 +248,7 @@ class LeavePolicyController {
     static async toggleLeavePolicyStatus(req, res) {
         try {
             const { id } = req.params;
-            const leavePolicy = await prisma.leavePolicy.findUnique({
+            const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id },
             });
             if (!leavePolicy) {
@@ -258,7 +257,7 @@ class LeavePolicyController {
                     message: "Leave policy not found",
                 });
             }
-            const updatedLeavePolicy = await prisma.leavePolicy.update({
+            const updatedLeavePolicy = await prisma_1.prisma.leavePolicy.update({
                 where: { id },
                 data: {
                     isActive: !leavePolicy.isActive,

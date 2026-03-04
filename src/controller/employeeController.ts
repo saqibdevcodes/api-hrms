@@ -3,10 +3,10 @@ import { validationResult } from "express-validator";
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
-import { PrismaClient } from "../generated/prisma";
+import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 
-const prisma = new PrismaClient();
+type UserRank = "EMPLOYEE" | "LINE_MANAGER" | "DIRECTOR";
 
 export class EmployeeController {
   // Get form dropdown data
@@ -291,7 +291,7 @@ export class EmployeeController {
       // Ensure uniqueness with timestamp if collision occurs
 
       // Create user in a transaction
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         // Create user with all employee data
         const user = await tx.user.create({
           data: {
@@ -347,7 +347,7 @@ export class EmployeeController {
                   select: { email: true },
                 });
                 // Store all emails comma-separated
-                return supervisorsData.map((s) => s.email).join(", ");
+                return supervisorsData.map((s: any) => s.email).join(", ");
               } else if (userRank === "EMPLOYEE" && supervisorId) {
                 // For employees with single supervisor, use supervisor's email
                 const supervisor = await tx.user.findUnique({
@@ -474,7 +474,7 @@ export class EmployeeController {
           },
         });
         supervisorsList = supervisorsData;
-        supervisorIdsArray = supervisorsData.map((s) => s.id);
+        supervisorIdsArray = supervisorsData.map((s: any) => s.id);
       } else if (userRank === "EMPLOYEE" && supervisorId) {
         const supervisor = await prisma.user.findUnique({
           where: { id: supervisorId },
@@ -626,7 +626,7 @@ export class EmployeeController {
         });
 
         supervisorsList = supervisorsData;
-        supervisorIdsArray = supervisorsData.map((s) => s.id);
+        supervisorIdsArray = supervisorsData.map((s: any) => s.id);
       }
 
       res.json({
@@ -831,7 +831,9 @@ export class EmployeeController {
         supervisorsList = supervisorsData;
 
         // Store all supervisor emails comma-separated
-        const supervisorEmails = supervisorsData.map((s) => s.email).join(", ");
+        const supervisorEmails = supervisorsData
+          .map((s: any) => s.email)
+          .join(", ");
         updateData.manager = supervisorEmails;
       } else if (updateData.userRank === "EMPLOYEE" && supervisorId) {
         // For employees with single supervisor
@@ -1071,7 +1073,7 @@ export class EmployeeController {
       };
 
       // Delete in a transaction
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         // Delete related records
         await tx.attendance.deleteMany({ where: { employeeId: id } });
         await tx.leaveRequest.deleteMany({ where: { employeeId: id } });
@@ -1175,7 +1177,7 @@ export class EmployeeController {
         // Fetch all directors for line managers to report to
         supervisors = await prisma.user.findMany({
           where: {
-            userRank: "DIRECTOR",
+            userRank: "DIRECTOR" as any,
             isActive: true,
             employeeId: { not: null },
           },
@@ -1210,7 +1212,7 @@ export class EmployeeController {
       }
 
       // Format the response to match the expected frontend structure
-      const formattedSupervisors = supervisors.map((supervisor) => ({
+      const formattedSupervisors = supervisors.map((supervisor: any) => ({
         ...supervisor,
         employee: {
           employeeId: supervisor.employeeId,

@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export class ShiftController {
   // Get all shifts

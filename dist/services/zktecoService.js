@@ -5,9 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.zktecoService = exports.ZKTecoService = void 0;
 const axios_1 = __importDefault(require("axios"));
-const prisma_1 = require("../generated/prisma");
+const prisma_1 = require("../lib/prisma");
 const index_1 = require("../index");
-const prisma = new prisma_1.PrismaClient();
 class ZKTecoService {
     constructor() {
         this.devices = new Map();
@@ -125,7 +124,7 @@ class ZKTecoService {
         try {
             console.log("Processing attendance data:", attendanceData);
             // Find employee by employeeId (ZKTeco internal ID)
-            const employee = await prisma.user.findFirst({
+            const employee = await prisma_1.prisma.user.findFirst({
                 where: {
                     OR: [
                         { employeeId: attendanceData.employeeId },
@@ -140,7 +139,7 @@ class ZKTecoService {
             const attendanceDate = new Date(attendanceData.timestamp);
             const dateOnly = new Date(attendanceDate.getFullYear(), attendanceDate.getMonth(), attendanceDate.getDate());
             // Check if attendance record exists for this date
-            let attendance = await prisma.attendance.findFirst({
+            let attendance = await prisma_1.prisma.attendance.findFirst({
                 where: {
                     employeeId: employee.id,
                     date: dateOnly,
@@ -148,7 +147,7 @@ class ZKTecoService {
             });
             if (!attendance) {
                 // Create new attendance record
-                attendance = await prisma.attendance.create({
+                attendance = await prisma_1.prisma.attendance.create({
                     data: {
                         employeeId: employee.id,
                         date: dateOnly,
@@ -175,7 +174,7 @@ class ZKTecoService {
                 else if (attendanceData.checkType === "check_out") {
                     updateData.checkOut = attendanceData.timestamp;
                 }
-                attendance = await prisma.attendance.update({
+                attendance = await prisma_1.prisma.attendance.update({
                     where: { id: attendance.id },
                     data: updateData,
                 });
@@ -644,19 +643,13 @@ class ZKTecoService {
                         const status = parts[2] || "1";
                         const verify = parts[3] || "1";
                         const workCode = parts[4] || "0";
-                        // Convert timestamp
+                        // Convert timestamp - device sends local PKT time (UTC+5)
                         let timestamp;
                         try {
-                            timestamp = new Date(timestampStr);
+                            const isoStr = timestampStr.trim().replace(" ", "T");
+                            timestamp = new Date(isoStr + "+05:00");
                             if (isNaN(timestamp.getTime())) {
-                                // Try parsing as YYYY-MM-DD HH:MM:SS
-                                const parsedDate = new Date(timestampStr.replace(" ", "T"));
-                                if (!isNaN(parsedDate.getTime())) {
-                                    timestamp = parsedDate;
-                                }
-                                else {
-                                    throw new Error("Invalid date format");
-                                }
+                                throw new Error("Invalid date format");
                             }
                         }
                         catch (e) {
@@ -718,7 +711,7 @@ class ZKTecoService {
             // Get recent statuses that haven't been used for deductions (last 30 days)
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            const unusedLateRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const unusedLateRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where: {
                     userId: employeeId,
                     timestamp: { gte: thirtyDaysAgo },
@@ -728,7 +721,7 @@ class ZKTecoService {
                 select: { id: true, timestamp: true, overallStatus: true },
                 orderBy: { timestamp: "asc" },
             });
-            const unusedHalfDayRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const unusedHalfDayRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where: {
                     userId: employeeId,
                     timestamp: { gte: thirtyDaysAgo },
@@ -742,7 +735,7 @@ class ZKTecoService {
             const today = new Date();
             const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
             const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
-            const todayFullDayLeaveRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const todayFullDayLeaveRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where: {
                     userId: employeeId,
                     overallStatus: "FULL_DAY_LEAVE",
@@ -811,10 +804,10 @@ class ZKTecoService {
      */
     async createAttendanceDeduction(attendanceId, reason, deductValue, employeeId, zktecoRecordIds, deductionType) {
         // Get employee's leave record ID
-        const employeeLeave = await prisma.employeeLeave.findUnique({
+        const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
             where: { userId: employeeId },
         });
-        await prisma.attendanceDeduction.create({
+        await prisma_1.prisma.attendanceDeduction.create({
             data: {
                 attendanceId,
                 deductionReason: reason,
@@ -830,7 +823,7 @@ class ZKTecoService {
      * Mark ZKTeco records as used for deduction to prevent duplicate processing
      */
     async markRecordsAsUsedForDeduction(recordIds) {
-        await prisma.zKTecoAttendanceRecord.updateMany({
+        await prisma_1.prisma.zKTecoAttendanceRecord.updateMany({
             where: {
                 id: { in: recordIds },
             },
@@ -846,7 +839,7 @@ class ZKTecoService {
     async deductFromLeavePolicy(employeeId, daysToDeduct, violationType) {
         try {
             // Get employee's leave policy and current balances
-            const employeeLeave = await prisma.employeeLeave.findUnique({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId: employeeId },
                 include: {
                     user: {
@@ -876,7 +869,7 @@ class ZKTecoService {
                     leaveCategory = "casualLeaves";
                     currentBalance = employeeLeave.casualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { casualLeaves: newBalance },
                     });
@@ -886,7 +879,7 @@ class ZKTecoService {
                     leaveCategory = "annualLeaves";
                     currentBalance = employeeLeave.annualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { annualLeaves: newBalance },
                     });
@@ -902,7 +895,7 @@ class ZKTecoService {
                     leaveCategory = "annualLeaves";
                     currentBalance = employeeLeave.annualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { annualLeaves: newBalance },
                     });
@@ -912,7 +905,7 @@ class ZKTecoService {
                     leaveCategory = "casualLeaves";
                     currentBalance = employeeLeave.casualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { casualLeaves: newBalance },
                     });
@@ -928,7 +921,7 @@ class ZKTecoService {
                     leaveCategory = "casualLeaves";
                     currentBalance = employeeLeave.casualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { casualLeaves: newBalance },
                     });
@@ -938,7 +931,7 @@ class ZKTecoService {
                     leaveCategory = "annualLeaves";
                     currentBalance = employeeLeave.annualLeaves;
                     newBalance = Math.max(0, currentBalance - daysToDeduct);
-                    await prisma.employeeLeave.update({
+                    await prisma_1.prisma.employeeLeave.update({
                         where: { userId: employeeId },
                         data: { annualLeaves: newBalance },
                     });
@@ -952,7 +945,7 @@ class ZKTecoService {
             // Log the deduction details for audit
             console.log(`📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`);
             // Also log the updated leave balance summary
-            const updatedBalance = await prisma.employeeLeave.findUnique({
+            const updatedBalance = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId: employeeId },
                 select: {
                     annualLeaves: true,
@@ -977,14 +970,14 @@ class ZKTecoService {
             const dateOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
             console.log(`🔍 Debug: Searching for attendance on ${dateOnly.toISOString()}`);
             // Get attendance record
-            const attendance = await prisma.attendance.findFirst({
+            const attendance = await prisma_1.prisma.attendance.findFirst({
                 where: {
                     employeeId: employeeId,
                     date: dateOnly,
                 },
             });
             // Get all ZKTeco records for this employee on this date
-            const zktecoRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const zktecoRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where: {
                     userId: employeeId,
                     timestamp: {
@@ -1021,8 +1014,7 @@ class ZKTecoService {
                     totalRecords: zktecoRecords.length,
                     checkIns: zktecoRecords.filter((r) => r.checkType === "check_in")
                         .length,
-                    checkOuts: zktecoRecords.filter((r) => r.checkType === "check_out")
-                        .length,
+                    checkOuts: zktecoRecords.filter((r) => r.checkType === "check_out").length,
                     processed: zktecoRecords.filter((r) => r.processed).length,
                     errors: zktecoRecords.filter((r) => r.processingError).length,
                 },
@@ -1042,7 +1034,7 @@ class ZKTecoService {
             const dateOnly = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
             console.log(`🔧 Fix: Processing attendance for ${employeeId} on ${dateOnly.toISOString()}`);
             // Get all unprocessed ZKTeco records for this employee on this date
-            const unprocessedRecords = await prisma.zKTecoAttendanceRecord.findMany({
+            const unprocessedRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                 where: {
                     userId: employeeId,
                     processed: false,
@@ -1079,7 +1071,7 @@ class ZKTecoService {
                 }
             }
             // Get updated attendance record
-            const updatedAttendance = await prisma.attendance.findFirst({
+            const updatedAttendance = await prisma_1.prisma.attendance.findFirst({
                 where: {
                     employeeId: employeeId,
                     date: dateOnly,
@@ -1111,7 +1103,7 @@ class ZKTecoService {
      */
     async getEmployeeLeaveBalance(employeeId) {
         try {
-            const employeeLeave = await prisma.employeeLeave.findUnique({
+            const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId: employeeId },
                 include: {
                     user: {
@@ -1154,7 +1146,7 @@ class ZKTecoService {
      * Get deduction history for an employee with details of which records triggered deductions
      */
     async getEmployeeDeductionHistory(employeeId) {
-        const deductions = await prisma.attendanceDeduction.findMany({
+        const deductions = await prisma_1.prisma.attendanceDeduction.findMany({
             where: {
                 attendance: {
                     some: {
@@ -1173,7 +1165,7 @@ class ZKTecoService {
             if (deduction.zktecoRecordIds) {
                 try {
                     const recordIds = JSON.parse(deduction.zktecoRecordIds);
-                    triggeringRecords = await prisma.zKTecoAttendanceRecord.findMany({
+                    triggeringRecords = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
                         where: {
                             id: { in: recordIds },
                         },
@@ -1200,7 +1192,7 @@ class ZKTecoService {
      * Validate if specific records have already been used for deductions
      */
     async validateRecordsForDeduction(recordIds) {
-        const records = await prisma.zKTecoAttendanceRecord.findMany({
+        const records = await prisma_1.prisma.zKTecoAttendanceRecord.findMany({
             where: {
                 id: { in: recordIds },
             },
@@ -1342,21 +1334,27 @@ class ZKTecoService {
         try {
             console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
             // Step 1: Save to STAGING table first (3-day delay before finalization)
-            const stagingRecord = await prisma.zKTecoAttendanceStaging.create({
+            // Store all timestamps as PKT in the database so DB values match wall-clock time
+            const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+            const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
+            const pktTimestamp = new Date(attendanceData.timestamp.getTime() + PKT_OFFSET_MS);
+            const stagingRecord = await prisma_1.prisma.zKTecoAttendanceStaging.create({
                 data: {
                     employeeId: attendanceData.employeeId,
                     deviceId: attendanceData.deviceId,
-                    timestamp: attendanceData.timestamp,
-                    checkType: attendanceData.checkType, // Keep as lowercase (check_in, check_out)
+                    timestamp: pktTimestamp,
+                    checkType: attendanceData.checkType,
                     verifyType: attendanceData.verifyType,
                     workCode: attendanceData.workCode || null,
                     processed: false,
                     isFinalized: false,
+                    createdAt: pktNow(),
+                    updatedAt: pktNow(),
                 },
             });
             console.log(`📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 3 days)`);
             // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
-            const employee = await prisma.user.findFirst({
+            const employee = await prisma_1.prisma.user.findFirst({
                 where: {
                     OR: [
                         { employeeId: attendanceData.employeeId },
@@ -1368,11 +1366,12 @@ class ZKTecoService {
                 },
             });
             if (!employee) {
-                await prisma.zKTecoAttendanceStaging.update({
+                await prisma_1.prisma.zKTecoAttendanceStaging.update({
                     where: { id: stagingRecord.id },
                     data: {
                         processingError: `Employee not found for ID: ${attendanceData.employeeId}`,
-                        overallStatus: "ABSENT", // Mark as absent if employee not found
+                        overallStatus: "ABSENT",
+                        updatedAt: pktNow(),
                     },
                 });
                 console.warn(`❌ Employee not found for ID: ${attendanceData.employeeId}`);
@@ -1390,11 +1389,12 @@ class ZKTecoService {
             }
             console.log(`📊 Calculated status for ${employee.firstName} ${employee.lastName}: ${calculatedStatus || "No specific status"}`);
             // Step 4: Update the staging record with calculated status
-            await prisma.zKTecoAttendanceStaging.update({
+            await prisma_1.prisma.zKTecoAttendanceStaging.update({
                 where: { id: stagingRecord.id },
                 data: {
                     userId: employee.id,
-                    overallStatus: calculatedStatus, // Cast to any to avoid type issues until Prisma client is regenerated
+                    overallStatus: calculatedStatus,
+                    updatedAt: pktNow(),
                 },
             });
             // Step 4.1: Validate FULL_DAY_LEAVE_POTENTIAL with checkout time
@@ -1409,10 +1409,10 @@ class ZKTecoService {
             }
             // Step 4.1: Bidirectional FULL_DAY_LEAVE deduction tracking
             const attendanceDate = new Date(attendanceData.timestamp);
-            const todayDateOnly = new Date(Date.UTC(attendanceDate.getUTCFullYear(), attendanceDate.getUTCMonth(), attendanceDate.getUTCDate()));
+            const todayDateOnly = new Date(Date.UTC(attendanceDate.getFullYear(), attendanceDate.getMonth(), attendanceDate.getDate()));
             if (attendanceData.checkType === "check_out") {
                 // Check if there's a check-in record for today with FULL_DAY_LEAVE_POTENTIAL or FULL_DAY_LEAVE status
-                const todayCheckIn = await prisma.zKTecoAttendanceStaging.findFirst({
+                const todayCheckIn = await prisma_1.prisma.zKTecoAttendanceStaging.findFirst({
                     where: {
                         userId: employee.id,
                         checkType: "check_in",
@@ -1432,14 +1432,16 @@ class ZKTecoService {
                     // Get shift times for validation
                     const shift = employee.shift;
                     if (shift) {
+                        // checkInTime from DB is already PKT-as-UTC; convert checkOutTime to match
                         const checkInTime = new Date(todayCheckIn.timestamp);
-                        const checkOutTime = new Date(attendanceData.timestamp);
-                        // Create today's shift times
+                        const checkOutTime = new Date(attendanceData.timestamp.getTime() + PKT_OFFSET_MS);
+                        // Create today's shift times using setUTCHours with PKT hours
+                        // (shift.startTime stored as real UTC, .getHours() returns PKT local hour)
                         const todayShiftStart = new Date(todayDateOnly);
-                        todayShiftStart.setHours(new Date(shift.startTime).getHours(), new Date(shift.startTime).getMinutes(), 0, 0);
+                        todayShiftStart.setUTCHours(new Date(shift.startTime).getHours(), new Date(shift.startTime).getMinutes(), 0, 0);
                         const todayFullDayStart = new Date(todayDateOnly);
                         if (shift.fullDayStart) {
-                            todayFullDayStart.setHours(new Date(shift.fullDayStart).getHours(), new Date(shift.fullDayStart).getMinutes(), 0, 0);
+                            todayFullDayStart.setUTCHours(new Date(shift.fullDayStart).getHours(), new Date(shift.fullDayStart).getMinutes(), 0, 0);
                         }
                         // Validate: toa >= fds AND tol < fds && > st
                         const toaValid = checkInTime >= todayFullDayStart;
@@ -1448,17 +1450,19 @@ class ZKTecoService {
                         if (toaValid && tolValid) {
                             console.log(`✅ FULL_DAY_LEAVE condition validated: toa >= fds AND tol < fds && > st`);
                             // Update check-in record to confirmed FULL_DAY_LEAVE
-                            await prisma.zKTecoAttendanceStaging.update({
+                            await prisma_1.prisma.zKTecoAttendanceStaging.update({
                                 where: { id: todayCheckIn.id },
                                 data: {
                                     overallStatus: "FULL_DAY_LEAVE",
+                                    updatedAt: pktNow(),
                                 },
                             });
                             // Update current check-out record to confirmed FULL_DAY_LEAVE
-                            await prisma.zKTecoAttendanceStaging.update({
+                            await prisma_1.prisma.zKTecoAttendanceStaging.update({
                                 where: { id: stagingRecord.id },
                                 data: {
                                     overallStatus: "FULL_DAY_LEAVE",
+                                    updatedAt: pktNow(),
                                 },
                             });
                             calculatedStatus = "FULL_DAY_LEAVE";
@@ -1482,18 +1486,20 @@ class ZKTecoService {
                     attendanceData.checkType === "check_out") {
                     console.log(`🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`);
                     // Mark current check-out record with processing error (deduction tracking only in final table)
-                    await prisma.zKTecoAttendanceStaging.update({
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: stagingRecord.id },
                         data: {
                             processingError: "Marked for FULL_DAY_LEAVE deduction",
+                            updatedAt: pktNow(),
                         },
                     });
                     // Mark corresponding check-in record with processing error
                     if (todayCheckIn) {
-                        await prisma.zKTecoAttendanceStaging.update({
+                        await prisma_1.prisma.zKTecoAttendanceStaging.update({
                             where: { id: todayCheckIn.id },
                             data: {
                                 processingError: "Marked for FULL_DAY_LEAVE deduction",
+                                updatedAt: pktNow(),
                             },
                         });
                         console.log(`✅ Marked check-in record ${todayCheckIn.id} as used for deduction`);
@@ -1508,18 +1514,20 @@ class ZKTecoService {
                     calculatedStatus !== "FULL_DAY_LEAVE") {
                     console.log(`🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`);
                     // Mark this checkout record as blocked
-                    await prisma.zKTecoAttendanceStaging.update({
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: stagingRecord.id },
                         data: {
                             overallStatus: todayCheckIn.overallStatus,
                             processingError: "Checkout blocked - Check-in was FULL_DAY_LEAVE (deduction in final table)",
+                            updatedAt: pktNow(),
                         },
                     });
                     // Mark the check-in record with processing note
-                    await prisma.zKTecoAttendanceStaging.update({
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: todayCheckIn.id },
                         data: {
                             processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+                            updatedAt: pktNow(),
                         },
                     });
                     console.log(`🔒 Marked check-in record ${todayCheckIn.id} as used for deduction`);
@@ -1528,7 +1536,7 @@ class ZKTecoService {
             }
             else if (attendanceData.checkType === "check_in") {
                 // Check if there's a checkout record for today with FULL_DAY_LEAVE status
-                const todayCheckOut = await prisma.zKTecoAttendanceStaging.findFirst({
+                const todayCheckOut = await prisma_1.prisma.zKTecoAttendanceStaging.findFirst({
                     where: {
                         userId: employee.id,
                         checkType: "check_out",
@@ -1543,18 +1551,20 @@ class ZKTecoService {
                     console.log(`🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`);
                     console.log("todayCheckOut.overallStatus", todayCheckOut.overallStatus);
                     // Mark this check-in record as blocked
-                    await prisma.zKTecoAttendanceStaging.update({
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: stagingRecord.id },
                         data: {
                             overallStatus: null,
                             processingError: "Check-in blocked - Check-out was FULL_DAY_LEAVE (deduction in final table)",
+                            updatedAt: pktNow(),
                         },
                     });
                     // Mark the checkout record with processing note
-                    await prisma.zKTecoAttendanceStaging.update({
+                    await prisma_1.prisma.zKTecoAttendanceStaging.update({
                         where: { id: todayCheckOut.id },
                         data: {
                             processingError: "Marked for FULL_DAY_LEAVE deduction (will apply in final table)",
+                            updatedAt: pktNow(),
                         },
                     });
                     console.log(`🔒 Marked checkout record ${todayCheckOut.id} as used for deduction`);
@@ -1563,14 +1573,15 @@ class ZKTecoService {
             }
             // Step 5: Mark staging record as processed
             // NO ATTENDANCE RECORD CREATED YET - Will be created after 3 days by finalization cron
-            await prisma.zKTecoAttendanceStaging.update({
+            await prisma_1.prisma.zKTecoAttendanceStaging.update({
                 where: { id: stagingRecord.id },
                 data: {
                     processed: true,
                     processingError: null,
+                    updatedAt: pktNow(),
                 },
             });
-            console.log(`✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`);
+            console.log(`✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp.toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} PKT (DB stores UTC: ${attendanceData.timestamp.toISOString()})`);
             console.log(`⏳ Record will be finalized and moved to attendance after 3 days`);
             return true;
         }
