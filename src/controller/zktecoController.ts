@@ -1454,19 +1454,24 @@ export class ZKTecoController {
       ).length;
 
       const halfDayCount = attendanceRecords.filter((record: any) =>
-        record.zktecoRecords.some((zkr: any) => zkr.overallStatus === "HALF_DAY_LEAVE"),
+        record.zktecoRecords.some(
+          (zkr: any) => zkr.overallStatus === "HALF_DAY_LEAVE",
+        ),
       ).length;
 
       const absentCount = attendanceRecords.filter((record: any) => {
         const hasAbsentStatus = record.zktecoRecords.some(
-          (zkr: any) => zkr.overallStatus === "ABSENT" || zkr.overallStatus === "FULL_DAY_LEAVE",
+          (zkr: any) =>
+            zkr.overallStatus === "ABSENT" ||
+            zkr.overallStatus === "FULL_DAY_LEAVE",
         );
         const hasNoPunches = !record.checkIn && !record.checkOut;
         return hasAbsentStatus || hasNoPunches;
       }).length;
 
-      const wfhCount = attendanceRecords.filter((record: any) => record.status === "WORK_FROM_HOME")
-        .length;
+      const wfhCount = attendanceRecords.filter(
+        (record: any) => record.status === "WORK_FROM_HOME",
+      ).length;
 
       const presentCount = Math.max(totalRecords - absentCount, 0);
 
