@@ -1222,16 +1222,34 @@ class ZKTecoController {
                     departmentId: departmentId,
                 };
             }
-            const [totalRecords, presentCount, absentCount, lateCount, halfDayCount, wfhCount,] = await Promise.all([
-                prisma_1.prisma.attendance.count({ where }),
-                prisma_1.prisma.attendance.count({ where: { ...where, status: "PRESENT" } }),
-                prisma_1.prisma.attendance.count({ where: { ...where, status: "ABSENT" } }),
-                prisma_1.prisma.attendance.count({ where: { ...where, status: "LATE" } }),
-                prisma_1.prisma.attendance.count({ where: { ...where, status: "HALF_DAY" } }),
-                prisma_1.prisma.attendance.count({
-                    where: { ...where, status: "WORK_FROM_HOME" },
-                }),
-            ]);
+            // NOTE:
+            // `Attendance.status` can remain PRESENT after finalization even when punches indicate LATE/ABSENT.
+            // Derive stats from linked ZKTeco status + check-in/out for accurate analytics.
+            const attendanceRecords = await prisma_1.prisma.attendance.findMany({
+                where,
+                select: {
+                    id: true,
+                    status: true,
+                    checkIn: true,
+                    checkOut: true,
+                    zktecoRecords: {
+                        select: {
+                            overallStatus: true,
+                        },
+                    },
+                },
+            });
+            const totalRecords = attendanceRecords.length;
+            const lateCount = attendanceRecords.filter((record) => record.zktecoRecords.some((zkr) => zkr.overallStatus === "LATE")).length;
+            const halfDayCount = attendanceRecords.filter((record) => record.zktecoRecords.some((zkr) => zkr.overallStatus === "HALF_DAY_LEAVE")).length;
+            const absentCount = attendanceRecords.filter((record) => {
+                const hasAbsentStatus = record.zktecoRecords.some((zkr) => zkr.overallStatus === "ABSENT" ||
+                    zkr.overallStatus === "FULL_DAY_LEAVE");
+                const hasNoPunches = !record.checkIn && !record.checkOut;
+                return hasAbsentStatus || hasNoPunches;
+            }).length;
+            const wfhCount = attendanceRecords.filter((record) => record.status === "WORK_FROM_HOME").length;
+            const presentCount = Math.max(totalRecords - absentCount, 0);
             const stats = {
                 total: totalRecords,
                 present: presentCount,
