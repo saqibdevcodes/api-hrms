@@ -22,8 +22,10 @@ const prisma_1 = require("../lib/prisma");
 const loans_1 = __importDefault(require("./loans"));
 const advanceSalaryRoutes_1 = __importDefault(require("./advanceSalaryRoutes"));
 const pdrRoutes_1 = __importDefault(require("./pdrRoutes"));
+const documentRoutes_1 = __importDefault(require("./documentRoutes"));
 const router = (0, express_1.Router)();
 router.use("/pdr", pdrRoutes_1.default);
+router.use("/documents", documentRoutes_1.default);
 // Authentication routes (public)
 router.use("/auth", authRoutes_1.default);
 // Employee management routes (protected)
@@ -90,10 +92,16 @@ router.get("/dashboard", auth_1.authenticate, async (req, res) => {
         let presentToday = 0;
         let onLeave = 0;
         todaysAttendance.forEach((record) => {
-            if (['PRESENT', 'LATE', 'HALF_DAY', 'WORK_FROM_HOME', 'EARLY_OUT'].includes(record.status)) {
+            if ([
+                "PRESENT",
+                "LATE",
+                "HALF_DAY",
+                "WORK_FROM_HOME",
+                "EARLY_OUT",
+            ].includes(record.status)) {
                 presentToday++;
             }
-            else if (['ABSENT'].includes(record.status)) {
+            else if (["ABSENT"].includes(record.status)) {
                 // Absent is counted separately or part of total - present
             }
         });
@@ -101,7 +109,7 @@ router.get("/dashboard", auth_1.authenticate, async (req, res) => {
         // This is more accurate than just attendance status which might be generated later
         const leavesToday = await prisma_1.prisma.leaveRequest.count({
             where: {
-                status: 'APPROVED',
+                status: "APPROVED",
                 startDate: { lte: today },
                 endDate: { gte: today },
             },
@@ -110,7 +118,7 @@ router.get("/dashboard", auth_1.authenticate, async (req, res) => {
         // Get pending leave requests count
         const pendingRequests = await prisma_1.prisma.leaveRequest.count({
             where: {
-                status: 'PENDING',
+                status: "PENDING",
             },
         });
         res.json({

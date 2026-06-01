@@ -6,6 +6,89 @@ const client_1 = require("@prisma/client");
 const prisma_1 = require("../lib/prisma");
 class PdrService {
     /**
+     * Split `users.manager` into candidates (single email or comma/semicolon-separated).
+     */
+    static parseManagerFieldTokens(managerField) {
+        return managerField
+            .split(/[,;\n\r]+/)
+            .map((s) => s.replace(/[\u200B-\u200D\uFEFF]/g, "").trim())
+            .filter((s) => s.length > 0);
+    }
+    /** Substrings from a token that might be an email (`users.email`, `officialEmail`, `personalEmail`). */
+    static emailCandidatesFromToken(token) {
+        const t = token.trim();
+        if (!t)
+            return [];
+        const uniq = new Set();
+        const extracted = Array.from(t.matchAll(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g), (m) => m[0]);
+        for (const e of extracted)
+            uniq.add(e);
+        if (t.includes("@"))
+            uniq.add(t);
+        if (uniq.size === 0)
+            uniq.add(t);
+        return [...uniq];
+    }
+    /** Case-insensitive match on login `email`, `officialEmail`, and `personalEmail` (see `employeeController`). */
+    static async lookupUserByEmailAcrossColumns(emailLike) {
+        const normalized = emailLike.trim();
+        if (!normalized || !normalized.includes("@"))
+            return undefined;
+        const rows = await prisma_1.prisma.$queryRaw `
+      SELECT id FROM users
+      WHERE LOWER(TRIM(IFNULL(email, ''))) = LOWER(TRIM(${normalized}))
+         OR LOWER(TRIM(IFNULL(officialEmail, ''))) = LOWER(TRIM(${normalized}))
+         OR LOWER(TRIM(IFNULL(personalEmail, ''))) = LOWER(TRIM(${normalized}))
+      LIMIT 1
+    `;
+        return rows[0]?.id;
+    }
+    /** Resolve one token to `users.id` (primary key first, then any known email columns, then employeeId). */
+    static async resolveSingleManagerToken(token) {
+        if (!token?.trim())
+            return undefined;
+        const t = token.trim();
+        const byId = await prisma_1.prisma.user.findUnique({
+            where: { id: t },
+            select: { id: true },
+        });
+        if (byId)
+            return byId.id;
+        const forEmailAttempts = this.emailCandidatesFromToken(t);
+        for (const candidate of forEmailAttempts) {
+            const byExact = await prisma_1.prisma.user.findUnique({
+                where: { email: candidate },
+                select: { id: true },
+            });
+            if (byExact)
+                return byExact.id;
+            const byAnyColumn = await this.lookupUserByEmailAcrossColumns(candidate);
+            if (byAnyColumn)
+                return byAnyColumn;
+        }
+        const byEmp = await prisma_1.prisma.user.findFirst({
+            where: { employeeId: t },
+            select: { id: true },
+        });
+        return byEmp?.id;
+    }
+    /**
+     * Map `users.manager` to a `users.id` for `pdr.linemanager_id`.
+     * Stores supervisor email(s): one for EMPLOYEE, comma-separated for LINE_MANAGER.
+     * Tries every token until one matches (first missing user in list no longer blocks later emails).
+     */
+    static async resolveManagerFieldToLineManagerUserId(managerField) {
+        if (!managerField?.trim())
+            return undefined;
+        const tokens = this.parseManagerFieldTokens(managerField);
+        for (const token of tokens) {
+            const id = await this.resolveSingleManagerToken(token);
+            if (id)
+                return id;
+        }
+        return undefined;
+    }
+    /**
      * Create PDR for a specific employee
      */
     static async createPdr(data, createdBy) {
@@ -29,28 +112,23 @@ class PdrService {
         if (!user) {
             throw new Error("User not found");
         }
-        // Find line manager if not provided
-        let linemanagerId = data.linemanagerId;
-        if (!linemanagerId && user.manager) {
-            // The user.manager field stores the manager's USER ID (not employeeId)
-            // First, check if it's a direct user ID
-            const managerById = await prisma_1.prisma.user.findUnique({
-                where: { id: user.manager },
-                select: { id: true, userRank: true },
+        // Line manager: explicit `linemanager_id` (HR) when it is a real `users.id`;
+        // otherwise treat value like `manager` (email / id / employeeId).
+        // If omitted, derive from `User.manager` (single or comma-separated emails).
+        let linemanagerId = data.linemanager_id?.trim() || undefined;
+        if (linemanagerId) {
+            const exists = await prisma_1.prisma.user.findUnique({
+                where: { id: linemanagerId },
+                select: { id: true },
             });
-            if (managerById && managerById.userRank === client_1.UserRank.LINE_MANAGER) {
-                linemanagerId = managerById.id;
+            if (!exists) {
+                linemanagerId =
+                    (await this.resolveSingleManagerToken(linemanagerId)) ?? undefined;
             }
-            else {
-                // If not found by ID, try finding by employeeId (backward compatibility)
-                const managerByEmpId = await prisma_1.prisma.user.findFirst({
-                    where: {
-                        employeeId: user.manager,
-                        userRank: client_1.UserRank.LINE_MANAGER,
-                    },
-                });
-                linemanagerId = managerByEmpId?.id;
-            }
+        }
+        else {
+            linemanagerId =
+                await this.resolveManagerFieldToLineManagerUserId(user.manager);
         }
         // Find director if not provided
         let directorId = data.directorId;
@@ -112,7 +190,7 @@ class PdrService {
         }
         const employees = await prisma_1.prisma.user.findMany({
             where: whereClause,
-            select: { id: true, manager: true },
+            select: { id: true },
         });
         const results = {
             created: [],
@@ -121,6 +199,7 @@ class PdrService {
         };
         for (const employee of employees) {
             try {
+                // `linemanager_id` FK → `users.id`; resolved from `users.manager` in `createPdr`.
                 const pdr = await this.createPdr({
                     userId: employee.id,
                     pdrCycle,
@@ -450,8 +529,13 @@ class PdrService {
         if (pdr.isCompleted) {
             throw new Error("Cannot delete completed PDR");
         }
-        await prisma_1.prisma.pdr.delete({
-            where: { id: pdrId },
+        await prisma_1.prisma.$transaction(async (tx) => {
+            await tx.pdrComment.deleteMany({ where: { pdr_id: pdrId } });
+            await tx.pdrPersonalQuality.deleteMany({ where: { pdr_id: pdrId } });
+            await tx.pdrGoalsTask.deleteMany({ where: { pdr_id: pdrId } });
+            await tx.pdrOverallComment.deleteMany({ where: { pdr_id: pdrId } });
+            await tx.pdrStatusTransition.deleteMany({ where: { pdrId } });
+            await tx.pdr.delete({ where: { id: pdrId } });
         });
         return { success: true, message: "PDR deleted successfully" };
     }
@@ -603,6 +687,22 @@ class PdrService {
         return createdGoals;
     }
     /**
+     * Add a general comment to the PDR
+     */
+    static async addComment(data) {
+        return await prisma_1.prisma.pdrComment.create({
+            data: {
+                pdr_id: data.pdrId,
+                employee_type: data.employeeType,
+                pdr_status_type: data.pdrStatusType,
+                description: data.description,
+                commentType: data.commentType || "GENERAL",
+                sentTo: data.sentTo || null,
+                isResolved: false,
+            },
+        });
+    }
+    /**
      * Save PDR Overall Comment
      */
     static async saveOverallComment(data) {
@@ -704,6 +804,17 @@ class PdrService {
                     comment: data.part2.managerRemarks,
                 });
             }
+        }
+        // Save optional comment if provided
+        if (data.comment && data.comment.trim()) {
+            const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: data.pdrId } });
+            results.comment = await this.addComment({
+                pdrId: data.pdrId,
+                employeeType: data.employeeType,
+                pdrStatusType: pdr?.overallStatus || "UNKNOWN",
+                description: data.comment.trim(),
+                commentType: "GENERAL",
+            });
         }
         return results;
     }

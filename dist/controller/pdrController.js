@@ -59,6 +59,12 @@ class PdrController {
                 return res.status(401).json({ message: "Unauthorized" });
             }
             const { userId, linemanagerId, directorId, pdrCycle } = req.body;
+            if (!linemanagerId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "linemanagerId is required",
+                });
+            }
             if (!userId || !pdrCycle) {
                 return res.status(400).json({
                     success: false,
@@ -67,7 +73,7 @@ class PdrController {
             }
             const pdr = await pdrService_1.PdrService.createPdr({
                 userId,
-                linemanagerId,
+                linemanager_id: linemanagerId,
                 directorId,
                 pdrCycle,
             }, req.user.id);
@@ -214,9 +220,12 @@ class PdrController {
             if (pdr.overallStatus === client_1.PdrOverallStatus.EMPLOYEE_FILLING) {
                 targetStatus = client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
             }
-            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_FILLING ||
-                pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_REVISING) {
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_FILLING) {
                 targetStatus = client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
+            }
+            else if (pdr.overallStatus === client_1.PdrOverallStatus.MANAGER_REVISING) {
+                // After revising (triggered by employee disagreement), manager sends back to employee for acknowledgment
+                targetStatus = client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING;
             }
             else {
                 return res.status(400).json({
@@ -594,11 +603,40 @@ class PdrController {
                     message: "Cannot modify completed PDR",
                 });
             }
-            // Update PDR content based on provided data
-            // This is a simplified version - you may want to add more validation
+            const results = {};
+            if (personalQualities) {
+                results.personalQualities = await pdrService_1.PdrService.savePersonalQualities({
+                    pdrId,
+                    employeeType: personalQualities.employeeType || req.user.role,
+                    ratings: personalQualities.ratings,
+                    comment: personalQualities.comment || "",
+                });
+            }
+            if (goalsTasks) {
+                results.goalsTasks = await pdrService_1.PdrService.saveGoalsTasks({
+                    pdrId,
+                    goals: goalsTasks,
+                });
+            }
+            if (overallComments) {
+                results.overallComments = await pdrService_1.PdrService.saveOverallComment({
+                    pdrId,
+                    employeeType: overallComments.employeeType || req.user.role,
+                    comment: overallComments.comment,
+                });
+            }
+            if (comments) {
+                results.comment = await pdrService_1.PdrService.addComment({
+                    pdrId,
+                    employeeType: req.user.userRank || req.user.role,
+                    pdrStatusType: pdr.overallStatus,
+                    description: comments,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "PDR content updated successfully",
+                data: results,
             });
         }
         catch (error) {
@@ -623,7 +661,7 @@ class PdrController {
             }
             const pdrId = parseInt(req.params.id, 10);
             // const { employeeType, part1, part2, managerRecommendations, directorOverallComment } = req.body;
-            const { employeeType, part1, part2, managerRecommendations, directorOverallComment, pdr_timeline, } = req.body;
+            const { employeeType, part1, part2, managerRecommendations, directorOverallComment, pdr_timeline, comment, } = req.body;
             const pdr = await prisma_1.prisma.pdr.findUnique({ where: { id: pdrId } });
             if (!pdr) {
                 return res.status(404).json({
@@ -651,6 +689,7 @@ class PdrController {
                 managerRecommendations,
                 directorOverallComment,
                 pdr_timeline,
+                comment,
             });
             res.status(200).json({
                 success: true,

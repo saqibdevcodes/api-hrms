@@ -78,6 +78,13 @@ export class PdrController {
 
       const { userId, linemanagerId, directorId, pdrCycle } = req.body;
 
+      if (!linemanagerId) {
+        return res.status(400).json({
+          success: false,
+          message: "linemanagerId is required",
+        });
+      }
+
       if (!userId || !pdrCycle) {
         return res.status(400).json({
           success: false,
@@ -88,7 +95,7 @@ export class PdrController {
       const pdr = await PdrService.createPdr(
         {
           userId,
-          linemanagerId,
+          linemanager_id: linemanagerId,
           directorId,
           pdrCycle,
         },
@@ -264,11 +271,11 @@ export class PdrController {
 
       if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_FILLING) {
         targetStatus = PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
-      } else if (
-        pdr.overallStatus === PdrOverallStatus.MANAGER_FILLING ||
-        pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING
-      ) {
+      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_FILLING) {
         targetStatus = PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
+      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING) {
+        // After revising (triggered by employee disagreement), manager sends back to employee for acknowledgment
+        targetStatus = PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING;
       } else {
         return res.status(400).json({
           success: false,
@@ -721,12 +728,45 @@ export class PdrController {
         });
       }
 
-      // Update PDR content based on provided data
-      // This is a simplified version - you may want to add more validation
+      const results: any = {};
+
+      if (personalQualities) {
+        results.personalQualities = await PdrService.savePersonalQualities({
+          pdrId,
+          employeeType: personalQualities.employeeType || req.user.role,
+          ratings: personalQualities.ratings,
+          comment: personalQualities.comment || "",
+        });
+      }
+
+      if (goalsTasks) {
+        results.goalsTasks = await PdrService.saveGoalsTasks({
+          pdrId,
+          goals: goalsTasks,
+        });
+      }
+
+      if (overallComments) {
+        results.overallComments = await PdrService.saveOverallComment({
+          pdrId,
+          employeeType: overallComments.employeeType || req.user.role,
+          comment: overallComments.comment,
+        });
+      }
+
+      if (comments) {
+        results.comment = await PdrService.addComment({
+          pdrId,
+          employeeType: req.user.userRank || req.user.role,
+          pdrStatusType: pdr.overallStatus,
+          description: comments,
+        });
+      }
 
       res.status(200).json({
         success: true,
         message: "PDR content updated successfully",
+        data: results,
       });
     } catch (error: any) {
       console.error("❌ Error updating PDR content:", error);
@@ -760,6 +800,7 @@ export class PdrController {
         managerRecommendations,
         directorOverallComment,
         pdr_timeline,
+        comment,
       } = req.body;
 
       const pdr = await prisma.pdr.findUnique({ where: { id: pdrId } });
@@ -791,6 +832,7 @@ export class PdrController {
         managerRecommendations,
         directorOverallComment,
         pdr_timeline,
+        comment,
       });
 
       res.status(200).json({
