@@ -1,7 +1,7 @@
 // services/pdrService.ts
 import { PdrOverallStatus, PdrStatus, UserRank, Role } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { queuePdrCreatedEmail } from "../queues/email.jobs";
+import { queuePdrCreatedEmail, queuePdrStatusEmail } from "../queues/email.jobs";
 
 export interface PdrCreationData {
   userId: string;
@@ -17,6 +17,8 @@ export interface PdrTransitionData {
   userRole: string;
   userRank?: string; // Add userRank to interface
   comment?: string;
+  /** HR revert message shown in notification email */
+  revertMessage?: string;
 }
 
 export class PdrService {
@@ -540,6 +542,14 @@ export class PdrService {
       });
 
       return updated;
+    });
+
+    const fromStatus = pdr.overallStatus;
+    await queuePdrStatusEmail({
+      pdrId: data.pdrId,
+      targetStatus,
+      fromStatus,
+      revertMessage: data.revertMessage,
     });
 
     return updatedPdr;

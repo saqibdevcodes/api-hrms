@@ -1,29 +1,19 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-// src/workers/email.worker.ts
+require("dotenv/config");
 const bullmq_1 = require("bullmq");
 const email_events_1 = require("../constants/email.events");
-const emailService_1 = require("../utils/emailService");
-const prisma_1 = require("../lib/prisma");
+const redis_1 = require("../config/redis");
+const pdrEmailNotificationService_1 = require("../services/pdrEmailNotificationService");
 new bullmq_1.Worker("email-queue", async (job) => {
     switch (job.name) {
-        case email_events_1.EMAIL_EVENTS.PDR_CREATED: {
-            const pdr = await prisma_1.prisma.pdr.findUnique({
-                where: { id: job.data.pdrId },
-                include: { user: true },
-            });
-            if (!pdr)
-                throw new Error("PDR not found");
-            await emailService_1.EmailService.sendEmail(pdr.user.officialEmail || "", "PDR Created", `<p>Hello ${pdr.user.firstName}, your PDR is created.</p>`);
+        case email_events_1.EMAIL_EVENTS.PDR_STATUS_NOTIFY:
+            await pdrEmailNotificationService_1.PdrEmailNotificationService.processJob(job.data);
             break;
-        }
         default:
-            throw new Error(`Unknown event: ${job.name}`);
+            throw new Error(`Unknown email event: ${job.name}`);
     }
 }, {
-    connection: {
-        host: process.env.REDIS_HOST,
-        port: Number(process.env.REDIS_PORT),
-    },
+    connection: redis_1.redisConnection.options,
     concurrency: 10,
 });

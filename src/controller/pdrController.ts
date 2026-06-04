@@ -4,8 +4,6 @@ import { PdrOverallStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../types/auth";
 import { PdrService } from "../services/pdrService";
 import { prisma } from "../lib/prisma";
-import { queuePdrCreatedEmail } from "../queues/email.jobs";
-
 export class PdrController {
   /**
    * Get all PDRs (filtered by user role)
@@ -102,9 +100,6 @@ export class PdrController {
         },
         req.user.id,
       );
-
-      await queuePdrCreatedEmail(pdr.id.toString());
-
 
       res.status(201).json({
         success: true,
@@ -490,6 +485,7 @@ export class PdrController {
           userRole: req.user.role === "HR" ? "HR" : req.user.role,
           userRank: req.user.userRank || undefined,
           comment: comment || `Reverted with message: ${message}`,
+          revertMessage: message,
         },
         targetStatus,
       );

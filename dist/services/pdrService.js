@@ -319,6 +319,13 @@ class PdrService {
             });
             return updated;
         });
+        const fromStatus = pdr.overallStatus;
+        await (0, email_jobs_1.queuePdrStatusEmail)({
+            pdrId: data.pdrId,
+            targetStatus,
+            fromStatus,
+            revertMessage: data.revertMessage,
+        });
         return updatedPdr;
     }
     /**

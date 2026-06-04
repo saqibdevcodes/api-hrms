@@ -1,17 +1,22 @@
+import { PdrOverallStatus } from "@prisma/client";
 import { emailQueue } from "./email.queue";
 import { EMAIL_EVENTS } from "../constants/email.events";
+import {
+  PdrEmailJobData,
+  PdrEmailNotificationService,
+} from "../services/pdrEmailNotificationService";
 
+export const queuePdrStatusEmail = (data: PdrEmailJobData) => {
+  if (!PdrEmailNotificationService.shouldNotify(data.targetStatus)) {
+    return Promise.resolve(null);
+  }
+  return emailQueue.add(EMAIL_EVENTS.PDR_STATUS_NOTIFY, data);
+};
 
-
-
-export const queuePdrCreatedEmail = (pdrId: string) => {
-    return emailQueue.add(EMAIL_EVENTS.PDR_CREATED, { pdrId });
-  };
-  
-//   export const queuePdrManagerAssignedEmail = (pdrId: string) => {
-//     return emailQueue.add(EMAIL_EVENTS.PDR_MANAGER_ASSIGNED, { pdrId });
-//   };
-  
-//   export const queuePdrSubmittedEmail = (pdrId: string) => {
-//     return emailQueue.add(EMAIL_EVENTS.PDR_SUBMITTED_HR, { pdrId });
-//   };
+/** After HR creates a PDR (single or bulk via createPdr). */
+export const queuePdrCreatedEmail = (pdrId: number | string) => {
+  return queuePdrStatusEmail({
+    pdrId: Number(pdrId),
+    targetStatus: PdrOverallStatus.CREATED_BY_HR,
+  });
+};

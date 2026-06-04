@@ -8,4 +8,5 @@ exports.redisConnection = void 0;
 const ioredis_1 = __importDefault(require("ioredis"));
 exports.redisConnection = new ioredis_1.default(process.env.REDIS_URL, {
     maxRetriesPerRequest: null,
+    //// some changes
 });
