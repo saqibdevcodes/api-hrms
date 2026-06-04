@@ -44,6 +44,7 @@ interface EnvConfig {
   CLOUDINARY_API_SECRET: string;
 }
 
+// added something
 const getEnvVar = (key: string, defaultValue?: string): string => {
   const value = process.env[key] || defaultValue;
   if (!value) {
