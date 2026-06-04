@@ -4,6 +4,7 @@ exports.PdrController = void 0;
 const client_1 = require("@prisma/client");
 const pdrService_1 = require("../services/pdrService");
 const prisma_1 = require("../lib/prisma");
+const email_jobs_1 = require("../queues/email.jobs");
 class PdrController {
     /**
      * Get all PDRs (filtered by user role)
@@ -77,6 +78,7 @@ class PdrController {
                 directorId,
                 pdrCycle,
             }, req.user.id);
+            await (0, email_jobs_1.queuePdrCreatedEmail)(pdr.id.toString());
             res.status(201).json({
                 success: true,
                 message: "PDR created successfully",
