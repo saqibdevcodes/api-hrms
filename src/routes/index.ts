@@ -19,7 +19,10 @@ import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
 import documnetRoutes from "./documentRoutes";
+<<<<<<< HEAD
 
+=======
+>>>>>>> shaheen
 const router = Router();
 
 router.use("/pdr", pdrRoutes);

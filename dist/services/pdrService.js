@@ -4,6 +4,7 @@ exports.PdrService = void 0;
 // services/pdrService.ts
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../lib/prisma");
+const email_jobs_1 = require("../queues/email.jobs");
 class PdrService {
     /**
      * Split `users.manager` into candidates (single email or comma/semicolon-separated).
@@ -175,6 +176,7 @@ class PdrService {
                 },
             },
         });
+        await (0, email_jobs_1.queuePdrCreatedEmail)(pdr.id.toString());
         return pdr;
     }
     /**
@@ -316,6 +318,13 @@ class PdrService {
                 },
             });
             return updated;
+        });
+        const fromStatus = pdr.overallStatus;
+        await (0, email_jobs_1.queuePdrStatusEmail)({
+            pdrId: data.pdrId,
+            targetStatus,
+            fromStatus,
+            revertMessage: data.revertMessage,
         });
         return updatedPdr;
     }
