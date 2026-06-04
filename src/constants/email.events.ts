@@ -1,8 +1,7 @@
+// src/constants/email.events.ts
 export const EMAIL_EVENTS = {
-    PASSWORD_RESET: "password.reset",
-    OTP_EMAIL: "otp.email",
-  
-    PDR_CREATED: "pdr.created",
-    PDR_MANAGER_ASSIGNED: "pdr.manager.assigned",
-    PDR_SUBMITTED_HR: "pdr.submitted.hr",
-  };
+  PDR_CREATED: "PDR_CREATED",
+  PDR_MANAGER_ASSIGNED: "PDR_MANAGER_ASSIGNED",
+  PDR_SUBMITTED_HR: "PDR_SUBMITTED_HR",
+  PASSWORD_RESET: "PASSWORD_RESET",
+};

@@ -1,7 +1,6 @@
+// src/config/redis.ts
 import Redis from "ioredis";
 
-export const redisConnection = new Redis({
-  host: process.env.REDIS_HOST,
-  port: Number(process.env.REDIS_PORT),
+export const redisConnection = new Redis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
 });

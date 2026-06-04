@@ -1,6 +1,5 @@
 // src/workers/email.worker.ts
 import { Worker } from "bullmq";
-import { redisConnection } from "../config/redis";
 import { EMAIL_EVENTS } from "../constants/email.events";
 import { EmailService } from "../utils/emailService";
 import { prisma } from "../lib/prisma";

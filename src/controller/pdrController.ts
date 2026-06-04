@@ -4,6 +4,7 @@ import { PdrOverallStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../types/auth";
 import { PdrService } from "../services/pdrService";
 import { prisma } from "../lib/prisma";
+import { queuePdrCreatedEmail } from "../queues/email.jobs";
 
 export class PdrController {
   /**
@@ -101,6 +102,9 @@ export class PdrController {
         },
         req.user.id,
       );
+
+      await queuePdrCreatedEmail(pdr.id.toString());
+
 
       res.status(201).json({
         success: true,

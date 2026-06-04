@@ -3,6 +3,7 @@ import { EMAIL_EVENTS } from "../constants/email.events";
 
 
 
+
 export const queuePdrCreatedEmail = (pdrId: string) => {
     return emailQueue.add(EMAIL_EVENTS.PDR_CREATED, { pdrId });
   };
