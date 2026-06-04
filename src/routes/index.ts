@@ -18,11 +18,12 @@ import { prisma } from "../lib/prisma";
 import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
+import documnetRoutes from "./documentRoutes";
 
 const router = Router();
 
-
 router.use("/pdr", pdrRoutes);
+router.use("/documents", documnetRoutes);
 
 // Authentication routes (public)
 router.use("/auth", authRoutes);
@@ -75,93 +76,104 @@ router.use("/advanceSalary", ASRoutes);
  * @desc    Get dashboard data
  * @access  Private
  */
-router.get("/dashboard", authenticate, async (req: AuthenticatedRequest, res) => {
-
-  try {
-    // Get total employees
-    const totalEmployees = await prisma.user.count({
-      where: {
-        isActive: true,
-        employeeId: { not: null },
-      },
-    });
-
-    // Get today's attendance stats using processed attendance records
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Get all attendance records for today
-    const todaysAttendance = await prisma.attendance.findMany({
-      where: {
-        date: {
-          gte: today,
-          lt: tomorrow,
+router.get(
+  "/dashboard",
+  authenticate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      // Get total employees
+      const totalEmployees = await prisma.user.count({
+        where: {
+          isActive: true,
+          employeeId: { not: null },
         },
-      },
-      select: {
-        status: true,
-      },
-    });
+      });
 
-    // Count by status
-    let presentToday = 0;
-    let onLeave = 0;
+      // Get today's attendance stats using processed attendance records
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
 
-    todaysAttendance.forEach((record: any) => {
-      if (['PRESENT', 'LATE', 'HALF_DAY', 'WORK_FROM_HOME', 'EARLY_OUT'].includes(record.status)) {
-        presentToday++;
-      } else if (['ABSENT'].includes(record.status)) {
-        // Absent is counted separately or part of total - present
-      }
-    });
-
-    // Get approved leave requests for today to count 'on leave' correctly
-    // This is more accurate than just attendance status which might be generated later
-    const leavesToday = await prisma.leaveRequest.count({
-      where: {
-        status: 'APPROVED',
-        startDate: { lte: today },
-        endDate: { gte: today },
-      },
-    });
-
-    onLeave = leavesToday;
-
-    // Get pending leave requests count
-    const pendingRequests = await prisma.leaveRequest.count({
-      where: {
-        status: 'PENDING',
-      },
-    });
-
-    res.json({
-      success: true,
-      message: "Dashboard data retrieved successfully",
-      data: {
-        user: req.user,
-        stats: {
-          totalEmployees,
-          presentToday,
-          onLeave,
-          pendingRequests,
+      // Get all attendance records for today
+      const todaysAttendance = await prisma.attendance.findMany({
+        where: {
+          date: {
+            gte: today,
+            lt: tomorrow,
+          },
         },
-        recentActivities: [], // Deprecated in favor of specific lists
-      },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch dashboard data",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-  }
-});
+        select: {
+          status: true,
+        },
+      });
+
+      // Count by status
+      let presentToday = 0;
+      let onLeave = 0;
+
+      todaysAttendance.forEach((record: any) => {
+        if (
+          [
+            "PRESENT",
+            "LATE",
+            "HALF_DAY",
+            "WORK_FROM_HOME",
+            "EARLY_OUT",
+          ].includes(record.status)
+        ) {
+          presentToday++;
+        } else if (["ABSENT"].includes(record.status)) {
+          // Absent is counted separately or part of total - present
+        }
+      });
+
+      // Get approved leave requests for today to count 'on leave' correctly
+      // This is more accurate than just attendance status which might be generated later
+      const leavesToday = await prisma.leaveRequest.count({
+        where: {
+          status: "APPROVED",
+          startDate: { lte: today },
+          endDate: { gte: today },
+        },
+      });
+
+      onLeave = leavesToday;
+
+      // Get pending leave requests count
+      const pendingRequests = await prisma.leaveRequest.count({
+        where: {
+          status: "PENDING",
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Dashboard data retrieved successfully",
+        data: {
+          user: req.user,
+          stats: {
+            totalEmployees,
+            presentToday,
+            onLeave,
+            pendingRequests,
+          },
+          recentActivities: [], // Deprecated in favor of specific lists
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch dashboard data",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  },
+);
 
 /**
  * @route   GET /api/v1/admin/users

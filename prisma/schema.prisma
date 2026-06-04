@@ -44,8 +44,8 @@ model User {
   phone          String? // Alternative phone
 
   // Address Information
-  personalAddress String?
-  address         String? // Work address
+  personalAddress String? @db.Text
+  address         String? @db.Text // Work address
   city            String?
   state           String?
   zipCode         String?
@@ -164,7 +164,7 @@ model EmergencyDetail {
 model ContractType {
   id          String   @id @default(cuid())
   name        String   @unique
-  description String?
+  description String?  @db.Text
   duration    Int? // Duration in months
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -180,7 +180,7 @@ model ContractType {
 model Designation {
   id          String   @id @default(cuid())
   title       String   @unique
-  description String?
+  description String?  @db.Text
   level       Int? // Hierarchy level
   department  String?
   isActive    Boolean  @default(true)
@@ -216,7 +216,7 @@ model Shift {
 model OffDay {
   id        String   @id @default(cuid())
   date      DateTime
-  reason    String
+  reason    String   @db.Text
   datetime  DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -267,7 +267,7 @@ model EmployeeLeave {
 model EmploymentType {
   id          String   @id @default(cuid())
   name        String   @unique
-  description String?
+  description String?  @db.Text
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -293,7 +293,7 @@ model EducationalDetail {
 model Department {
   id          String   @id @default(cuid())
   name        String   @unique
-  description String?
+  description String?  @db.Text
   manager     String?
   budget      Decimal?
   isActive    Boolean  @default(true)
@@ -314,8 +314,8 @@ model Attendance {
   checkIn  DateTime? // First check-in time of the day
   checkOut DateTime? // Last check-out time of the day
   status   AttendanceStatus @default(PRESENT)
-  reason   String?
-  notes    String?
+  reason   String?          @db.Text
+  notes    String?          @db.Text
 
   // ZKTeco device integration fields
   deviceCheckIns  Int       @default(0) // Count of check-ins from device
@@ -362,7 +362,7 @@ model ZKTecoAttendanceStaging {
 
   // Processing status
   processed       Boolean @default(false) // Whether this record has been processed
-  processingError String? // Error message if processing failed
+  processingError String? @db.Text // Error message if processing failed
 
   // Finalization tracking
   isFinalized Boolean   @default(false) // Whether moved to final table
@@ -402,7 +402,7 @@ model ZKTecoAttendanceRecord {
 
   // Processing status
   processed       Boolean @default(false) // Whether this record has been processed into attendance
-  processingError String? // Error message if processing failed
+  processingError String? @db.Text // Error message if processing failed
 
   // Deduction tracking
   usedForDeduction   Boolean   @default(false) // Whether this record has been used for progressive deductions
@@ -455,15 +455,15 @@ model AttendanceReason {
   id                String       @id @default(cuid())
   attendanceId      String
   attendance        Attendance[]
-  reason            String?
-  reasonDetails     String?
+  reason            String?      @db.Text
+  reasonDetails     String?      @db.Text
   projectName       String?
   projectManager    String?
   projectDepartment String?
   taskAsignedBy     String?
-  taskDetail        String?
-  fieldAddress      String?
-  reasonComment     String?
+  taskDetail        String?      @db.Text
+  fieldAddress      String?      @db.Text
+  reasonComment     String?      @db.Text
   status            String? //approved, rejected, pending
   datetime          DateTime
 
@@ -487,13 +487,13 @@ model AttendanceDeduction {
   id              String       @id @default(cuid())
   attendanceId    String
   attendance      Attendance[]
-  deductionReason String
+  deductionReason String   @db.Text
   deductValue     Float
   leaveId         Int?
   datetime        DateTime
 
   // Track which ZKTeco records triggered this deduction
-  zktecoRecordIds String? // JSON array of ZKTeco record IDs that triggered this deduction
+  zktecoRecordIds String? @db.Text // JSON array of ZKTeco record IDs that triggered this deduction
   deductionType   String? // "LATE_TO_HALF_DAY" or "HALF_DAY_TO_FULL_DAY"
 
   @@map("attendance_deductions")
@@ -506,9 +506,9 @@ model LeaveRequest {
   startDate             DateTime
   endDate               DateTime
   days                  Int
-  reason                String
+  reason                String        @db.Text
   status                RequestStatus @default(PENDING)
-  comments              String?
+  comments              String?       @db.Text
   approvedByLineManager String?
   approvedByHr          String?
   approvedAt            DateTime?
@@ -552,7 +552,7 @@ model PerformanceReview {
   goalsMet      Int          @default(0)
   totalGoals    Int          @default(0)
   manager       String
-  feedback      String?
+  feedback      String? @db.Text
   status        ReviewStatus @default(DRAFT)
   dateCreated   DateTime     @default(now())
   dateCompleted DateTime?
@@ -570,7 +570,7 @@ model PerformanceReview {
 model Notification {
   id         String               @id @default(cuid())
   title      String
-  message    String
+  message    String @db.Text
   type       NotificationType
   priority   NotificationPriority @default(MEDIUM)
   isRead     Boolean              @default(false)
@@ -595,7 +595,7 @@ model Loan {
   totalAmount  Decimal?
   installments Int?
   tenure       Int? // in months
-  reason       String?
+  reason       String? @db.Text
   startDate    DateTime?
   endDate      DateTime?
   status       String
@@ -609,7 +609,7 @@ model AdvanceSalary {
   id         String   @id @default(cuid())
   userId     String
   daysCount  Int
-  reason     String
+  reason     String   @db.Text
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   Status     String?
   ApprovedBy String?
@@ -851,7 +851,7 @@ model PdrStatusTransition {
   toStatus      PdrOverallStatus
   changedBy     String // User ID
   changedByRole String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
-  comment       String?
+  comment       String? @db.Text
   createdAt     DateTime         @default(now())
 
   @@map("pdr_status_transitions")
@@ -859,7 +859,7 @@ model PdrStatusTransition {
 
 model PdrComment {
   id              Int      @id @default(autoincrement())
-  pdr             Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr             Pdr      @relation(fields: [pdr_id], references: [id], onDelete: Cascade)
   pdr_id          Int
   employee_type   String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
   pdr_status_type String // Status when comment was made
@@ -877,7 +877,7 @@ model PdrComment {
 
 model PdrPersonalQuality {
   id                        Int      @id @default(autoincrement())
-  pdr                       Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr                       Pdr      @relation(fields: [pdr_id], references: [id], onDelete: Cascade)
   pdr_id                    Int
   employee_type             String
   communication             Int
@@ -893,7 +893,7 @@ model PdrPersonalQuality {
   work_knowledge            Int
   attendance                Int
   leadership                Int
-  comment                   String
+  comment                   String   @db.Text
   datetime                  DateTime
 
   @@map("pdrpersonalquality")
@@ -901,9 +901,9 @@ model PdrPersonalQuality {
 
 model PdrGoalsTask {
   id                   Int      @id @default(autoincrement())
-  pdr                  Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr                  Pdr      @relation(fields: [pdr_id], references: [id], onDelete: Cascade)
   pdr_id               Int
-  task                 String
+  task                 String   @db.Text
   employee_self_rating Int
   linemanager_rating   Int
   datetime             DateTime
@@ -913,11 +913,21 @@ model PdrGoalsTask {
 
 model PdrOverallComment {
   id            Int      @id @default(autoincrement())
-  pdr           Pdr      @relation(fields: [pdr_id], references: [id])
+  pdr           Pdr      @relation(fields: [pdr_id], references: [id], onDelete: Cascade)
   pdr_id        Int
   employee_type String
-  comment       String
+  comment       String   @db.Text
   datetime      DateTime
 
   @@map("pdroverallcomment")
+}
+
+
+model Document {
+  id  Int @id @default(autoincrement())
+  name  String
+  description String @db.Text
+  file  String @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt      
 }
