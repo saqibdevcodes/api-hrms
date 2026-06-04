@@ -5,8 +5,18 @@ node_modules
 # zip files
 *.zip
 
-# log files
+
+# logs
 *.log
+error_log
+
+# passenger files
+passenger.*
+
+# pid files
+*.pid
+*.pid.lock
+
 
 # setup files
 CLOUDINARY_SETUP.md
