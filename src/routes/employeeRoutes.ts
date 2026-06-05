@@ -105,6 +105,11 @@ const uploadFields = upload.fields([
 // GET /api/employees/form-data - Get dropdown data for employee form
 router.get("/form-data", authenticate, EmployeeController.getFormData);
 
+// GET /api/employees/has-system-access - Get if employee has system access
+router.get("/has-system-access", authenticate, EmployeeController.getHasSystemAccessEmplyees);
+
+
+
 // GET /api/employees/designations - Get designations filtered by department
 router.get(
   "/designations",

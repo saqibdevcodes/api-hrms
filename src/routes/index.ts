@@ -19,6 +19,10 @@ import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
 import documnetRoutes from "./documentRoutes";
+<<<<<<< HEAD
+=======
+
+>>>>>>> e3b606e (Add attendance reminder functionality)
 const router = Router();
 
 router.use("/pdr", pdrRoutes);

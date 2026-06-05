@@ -26,7 +26,7 @@ class EmailService {
                 mailOptions.bcc = options.bcc.join(", ");
             }
             const info = await this.transporter.sendMail(mailOptions);
-            console.log("Message sent: %s", info.messageId);
+            console.log("✅ Email sent → %s | %s | messageId: %s", to, subject, info.messageId);
             if (options?.cc?.length) {
                 console.log("CC: %s", options.cc.join(", "));
             }

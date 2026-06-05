@@ -98,6 +98,8 @@ const uploadFields = upload.fields([
 ]);
 // GET /api/employees/form-data - Get dropdown data for employee form
 router.get("/form-data", auth_1.authenticate, employeeController_1.EmployeeController.getFormData);
+// GET /api/employees/has-system-access - Get if employee has system access
+router.get("/has-system-access", auth_1.authenticate, employeeController_1.EmployeeController.getHasSystemAccessEmplyees);
 // GET /api/employees/designations - Get designations filtered by department
 router.get("/designations", auth_1.authenticate, employeeController_1.EmployeeController.getDesignationsByDepartment);
 // GET /api/employees/supervisors-by-rank - Get supervisors filtered by rank
