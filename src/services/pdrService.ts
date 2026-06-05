@@ -21,6 +21,13 @@ export interface PdrTransitionData {
   revertMessage?: string;
 }
 
+export interface PdrOverallSummary {
+  total: number;
+  completed: number;
+  pending: number;
+  inProgress: number;
+}
+
 export class PdrService {
   /**
    * Split `users.manager` into candidates (single email or comma/semicolon-separated).
@@ -354,7 +361,7 @@ export class PdrService {
     });
 
 
-    await queuePdrCreatedEmail(pdr.id.toString());
+    // await queuePdrCreatedEmail(pdr.id.toString());
 
 
     return pdr;
@@ -371,6 +378,7 @@ export class PdrService {
     const whereClause: any = {
       role: Role.EMPLOYEE,
       isActive: true,
+      hasSystemAccess: true,
     };
 
     if (departmentId) {
@@ -584,6 +592,74 @@ export class PdrService {
   /**
    * Get PDRs for a specific user (based on their role)
    */
+  /**
+   * PDR counts for a scope (not affected by status/cycle/pagination filters).
+   * pending = not started (CREATED_BY_HR)
+   * inProgress = all other non-completed PDRs
+   */
+  static async getPdrSummary(
+    scopeWhere: Record<string, unknown>,
+  ): Promise<PdrOverallSummary> {
+    const [total, completed, pending, inProgress] = await Promise.all([
+      prisma.pdr.count({ where: scopeWhere }),
+      prisma.pdr.count({ where: { ...scopeWhere, isCompleted: true } }),
+      prisma.pdr.count({
+        where: {
+          ...scopeWhere,
+          isCompleted: false,
+          overallStatus: PdrOverallStatus.CREATED_BY_HR,
+        },
+      }),
+      prisma.pdr.count({
+        where: {
+          ...scopeWhere,
+          isCompleted: false,
+          overallStatus: { not: PdrOverallStatus.CREATED_BY_HR },
+        },
+      }),
+    ]);
+
+    return { total, completed, pending, inProgress };
+  }
+
+  /**
+   * Scope for summary cards — mirrors HR section tabs / Admin employee list.
+   * Returns null when summary should not be computed.
+   */
+  private static buildSummaryScopeWhere(
+    userId: string,
+    userRole: Role,
+    userRank?: UserRank,
+    section?: "mine" | "team" | "all",
+  ): Record<string, unknown> | null {
+    const isHR = userRole === Role.HR;
+    const isAdmin =
+      userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
+
+    if (isHR) {
+      if (!section) return null;
+
+      if (section === "mine") {
+        return { userId };
+      }
+      if (section === "team" && userRank === UserRank.LINE_MANAGER) {
+        return {
+          AND: [{ linemanager_id: userId }, { userId: { not: userId } }],
+        };
+      }
+      if (section === "all") {
+        return {};
+      }
+      return null;
+    }
+
+    if (isAdmin) {
+      return { userId: { not: userId } };
+    }
+
+    return null;
+  }
+
   static async getPdrsForUser(
     userId: string,
     userRole: Role,
@@ -594,6 +670,7 @@ export class PdrService {
       status?: PdrOverallStatus;
       cycle?: string;
       section?: "mine" | "team" | "all"; // Section filter for HR users
+      includeSummary?: boolean;
     },
   ) {
     const page = filters?.page || 1;
@@ -602,7 +679,8 @@ export class PdrService {
 
     let whereClause: any = {};
     const isHR = userRole === Role.HR; // HR role only
-    const isAdmin = userRole === Role.ADMIN; // ADMIN role
+    const isAdmin =
+      userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
 
     // Section-based filtering for HR users
     if (isHR && filters?.section) {
@@ -719,7 +797,21 @@ export class PdrService {
       prisma.pdr.count({ where: whereClause }),
     ]);
 
-    return {
+    const isPrivilegedViewer =
+      userRole === Role.HR ||
+      userRole === Role.ADMIN ||
+      userRole === Role.SUPERADMIN;
+
+    const result: {
+      data: typeof pdrs;
+      pagination: {
+        currentPage: number;
+        totalPages: number;
+        totalRecords: number;
+        limit: number;
+      };
+      summary?: PdrOverallSummary;
+    } = {
       data: pdrs,
       pagination: {
         currentPage: page,
@@ -728,6 +820,20 @@ export class PdrService {
         limit,
       },
     };
+
+    if (isPrivilegedViewer && filters?.includeSummary) {
+      const scopeWhere = this.buildSummaryScopeWhere(
+        userId,
+        userRole,
+        userRank,
+        filters?.section,
+      );
+      if (scopeWhere !== null) {
+        result.summary = await this.getPdrSummary(scopeWhere);
+      }
+    }
+
+    return result;
   }
 
   /**

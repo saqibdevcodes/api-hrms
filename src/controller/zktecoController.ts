@@ -8,6 +8,8 @@ import {
 import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 import { EmailService } from "../utils/emailService";
+import { AttendanceReminderService } from "../services/attendanceReminderService";
+import { queueAttendanceReminderEmail } from "../queues/email.jobs";
 
 export class ZKTecoController {
   static async getDevices(req: Request, res: Response) {
@@ -1978,7 +1980,6 @@ export class ZKTecoController {
       const authenticatedRequest = req as AuthenticatedRequest;
       const currentUser = authenticatedRequest.user;
 
-      // Security check: Only HR and Admin can send reminders
       const isHROrAdmin =
         currentUser?.role === "HR" ||
         currentUser?.role === "ADMIN" ||
@@ -1992,397 +1993,81 @@ export class ZKTecoController {
         return;
       }
 
-      // Find all attendance records without reasons
-      const allRecordsWithoutReasons = await prisma.attendance.findMany({
-        where: {
-          AND: [
-            {
-              OR: [{ reason: null }, { reason: "" }],
-            },
-            {
-              OR: [{ checkIn: { not: null } }, { checkOut: { not: null } }],
-            },
-          ],
-        },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeId: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              shift: {
-                select: {
-                  id: true,
-                  name: true,
-                  startTime: true,
-                  endTime: true,
-                },
-              },
-            },
-          },
-          zktecoRecords: {
-            select: {
-              id: true,
-              timestamp: true,
-              checkType: true,
-              overallStatus: true,
-            },
-          },
-        },
-        orderBy: {
-          date: "desc",
-        },
-      });
+      const { sendAll = false, fromDate, toDate } = req.body as {
+        sendAll?: boolean;
+        fromDate?: string;
+        toDate?: string;
+      };
 
-      // Filter records based on:
-      // 1. No check-in (NULL)
-      // 2. No check-out (NULL)
-      // 3. Check-in after 10:00 AM
-      // 4. Check-out before 6:00 PM
-      const recordsNeedingReasons = allRecordsWithoutReasons.filter(
-        (record: any) => {
-          let needsReason = false;
+      if (!sendAll && (!fromDate || !toDate)) {
+        res.status(400).json({
+          success: false,
+          message: "fromDate and toDate are required unless sendAll is true",
+        });
+        return;
+      }
 
-          // Check if no check-in (NULL)
-          if (!record.checkIn) {
-            needsReason = true;
-          }
+      if (!sendAll && fromDate! > toDate!) {
+        res.status(400).json({
+          success: false,
+          message: "fromDate must be on or before toDate",
+        });
+        return;
+      }
 
-          // Check if no check-out (NULL)
-          if (!record.checkOut) {
-            needsReason = true;
-          }
-
-          // Check if check-in is after 10:00 AM (using UTC time from database)
-          if (record.checkIn) {
-            const checkInTime = new Date(record.checkIn);
-            const checkInHour = checkInTime.getUTCHours();
-            const checkInMinute = checkInTime.getUTCMinutes();
-
-            // Check if after 10:00 AM (10 hours * 60 + 0 minutes = 600 minutes from midnight)
-            const checkInMinutesFromMidnight = checkInHour * 60 + checkInMinute;
-            const tenAMInMinutes = 10 * 60; // 600 minutes
-
-            if (checkInMinutesFromMidnight > tenAMInMinutes) {
-              needsReason = true;
-            }
-          }
-
-          // Check if check-out is before 6:00 PM (using UTC time from database)
-          if (record.checkOut) {
-            const checkOutTime = new Date(record.checkOut);
-            const checkOutHour = checkOutTime.getUTCHours();
-            const checkOutMinute = checkOutTime.getUTCMinutes();
-
-            // Check if before 6:00 PM (18 hours * 60 + 0 minutes = 1080 minutes from midnight)
-            const checkOutMinutesFromMidnight =
-              checkOutHour * 60 + checkOutMinute;
-            const sixPMInMinutes = 18 * 60; // 1080 minutes
-
-            if (checkOutMinutesFromMidnight < sixPMInMinutes) {
-              needsReason = true;
-            }
-          }
-
-          return needsReason;
-        },
-      );
+      const recordsNeedingReasons =
+        await AttendanceReminderService.fetchRecordsWithoutReasons({
+          sendAll: Boolean(sendAll),
+          fromDate,
+          toDate,
+        });
 
       if (recordsNeedingReasons.length === 0) {
         res.json({
           success: true,
           message: "No employees need to provide reasons",
           data: {
-            remindersSent: 0,
-            employeesNotified: 0,
+            remindersQueued: 0,
+            employeesQueued: 0,
             records: [],
           },
         });
         return;
       }
 
-      // Group records by employee
-      const recordsByEmployee = new Map<string, any[]>();
+      const recordsByEmployee =
+        AttendanceReminderService.groupByEmployee(recordsNeedingReasons);
 
-      recordsNeedingReasons.forEach((record: any) => {
-        if (record.employee?.email) {
-          const employeeId = record.employee.id;
-          if (!recordsByEmployee.has(employeeId)) {
-            recordsByEmployee.set(employeeId, []);
-          }
-          recordsByEmployee.get(employeeId)!.push(record);
-        }
-      });
+      const jobs = await Promise.all(
+        Array.from(recordsByEmployee.entries()).map(([employeeId, records]) =>
+          queueAttendanceReminderEmail({
+            employeeId,
+            recordIds: records.map((r) => r.id),
+          }),
+        ),
+      );
 
-      // Send emails to each employee
-      let emailsSent = 0;
-      let emailsFailed = 0;
-      const emailPromises: Promise<void>[] = [];
-
-      for (const [employeeId, records] of recordsByEmployee.entries()) {
-        const employee = records[0].employee as any;
-        if (!employee?.email) continue;
-
-        const employeeName = `${employee.firstName} ${employee.lastName}`;
-
-        // Build the list of dates and issues
-        const attendanceIssues = records
-          .map((record: any) => {
-            const date = new Date(record.date).toLocaleDateString();
-            const issues: string[] = [];
-
-            // Check if no check-in (NULL)
-            if (!record.checkIn) {
-              issues.push("⚠️ No check-in recorded");
-            } else {
-              // Check if check-in is after 10:00 AM (using UTC time from database)
-              const checkInTime = new Date(record.checkIn);
-              const checkInHour = checkInTime.getUTCHours();
-              const checkInMinute = checkInTime.getUTCMinutes();
-              const checkInSecond = checkInTime.getUTCSeconds();
-              const checkInMinutesFromMidnight =
-                checkInHour * 60 + checkInMinute;
-              const tenAMInMinutes = 10 * 60;
-
-              if (checkInMinutesFromMidnight > tenAMInMinutes) {
-                const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
-
-                // Format time using UTC values
-                let hour = checkInHour;
-                const ampm = hour >= 12 ? "PM" : "AM";
-                hour = hour % 12;
-                hour = hour ? hour : 12; // the hour '0' should be '12'
-                const minuteStr = checkInMinute.toString().padStart(2, "0");
-                const secondStr = checkInSecond.toString().padStart(2, "0");
-                const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
-
-                issues.push(
-                  `Checked in late at ${checkInTimeStr} (${lateMinutes} min after 10:00 AM)`,
-                );
-              }
-            }
-
-            // Check if no check-out (NULL)
-            if (!record.checkOut) {
-              issues.push("⚠️ No check-out recorded");
-            } else {
-              // Check if check-out is before 6:00 PM (using UTC time from database)
-              const checkOutTime = new Date(record.checkOut);
-              const checkOutHour = checkOutTime.getUTCHours();
-              const checkOutMinute = checkOutTime.getUTCMinutes();
-              const checkOutSecond = checkOutTime.getUTCSeconds();
-              const checkOutMinutesFromMidnight =
-                checkOutHour * 60 + checkOutMinute;
-              const sixPMInMinutes = 18 * 60;
-
-              if (checkOutMinutesFromMidnight < sixPMInMinutes) {
-                const earlyMinutes =
-                  sixPMInMinutes - checkOutMinutesFromMidnight;
-
-                // Format time using UTC values
-                let hour = checkOutHour;
-                const ampm = hour >= 12 ? "PM" : "AM";
-                hour = hour % 12;
-                hour = hour ? hour : 12; // the hour '0' should be '12'
-                const minuteStr = checkOutMinute.toString().padStart(2, "0");
-                const secondStr = checkOutSecond.toString().padStart(2, "0");
-                const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
-
-                issues.push(
-                  `Checked out early at ${checkOutTimeStr} (${earlyMinutes} min before 6:00 PM)`,
-                );
-              }
-            }
-
-            const issueText =
-              issues.length > 0 ? issues.join(", ") : "Attendance irregularity";
-
-            return `  • ${date}: ${issueText}`;
-          })
-          .join("\n");
-
-        // Create email content
-        const emailSubject = `Reminder: Attendance Reason Required (${records.length} record${records.length > 1 ? "s" : ""})`;
-
-        // Convert plain text issues to HTML list items
-        const htmlIssues = records
-          .map((record: any) => {
-            const date = new Date(record.date).toLocaleDateString();
-            const issues: string[] = [];
-
-            // Check if no check-in (NULL)
-            if (!record.checkIn) {
-              issues.push(
-                "<strong style='color: #dc2626;'>⚠️ No check-in recorded</strong>",
-              );
-            } else {
-              // Check if check-in is after 10:00 AM
-              const checkInTime = new Date(record.checkIn);
-              const checkInHour = checkInTime.getUTCHours();
-              const checkInMinute = checkInTime.getUTCMinutes();
-              const checkInSecond = checkInTime.getUTCSeconds();
-              const checkInMinutesFromMidnight =
-                checkInHour * 60 + checkInMinute;
-              const tenAMInMinutes = 10 * 60;
-
-              if (checkInMinutesFromMidnight > tenAMInMinutes) {
-                const lateMinutes = checkInMinutesFromMidnight - tenAMInMinutes;
-                let hour = checkInHour;
-                const ampm = hour >= 12 ? "PM" : "AM";
-                hour = hour % 12;
-                hour = hour ? hour : 12;
-                const minuteStr = checkInMinute.toString().padStart(2, "0");
-                const secondStr = checkInSecond.toString().padStart(2, "0");
-                const checkInTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
-
-                issues.push(
-                  `<span style='color: #ea580c;'>Checked in late at <strong>${checkInTimeStr}</strong> (${lateMinutes} min after 10:00 AM)</span>`,
-                );
-              }
-            }
-
-            // Check if no check-out (NULL)
-            if (!record.checkOut) {
-              issues.push(
-                "<strong style='color: #dc2626;'>⚠️ No check-out recorded</strong>",
-              );
-            } else {
-              // Check if check-out is before 6:00 PM
-              const checkOutTime = new Date(record.checkOut);
-              const checkOutHour = checkOutTime.getUTCHours();
-              const checkOutMinute = checkOutTime.getUTCMinutes();
-              const checkOutSecond = checkOutTime.getUTCSeconds();
-              const checkOutMinutesFromMidnight =
-                checkOutHour * 60 + checkOutMinute;
-              const sixPMInMinutes = 18 * 60;
-
-              if (checkOutMinutesFromMidnight < sixPMInMinutes) {
-                const earlyMinutes =
-                  sixPMInMinutes - checkOutMinutesFromMidnight;
-                let hour = checkOutHour;
-                const ampm = hour >= 12 ? "PM" : "AM";
-                hour = hour % 12;
-                hour = hour ? hour : 12;
-                const minuteStr = checkOutMinute.toString().padStart(2, "0");
-                const secondStr = checkOutSecond.toString().padStart(2, "0");
-                const checkOutTimeStr = `${hour}:${minuteStr}:${secondStr} ${ampm}`;
-
-                issues.push(
-                  `<span style='color: #ea580c;'>Checked out early at <strong>${checkOutTimeStr}</strong> (${earlyMinutes} min before 6:00 PM)</span>`,
-                );
-              }
-            }
-
-            const issueText =
-              issues.length > 0
-                ? issues.join("<br/>")
-                : "Attendance irregularity";
-            return `<li style='margin-bottom: 12px;'><strong>${date}:</strong><br/>${issueText}</li>`;
-          })
-          .join("");
-
-        const emailBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background-color: #f97316; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-    .content { background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
-    .footer { background-color: #f9fafb; padding: 20px; border-radius: 0 0 8px 8px; text-align: center; color: #6b7280; }
-    .records-list { background-color: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
-    .steps { background-color: #eff6ff; padding: 20px; border-radius: 8px; margin: 20px 0; }
-    .steps ol { margin: 10px 0; padding-left: 20px; }
-    .steps li { margin: 8px 0; }
-    ul { list-style-type: none; padding-left: 0; }
-    li { margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2 style="margin: 0;">⚠️ Attendance Reason Required</h2>
-    </div>
-    
-    <div class="content">
-      <p>Dear <strong>${employeeName}</strong>,</p>
-      
-      <p>This is a reminder to provide reasons for the following attendance records:</p>
-      
-      <div class="records-list">
-        <h3 style="margin-top: 0; color: #92400e;">📋 Attendance Issues (${records.length} record${records.length > 1 ? "s" : ""})</h3>
-        <ul>
-          ${htmlIssues}
-        </ul>
-      </div>
-      
-      <p>Please log in to the HRMS portal and provide a reason for each of these attendance records.</p>
-      
-      <div class="steps">
-        <h3 style="margin-top: 0; color: #1e40af;">📝 How to Provide Reason:</h3>
-        <ol>
-          <li>Log in to the HRMS portal</li>
-          <li>Navigate to the <strong>Attendance</strong> page</li>
-          <li>Find your attendance record(s)</li>
-          <li>Click <strong>"Add Reason"</strong> and submit your explanation</li>
-        </ol>
-      </div>
-      
-      <p>Thank you for your cooperation.</p>
-    </div>
-    
-    <div class="footer">
-      <p style="margin: 0;"><strong>Best regards,</strong><br/>HR Department</p>
-      <p style="margin: 10px 0 0 0; font-size: 12px;">This is an automated email. Please do not reply to this message.</p>
-    </div>
-  </div>
-</body>
-</html>`;
-
-        // Queue email sending
-        const emailPromise = EmailService.sendEmail(
-          employee.email,
-          emailSubject,
-          emailBody,
-        )
-          .then(() => {
-            emailsSent++;
-            console.log(
-              `✅ Reminder email sent to ${employeeName} (${employee.email}) for ${records.length} record(s)`,
-            );
-          })
-          .catch((error) => {
-            emailsFailed++;
-            console.error(
-              `❌ Failed to send reminder to ${employeeName} (${employee.email}):`,
-              error,
-            );
-          });
-
-        emailPromises.push(emailPromise);
-      }
-
-      // Wait for all emails to be sent
-      await Promise.all(emailPromises);
-
-      res.json({
+      res.status(202).json({
         success: true,
-        message: `Reminder emails sent to ${emailsSent} employee${emailsSent !== 1 ? "s" : ""}`,
+        message: `Queued reminder emails for ${recordsByEmployee.size} employee${recordsByEmployee.size !== 1 ? "s" : ""}. Ensure the email worker is running.`,
         data: {
-          remindersSent: recordsNeedingReasons.length,
-          employeesNotified: emailsSent,
-          emailsFailed: emailsFailed,
+          remindersQueued: recordsNeedingReasons.length,
+          employeesQueued: recordsByEmployee.size,
+          jobIds: jobs.map((j) => j?.id).filter(Boolean),
+          sendAll: Boolean(sendAll),
+          fromDate: sendAll ? null : fromDate,
+          toDate: sendAll ? null : toDate,
           records: Array.from(recordsByEmployee.entries()).map(
             ([userId, records]) => ({
               userId,
               employeeName: `${records[0].employee?.firstName} ${records[0].employee?.lastName}`,
-              email: records[0].employee?.email,
+              email:
+                records[0].employee?.officialEmail ||
+                records[0].employee?.email,
               recordCount: records.length,
-              dates: records.map((r) => new Date(r.date).toLocaleDateString()),
+              dates: records.map((r) =>
+                new Date(r.date).toLocaleDateString(),
+              ),
             }),
           ),
         },
@@ -2391,7 +2076,7 @@ export class ZKTecoController {
       console.error("Error sending late reason reminders:", error);
       res.status(500).json({
         success: false,
-        message: "Failed to send reminders",
+        message: "Failed to queue reminders",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }

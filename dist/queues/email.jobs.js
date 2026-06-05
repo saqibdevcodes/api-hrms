@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.queuePdrCreatedEmail = exports.queuePdrStatusEmail = void 0;
+exports.queueAttendanceReminderEmail = exports.queuePdrCreatedEmail = exports.queuePdrStatusEmail = void 0;
 const client_1 = require("@prisma/client");
 const email_queue_1 = require("./email.queue");
 const email_events_1 = require("../constants/email.events");
@@ -20,3 +20,7 @@ const queuePdrCreatedEmail = (pdrId) => {
     });
 };
 exports.queuePdrCreatedEmail = queuePdrCreatedEmail;
+const queueAttendanceReminderEmail = (data) => {
+    return email_queue_1.emailQueue.add(email_events_1.EMAIL_EVENTS.ATTENDANCE_REMINDER, data);
+};
+exports.queueAttendanceReminderEmail = queueAttendanceReminderEmail;

@@ -18,13 +18,16 @@ export class PdrController {
       const limit = parseInt((req.query.limit as string) || "10", 10);
       const status = req.query.status as PdrOverallStatus | undefined;
       const cycle = req.query.cycle as string | undefined;
-      const section = req.query.section as "mine" | "team" | "all" | undefined; // New section parameter
+      const section = req.query.section as "mine" | "team" | "all" | undefined;
+      const includeSummary =
+        req.query.includeSummary === "true" ||
+        req.query.includeSummary === "1";
 
       const result = await PdrService.getPdrsForUser(
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle, section },
+        { page, limit, status, cycle, section, includeSummary },
       );
 
       res.status(200).json(result);

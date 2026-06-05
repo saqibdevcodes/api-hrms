@@ -44,11 +44,19 @@ const pdrInclude = {
         },
     },
 };
-function officialEmail(user) {
+/** Prefer officialEmail; fall back to login email when official is not set. */
+function resolveNotifyEmail(user) {
     if (!user)
         return null;
-    const email = user.officialEmail?.trim();
-    return email || null;
+    const official = user.officialEmail?.trim();
+    if (official)
+        return official;
+    const login = user.email?.trim();
+    if (login) {
+        console.warn(`⚠️ No officialEmail for ${user.firstName ?? "user"} — using login email: ${login}`);
+        return login;
+    }
+    return null;
 }
 function fullName(user) {
     return `${user.firstName} ${user.lastName}`.trim();
@@ -84,14 +92,14 @@ function emailLayout(title, bodyHtml) {
 async function getHrOfficialEmails() {
     const hrUsers = await prisma_1.prisma.user.findMany({
         where: {
-            role: { in: [client_1.Role.HR, client_1.Role.ADMIN, client_1.Role.SUPERADMIN] },
+            role: { in: [client_1.Role.HR, client_1.Role.ADMIN] },
             isActive: true,
         },
         select: { officialEmail: true, email: true },
     });
     const emails = new Set();
     for (const u of hrUsers) {
-        const addr = officialEmail(u);
+        const addr = resolveNotifyEmail(u);
         if (addr)
             emails.add(addr);
     }
@@ -111,6 +119,11 @@ class PdrEmailNotificationService {
         if (!pdr)
             throw new Error(`PDR ${data.pdrId} not found`);
         const notifications = await this.buildNotifications(pdr, data);
+        if (notifications.length === 0) {
+            console.warn(`⚠️ PDR #${data.pdrId} [${data.targetStatus}]: no recipients — employee/manager/director may be missing officialEmail`);
+            return;
+        }
+        console.log(`📧 PDR #${data.pdrId} [${data.targetStatus}] → ${notifications.map((n) => n.to).join(", ")}`);
         for (const n of notifications) {
             await emailService_1.EmailService.sendEmail(n.to, n.subject, n.html);
         }
@@ -128,10 +141,10 @@ class PdrEmailNotificationService {
         };
         switch (targetStatus) {
             case client_1.PdrOverallStatus.CREATED_BY_HR:
-                push(officialEmail(pdr.user), `${cycle} — PDR created for you`, `<p>Hello ${pdr.user.firstName},</p>
+                push(resolveNotifyEmail(pdr.user), `${cycle} — PDR created for you`, `<p>Hello ${pdr.user.firstName},</p>
            <p>HR has created your Performance Development Review for <strong>${cycle}</strong>.</p>
            <p>Please log in and complete your section when ready.</p>
-           <p><a href="${link}">Open your PDR</a></p>`);
+          <!-- <p><a href="${link}">Open your PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR: {
                 const hrEmails = await getHrOfficialEmails();
@@ -144,25 +157,25 @@ class PdrEmailNotificationService {
                 break;
             }
             case client_1.PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE:
-                push(officialEmail(pdr.user), `${cycle} — PDR returned for revision`, `<p>Hello ${pdr.user.firstName},</p>
+                push(resolveNotifyEmail(pdr.user), `${cycle} — PDR returned for revision`, `<p>Hello ${pdr.user.firstName},</p>
            <p>HR has returned your PDR for revision.</p>
            ${revertMessage ? `<p><strong>Message from HR:</strong></p><blockquote>${revertMessage}</blockquote>` : ""}
-           <p><a href="${link}">Update your PDR</a></p>`);
+           <!-- <p><a href="${link}">Update your PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE:
-                push(officialEmail(pdr.linemanager), `${cycle} — Manager section required (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+                push(resolveNotifyEmail(pdr.linemanager), `${cycle} — Manager section required (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
            <p>HR has approved the employee section for <strong>${employeeName}</strong>.</p>
            ${employeeDetailsBlock(pdr)}
            <p>Please complete the line manager section.</p>
-           <p><a href="${link}">Open PDR</a></p>`);
+           <!-- <p><a href="${link}">Open PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.MANAGER_FILLING:
                 if (fromStatus === client_1.PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
                     fromStatus === client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER) {
-                    push(officialEmail(pdr.linemanager), `${cycle} — Your turn: line manager section (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+                    push(resolveNotifyEmail(pdr.linemanager), `${cycle} — Your turn: line manager section (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
              <p>You may now fill the line manager section for <strong>${employeeName}</strong>.</p>
              ${employeeDetailsBlock(pdr)}
-             <p><a href="${link}">Open PDR</a></p>`);
+             <!-- <p><a href="${link}">Open PDR</a></p>-->`);
                 }
                 break;
             case client_1.PdrOverallStatus.MANAGER_SUBMITTED_TO_HR: {
@@ -177,27 +190,27 @@ class PdrEmailNotificationService {
                 break;
             }
             case client_1.PdrOverallStatus.HR_REVERTED_TO_MANAGER:
-                push(officialEmail(pdr.linemanager), `${cycle} — Manager section returned (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+                push(resolveNotifyEmail(pdr.linemanager), `${cycle} — Manager section returned (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
            <p>HR has returned the manager section for <strong>${employeeName}</strong>.</p>
            ${revertMessage ? `<p><strong>Message from HR:</strong></p><blockquote>${revertMessage}</blockquote>` : ""}
            ${employeeDetailsBlock(pdr)}
-           <p><a href="${link}">Update PDR</a></p>`);
+           <!-- <p><a href="${link}">Update PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.HR_APPROVED_MANAGER:
-                push(officialEmail(pdr.director), `${cycle} — Director review required (${employeeName})`, `<p>Hello ${pdr.director?.firstName || "Director"},</p>
+                push(resolveNotifyEmail(pdr.director), `${cycle} — Director review required (${employeeName})`, `<p>Hello ${pdr.director?.firstName || "Director"},</p>
            <p>HR has approved the manager section. The PDR is ready for director review.</p>
            ${employeeDetailsBlock(pdr)}
-           <p><a href="${link}">Review PDR</a></p>`);
+           <!-- <p><a href="${link}">Review PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.DIRECTOR_REVIEWED:
-                push(officialEmail(pdr.user), `${cycle} — Please acknowledge your PDR`, `<p>Hello ${pdr.user.firstName},</p>
+                push(resolveNotifyEmail(pdr.user), `${cycle} — Please acknowledge your PDR`, `<p>Hello ${pdr.user.firstName},</p>
            <p>Director review is complete. Please review and acknowledge your PDR.</p>
-           <p><a href="${link}">Acknowledge PDR</a></p>`);
+           <!-- <p><a href="${link}">Acknowledge PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING:
-                push(officialEmail(pdr.user), `${cycle} — Please acknowledge your PDR`, `<p>Hello ${pdr.user.firstName},</p>
+                push(resolveNotifyEmail(pdr.user), `${cycle} — Please acknowledge your PDR`, `<p>Hello ${pdr.user.firstName},</p>
            <p>Your line manager has updated the PDR. Please review and acknowledge.</p>
-           <p><a href="${link}">Acknowledge PDR</a></p>`);
+           <!-- <p><a href="${link}">Acknowledge PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.EMPLOYEE_DISAGREED: {
                 const hrEmails = await getHrOfficialEmails();
@@ -210,21 +223,21 @@ class PdrEmailNotificationService {
                 break;
             }
             case client_1.PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER:
-                push(officialEmail(pdr.linemanager), `${cycle} — Revisions required (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+                push(resolveNotifyEmail(pdr.linemanager), `${cycle} — Revisions required (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
            <p>HR has requested manager revisions for <strong>${employeeName}</strong>'s PDR.</p>
            ${employeeDetailsBlock(pdr)}
-           <p><a href="${link}">Open PDR</a></p>`);
+           <!-- <p><a href="${link}">Open PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.MANAGER_REVISING:
-                push(officialEmail(pdr.linemanager), `${cycle} — Please revise manager section (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+                push(resolveNotifyEmail(pdr.linemanager), `${cycle} — Please revise manager section (${employeeName})`, `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
            <p>Please revise the manager section for <strong>${employeeName}</strong>.</p>
            ${employeeDetailsBlock(pdr)}
-           <p><a href="${link}">Open PDR</a></p>`);
+           <!-- <p><a href="${link}">Open PDR</a></p>-->`);
                 break;
             case client_1.PdrOverallStatus.COMPLETED: {
-                push(officialEmail(pdr.user), `${cycle} — Your PDR is completed`, `<p>Hello ${pdr.user.firstName},</p>
+                push(resolveNotifyEmail(pdr.user), `${cycle} — Your PDR is completed`, `<p>Hello ${pdr.user.firstName},</p>
            <p>Your Performance Development Review for <strong>${cycle}</strong> is now complete.</p>
-           <p><a href="${link}">View PDR</a></p>`);
+           <!-- <p><a href="${link}">View PDR</a></p>-->`);
                 const hrEmails = await getHrOfficialEmails();
                 const hrBody = `<p>PDR workflow is complete.</p>${employeeDetailsBlock(pdr)}`;
                 for (const to of hrEmails) {

@@ -138,6 +138,9 @@ model User {
   Loan          Loan[]
   AdvanceSalary AdvanceSalary[]
 
+
+  hasSystemAccess Boolean  @default(true)
+
   @@map("users")
 }
 

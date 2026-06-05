@@ -17,8 +17,10 @@ class PdrController {
             const limit = parseInt(req.query.limit || "10", 10);
             const status = req.query.status;
             const cycle = req.query.cycle;
-            const section = req.query.section; // New section parameter
-            const result = await pdrService_1.PdrService.getPdrsForUser(req.user.id, req.user.role, req.user.userRank, { page, limit, status, cycle, section });
+            const section = req.query.section;
+            const includeSummary = req.query.includeSummary === "true" ||
+                req.query.includeSummary === "1";
+            const result = await pdrService_1.PdrService.getPdrsForUser(req.user.id, req.user.role, req.user.userRank, { page, limit, status, cycle, section, includeSummary });
             res.status(200).json(result);
         }
         catch (error) {

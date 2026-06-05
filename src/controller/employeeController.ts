@@ -151,6 +151,71 @@ export class EmployeeController {
     }
   }
 
+
+
+  // Get if employee has system access
+  static async getHasSystemAccessEmplyees(req: AuthenticatedRequest, res: Response) {
+    try {
+      const {
+        page = 1,
+        limit = 100, // Increased default limit
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = req.query;
+
+      const skip = (Number(page) - 1) * Number(limit);
+      const take = Number(limit);
+
+      // Build where clause to filter only employees
+      const where: any = {
+        employeeId: { not: null }, // Only get users with employeeId (employees)
+        hasSystemAccess: true,
+      };
+
+     
+
+      // Get employees with proper filtering BEFORE pagination
+      const [employees, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          skip,
+          take,
+          include: {
+            departmentEntity: true,
+            designation: true,
+            employmentType: true,
+            emergencyDetail: true,
+          },
+          orderBy: {
+            [sortBy as string]: sortOrder,
+          },
+        }),
+        prisma.user.count({ where }),
+      ]);
+
+      res.json({
+        success: true,
+        message: "Employees retrieved successfully",
+        data: {
+          employees: employees,
+          pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total: total,
+            pages: Math.ceil(total / Number(limit)),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch employees",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
   // Create new employee
   static async createEmployee(req: AuthenticatedRequest, res: Response) {
     try {
