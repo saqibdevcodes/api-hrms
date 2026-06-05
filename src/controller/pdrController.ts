@@ -20,12 +20,13 @@ export class PdrController {
       const status = req.query.status as PdrOverallStatus | undefined;
       const cycle = req.query.cycle as string | undefined;
       const section = req.query.section as "mine" | "team" | "all" | undefined; // New section parameter
+      const department = req.query.department as string | undefined; // New department filter
 
       const result = await PdrService.getPdrsForUser(
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle, section },
+        { page, limit, status, cycle, section, department },
       );
 
       res.status(200).json(result);

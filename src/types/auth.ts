@@ -1,6 +1,6 @@
 import { Request } from "express";
 import { Role, UserRank } from "../generated/prisma";
-import type { Decimal } from "../generated/prisma/runtime/client";
+import { Prisma } from "@prisma/client";
 
 // Authentication Types
 export interface LoginRequest {
@@ -51,7 +51,7 @@ export interface User {
   position: string | null;
   department: string | null;
   manager: string | null;
-  salary: Decimal | number | null;
+  salary: Prisma.Decimal | number | null;
   currency: string;
   dateOfJoining: Date | null;
   dateOfExit: Date | null;
