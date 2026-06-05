@@ -7,6 +7,7 @@ exports.validateConfig = exports.config = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 // Load environment variables
 dotenv_1.default.config();
+// added something
 const getEnvVar = (key, defaultValue) => {
     const value = process.env[key] || defaultValue;
     if (!value) {

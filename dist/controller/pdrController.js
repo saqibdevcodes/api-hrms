@@ -399,6 +399,7 @@ class PdrController {
                 userRole: req.user.role === "HR" ? "HR" : req.user.role,
                 userRank: req.user.userRank || undefined,
                 comment: comment || `Reverted with message: ${message}`,
+                revertMessage: message,
             }, targetStatus);
             res.status(200).json({
                 success: true,
