@@ -1177,7 +1177,9 @@ export class EmployeeController {
         // Fetch all directors for line managers to report to
         supervisors = await prisma.user.findMany({
           where: {
-            userRank: "DIRECTOR" as any,
+            userRank: {
+              in: ["DIRECTOR", "LINE_MANAGER"],
+            },
             isActive: true,
             employeeId: { not: null },
           },
@@ -1188,6 +1190,7 @@ export class EmployeeController {
             email: true,
             employeeId: true,
             department: true,
+            userRank: true, // optional but useful now
           },
           orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         });
