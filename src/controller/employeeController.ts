@@ -1244,7 +1244,7 @@ export class EmployeeController {
           where: {
             userRank: {
               in: ["DIRECTOR", "LINE_MANAGER"],
-            },
+          },
             isActive: true,
             employeeId: { not: null },
           },
@@ -1256,8 +1256,8 @@ export class EmployeeController {
             employeeId: true,
             department: true,
             userRank: true, // optional but useful now
-          },
-          orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+        },
+        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         });
       } else if (rank === "EMPLOYEE") {
         // Fetch all line managers for employees to report to
