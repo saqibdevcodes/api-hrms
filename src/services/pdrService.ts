@@ -307,8 +307,9 @@ export class PdrService {
           (await this.resolveSingleManagerToken(linemanagerId)) ?? undefined;
       }
     } else {
-      linemanagerId =
-        await this.resolveManagerFieldToLineManagerUserId(user.manager);
+      linemanagerId = await this.resolveManagerFieldToLineManagerUserId(
+        user.manager,
+      );
     }
 
     // Find director if not provided
@@ -319,8 +320,6 @@ export class PdrService {
       });
       directorId = director?.id;
     }
-
-
 
     const pdr = await prisma.pdr.create({
       data: {
@@ -415,7 +414,7 @@ export class PdrService {
         }
       }
     }
- 
+
     return results;
   }
 
@@ -670,6 +669,7 @@ export class PdrService {
       status?: PdrOverallStatus;
       cycle?: string;
       section?: "mine" | "team" | "all"; // Section filter for HR users
+      department?: string; // New department filter
       includeSummary?: boolean;
     },
   ) {
@@ -750,13 +750,22 @@ export class PdrService {
     if (filters?.cycle) {
       whereClause.pdr_cycle = filters.cycle;
     }
+    if (filters?.department) {
+      whereClause.user = {
+        department: filters.department,
+      };
+    }
 
     const [pdrs, total] = await Promise.all([
       prisma.pdr.findMany({
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { creation_date: "desc" },
+        orderBy: {
+          user: {
+            firstName: "asc",
+          },
+        },
         include: {
           user: {
             select: {
@@ -796,6 +805,18 @@ export class PdrService {
       }),
       prisma.pdr.count({ where: whereClause }),
     ]);
+
+    // const groupedByDepartment = pdrs.reduce((acc: any, pdr: any) => {
+    //   const department = pdr.user?.department || "Unknown";
+
+    //   if (!acc[department]) {
+    //     acc[department] = [];
+    //   }
+
+    //   acc[department].push(pdr);
+
+    //   return acc;
+    // }, {});
 
     const isPrivilegedViewer =
       userRole === Role.HR ||

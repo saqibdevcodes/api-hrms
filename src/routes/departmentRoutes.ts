@@ -16,7 +16,7 @@ router.use(authenticate);
  * @desc    Get all departments with pagination and search
  * @access  Private (HR/Admin)
  */
-router.get("/", hrAndAdmin, DepartmentController.getAllDepartments);
+router.get("/", DepartmentController.getAllDepartments);
 
 /**
  * @route   GET /departments/:id
@@ -35,7 +35,7 @@ router.post(
   hrAndAdmin,
   createDepartmentValidation,
   validateRequest,
-  DepartmentController.createDepartment
+  DepartmentController.createDepartment,
 );
 
 /**
@@ -48,7 +48,7 @@ router.put(
   hrAndAdmin,
   updateDepartmentValidation,
   validateRequest,
-  DepartmentController.updateDepartment
+  DepartmentController.updateDepartment,
 );
 
 /**
@@ -66,7 +66,7 @@ router.delete("/:id", hrAndAdmin, DepartmentController.deleteDepartment);
 router.patch(
   "/:id/toggle",
   hrAndAdmin,
-  DepartmentController.toggleDepartmentStatus
+  DepartmentController.toggleDepartmentStatus,
 );
 
 export default router;
