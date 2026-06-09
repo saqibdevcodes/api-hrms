@@ -360,7 +360,7 @@ export class PdrService {
     });
 
 
-    // await queuePdrCreatedEmail(pdr.id.toString());
+    await queuePdrCreatedEmail(pdr.id.toString());
 
 
     return pdr;
@@ -671,6 +671,7 @@ export class PdrService {
       section?: "mine" | "team" | "all"; // Section filter for HR users
       department?: string; // New department filter
       includeSummary?: boolean;
+      search?: string;
     },
   ) {
     const page = filters?.page || 1;
