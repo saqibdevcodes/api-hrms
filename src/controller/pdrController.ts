@@ -19,15 +19,15 @@ export class PdrController {
       const status = req.query.status as PdrOverallStatus | undefined;
       const cycle = req.query.cycle as string | undefined;
       const section = req.query.section as "mine" | "team" | "all" | undefined;
+      const department = req.query.department as string | undefined;
       const includeSummary =
-        req.query.includeSummary === "true" ||
-        req.query.includeSummary === "1";
+        req.query.includeSummary === "true" || req.query.includeSummary === "1";
 
       const result = await PdrService.getPdrsForUser(
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle, section, includeSummary },
+        { page, limit, status, cycle, section, department, includeSummary },
       );
 
       res.status(200).json(result);
