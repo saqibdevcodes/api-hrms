@@ -566,6 +566,470 @@ export class ZKTecoController {
       });
     }
   }
+
+
+
+
+
+
+  static async getEmpStatsData(req: Request, res: Response) {
+    try {
+      const { date: selectedDateQuery } = req.query;
+      const authenticatedRequest = req as AuthenticatedRequest;
+      const currentUser = authenticatedRequest.user;
+
+      if (!currentUser?.id) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const targetEmployeeId = currentUser.id;
+
+      const attendanceSelect = {
+        id: true,
+        employeeId: true,
+        date: true,
+        checkIn: true,
+        checkOut: true,
+        status: true,
+        notes: true,
+        reason: true,
+        employee: {
+          select: {
+            shift: {
+              select: {
+                id: true,
+                name: true,
+                startTime: true,
+                endTime: true,
+                breakTime: true,
+                halfDayStart: true,
+                fullDayStart: true,
+                earlyOut: true,
+              },
+            },
+          },
+        },
+        zktecoRecords: {
+          select: {
+            id: true,
+            timestamp: true,
+            checkType: true,
+            overallStatus: true,
+          },
+          orderBy: { timestamp: "asc" as const },
+        },
+      };
+
+      const calculateAttendanceStatus = (
+        record: {
+          checkIn: Date | null;
+          checkOut: Date | null;
+          date: Date;
+        },
+        shift: {
+          startTime: Date;
+          endTime: Date;
+          halfDayStart: Date | null;
+        } | null,
+      ) => {
+        if (!record.checkIn) {
+          if (record.checkOut && shift) {
+            const checkOutTime = new Date(record.checkOut);
+            const attendanceDate = new Date(record.date);
+            const shiftEnd = new Date(shift.endTime);
+            const todayShiftEnd = new Date(attendanceDate);
+            todayShiftEnd.setHours(
+              shiftEnd.getHours(),
+              shiftEnd.getMinutes(),
+              0,
+              0,
+            );
+            const earlyOutMinutes =
+              checkOutTime < todayShiftEnd
+                ? Math.floor(
+                    (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                      (1000 * 60),
+                  )
+                : 0;
+            return {
+              status: "ABSENT",
+              checkOutStatus:
+                earlyOutMinutes > 30 ? "EARLY_OUT" : "ON_TIME_LEAVE",
+              earlyOutMinutes,
+            };
+          }
+          return { status: "ABSENT" };
+        }
+
+        if (!shift) {
+          return { status: "PRESENT" };
+        }
+
+        const checkInTime = new Date(record.checkIn);
+        const checkOutTime = record.checkOut ? new Date(record.checkOut) : null;
+        const attendanceDate = new Date(record.date);
+        const shiftStart = new Date(shift.startTime);
+        const shiftEnd = new Date(shift.endTime);
+        const halfDayStart = shift.halfDayStart
+          ? new Date(shift.halfDayStart)
+          : null;
+
+        const todayShiftStart = new Date(attendanceDate);
+        todayShiftStart.setHours(
+          shiftStart.getHours(),
+          shiftStart.getMinutes(),
+          0,
+          0,
+        );
+
+        const todayShiftEnd = new Date(attendanceDate);
+        todayShiftEnd.setHours(
+          shiftEnd.getHours(),
+          shiftEnd.getMinutes(),
+          0,
+          0,
+        );
+
+        const lateMinutes =
+          checkInTime > todayShiftStart
+            ? Math.floor(
+                (checkInTime.getTime() - todayShiftStart.getTime()) /
+                  (1000 * 60),
+              )
+            : 0;
+
+        let earlyOutMinutes = 0;
+        let workingHours = "";
+        if (checkOutTime) {
+          earlyOutMinutes =
+            checkOutTime < todayShiftEnd
+              ? Math.floor(
+                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                    (1000 * 60),
+                )
+              : 0;
+
+          let workingSeconds =
+            (checkOutTime.getTime() - checkInTime.getTime()) / 1000;
+          if (workingSeconds < 0) workingSeconds = 0;
+
+          const hours = Math.floor(workingSeconds / 3600);
+          const minutes = Math.floor((workingSeconds % 3600) / 60);
+          const seconds = Math.floor(workingSeconds % 60);
+          workingHours = `${hours}h ${minutes}m ${seconds}s`;
+        }
+
+        let status = "PRESENT";
+
+        if (halfDayStart && checkOutTime) {
+          const todayHalfDayStart = new Date(attendanceDate);
+          todayHalfDayStart.setHours(
+            halfDayStart.getHours(),
+            halfDayStart.getMinutes(),
+            0,
+            0,
+          );
+          if (checkOutTime < todayHalfDayStart) {
+            status = "HALF_DAY";
+          }
+        }
+
+        if (lateMinutes > 15) {
+          status = status === "HALF_DAY" ? "HALF_DAY" : "LATE";
+        }
+
+        if (earlyOutMinutes > 30 && status !== "HALF_DAY") {
+          status = "EARLY_OUT";
+        }
+
+        let checkInStatus = "ON_TIME_ARRIVAL";
+        if (lateMinutes > 15) {
+          checkInStatus = "LATE";
+        }
+
+        let checkOutStatus = checkOutTime ? "ON_TIME_LEAVE" : undefined;
+        if (checkOutTime && earlyOutMinutes > 30) {
+          checkOutStatus = "EARLY_OUT";
+        }
+
+        return {
+          status,
+          lateMinutes,
+          earlyOutMinutes,
+          workingHours,
+          checkInStatus,
+          checkOutStatus,
+        };
+      };
+
+      const transformRecord = (record: any) => {
+        const shift = record.employee?.shift ?? null;
+        const calculatedStatus = calculateAttendanceStatus(record, shift);
+
+        const checkInRecord = record.zktecoRecords.find(
+          (r: { checkType: string }) => r.checkType === "check_in",
+        );
+        const checkOutRecord = record.zktecoRecords.find(
+          (r: { checkType: string }) => r.checkType === "check_out",
+        );
+
+        const statusPriority = [
+          "FULL_DAY_LEAVE",
+          "HALF_DAY_LEAVE",
+          "LATE",
+          "EARLY_OUT",
+          "ON_TIME_ARRIVAL",
+          "ON_TIME_LEAVE",
+        ];
+
+        let preciseStatus: string | null = null;
+        for (const status of statusPriority) {
+          if (
+            checkInRecord?.overallStatus === status ||
+            checkOutRecord?.overallStatus === status
+          ) {
+            preciseStatus = status;
+            break;
+          }
+        }
+
+        const finalStatus = preciseStatus || calculatedStatus.status;
+        const checkInStatus =
+          checkInRecord?.overallStatus ||
+          calculatedStatus.checkInStatus ||
+          null;
+        const checkOutStatus =
+          checkOutRecord?.overallStatus ||
+          calculatedStatus.checkOutStatus ||
+          null;
+
+        const needsReason =
+          (!record.reason || !record.reason.trim()) &&
+          AttendanceReminderService.recordNeedsReason({
+            checkIn: record.checkIn,
+            checkOut: record.checkOut,
+          });
+
+        return {
+          id: record.id,
+          date: record.date,
+          checkIn: record.checkIn,
+          checkOut: record.checkOut,
+          status: finalStatus,
+          originalStatus: record.status,
+          notes: record.notes,
+          reason: record.reason,
+          lateMinutes: calculatedStatus.lateMinutes ?? 0,
+          earlyOutMinutes: calculatedStatus.earlyOutMinutes ?? 0,
+          workingHours: calculatedStatus.workingHours || null,
+          checkInStatus,
+          checkOutStatus,
+          needsReason,
+          hasRecord: true,
+        };
+      };
+
+      const toDateOnly = (value: Date) =>
+        new Date(value.getFullYear(), value.getMonth(), value.getDate());
+
+      const parseDateQuery = (value: string) => {
+        const [year, month, day] = value.split("-").map(Number);
+        return new Date(year, month - 1, day);
+      };
+
+      const now = new Date();
+      const today = toDateOnly(now);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const selectedDate =
+        typeof selectedDateQuery === "string" && selectedDateQuery
+          ? parseDateQuery(selectedDateQuery)
+          : null;
+
+      const [
+        monthRecords,
+        todayRecord,
+        selectedDateRecord,
+        pendingLeaveRequests,
+        employeeProfile,
+      ] = await Promise.all([
+        prisma.attendance.findMany({
+          where: {
+            employeeId: targetEmployeeId,
+            date: { gte: monthStart, lte: monthEnd },
+          },
+          select: attendanceSelect,
+          orderBy: { date: "desc" },
+        }),
+        prisma.attendance.findFirst({
+          where: { employeeId: targetEmployeeId, date: today },
+          select: attendanceSelect,
+        }),
+        selectedDate
+          ? prisma.attendance.findFirst({
+              where: { employeeId: targetEmployeeId, date: selectedDate },
+              select: attendanceSelect,
+            })
+          : Promise.resolve(null),
+        prisma.leaveRequest.count({
+          where: {
+            employeeId: targetEmployeeId,
+            status: "PENDING",
+          },
+        }),
+        prisma.user.findUnique({
+          where: { id: targetEmployeeId },
+          select: {
+            shift: {
+              select: {
+                id: true,
+                name: true,
+                startTime: true,
+                endTime: true,
+                breakTime: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const transformedMonthRecords = monthRecords.map(transformRecord);
+
+      const isLate = (record: ReturnType<typeof transformRecord>) =>
+        record.status === "LATE" ||
+        record.checkInStatus === "LATE" ||
+        record.lateMinutes > 15;
+
+      const isAbsent = (record: ReturnType<typeof transformRecord>) =>
+        record.status === "ABSENT" || !record.checkIn;
+
+      const isEarlyOut = (record: ReturnType<typeof transformRecord>) =>
+        record.status === "EARLY_OUT" ||
+        record.checkOutStatus === "EARLY_OUT" ||
+        record.earlyOutMinutes > 30;
+
+      const isPresent = (record: ReturnType<typeof transformRecord>) =>
+        !!record.checkIn &&
+        !isAbsent(record) &&
+        !["FULL_DAY_LEAVE", "HALF_DAY_LEAVE"].includes(record.status);
+
+      const getWorkedHours = (
+        checkIn: Date | string | null,
+        checkOut: Date | string | null,
+      ) => {
+        if (!checkIn || !checkOut) return 0;
+        const diffMs =
+          new Date(checkOut).getTime() - new Date(checkIn).getTime();
+        return diffMs > 0 ? diffMs / (1000 * 60 * 60) : 0;
+      };
+
+      const monthStats = {
+        label: now.toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        }),
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        present: transformedMonthRecords.filter(isPresent).length,
+        late: transformedMonthRecords.filter(isLate).length,
+        absent: transformedMonthRecords.filter(isAbsent).length,
+        earlyOut: transformedMonthRecords.filter(isEarlyOut).length,
+        halfDay: transformedMonthRecords.filter(
+          (r) => r.status === "HALF_DAY" || r.status === "HALF_DAY_LEAVE",
+        ).length,
+        missingReasons: transformedMonthRecords.filter((r) => r.needsReason)
+          .length,
+        hoursLogged: Number(
+          transformedMonthRecords
+            .reduce(
+              (sum, record) =>
+                sum + getWorkedHours(record.checkIn, record.checkOut),
+              0,
+            )
+            .toFixed(1),
+        ),
+        totalRecords: transformedMonthRecords.length,
+      };
+
+      const buildDayDetail = (
+        dateValue: Date,
+        record: (typeof monthRecords)[number] | null,
+      ) => {
+        if (!record) {
+          return {
+            date: dateValue,
+            checkIn: null,
+            checkOut: null,
+            status: "NO_RECORD",
+            workingHours: null,
+            lateMinutes: 0,
+            earlyOutMinutes: 0,
+            checkInStatus: null,
+            checkOutStatus: null,
+            reason: null,
+            needsReason: false,
+            hasRecord: false,
+          };
+        }
+        return transformRecord(record);
+      };
+
+      const shift = employeeProfile?.shift
+        ? {
+            id: employeeProfile.shift.id,
+            name: employeeProfile.shift.name,
+            startTime: employeeProfile.shift.startTime,
+            endTime: employeeProfile.shift.endTime,
+            breakTime: employeeProfile.shift.breakTime,
+          }
+        : null;
+
+      res.json({
+        success: true,
+        message: "Employee dashboard stats retrieved successfully",
+        data: {
+          today: buildDayDetail(today, todayRecord),
+          selectedDate: selectedDate
+            ? buildDayDetail(selectedDate, selectedDateRecord)
+            : null,
+          month: monthStats,
+          leaves: {
+            pendingRequests: pendingLeaveRequests,
+          },
+          shift,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching employee dashboard stats:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch employee dashboard stats",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   static async uploadEmployeeToDevice(
     req: AuthenticatedRequest,
     res: Response,

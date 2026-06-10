@@ -112,6 +112,13 @@ export const getAttendanceDataValidator = [
     .withMessage("Limit must be between 1 and 100"),
 ];
 
+export const getEmpDashboardValidator = [
+  query("date")
+    .optional()
+    .isISO8601()
+    .withMessage("Date must be a valid ISO 8601 date"),
+];
+
 export const getAttendanceStatsValidator = [
   query("startDate")
     .optional()
