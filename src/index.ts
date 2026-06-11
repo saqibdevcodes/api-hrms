@@ -13,6 +13,7 @@ import zktecoRoutes from "./routes/zktecoRoutes";
 import { SocketManager } from "./socket/socketManager";
 import { zktecoService } from "./services/zktecoService";
 import { finalizationService } from "./services/finalizationService";
+import { startEmailWorker } from "./workers/emailWorkerRunner";
 
 // Validate environment configuration
 try {
@@ -389,6 +390,20 @@ const startServer = async () => {
       });
 
       console.log("🧹 OTP cleanup scheduled: Every 30 minutes");
+      console.log("");
+
+      const emailWorkerEnabled =
+        process.env.EMAIL_WORKER_ENABLED !== "false";
+      if (emailWorkerEnabled) {
+        startEmailWorker();
+        console.log(
+          "📬 Email worker enabled (database queue). Set EMAIL_WORKER_ENABLED=false to disable.",
+        );
+      } else {
+        console.log(
+          "📬 Email worker disabled. Run `npm run email-worker` to process queued emails.",
+        );
+      }
       console.log("");
 
       // Run finalization immediately on server start to process any existing old records

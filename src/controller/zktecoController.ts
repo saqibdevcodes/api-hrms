@@ -2513,7 +2513,7 @@ export class ZKTecoController {
 
       res.status(202).json({
         success: true,
-        message: `Queued reminder emails for ${recordsByEmployee.size} employee${recordsByEmployee.size !== 1 ? "s" : ""}. Ensure the email worker is running.`,
+        message: `Queued reminder emails for ${recordsByEmployee.size} employee${recordsByEmployee.size !== 1 ? "s" : ""}. They will be sent by the database email worker.`,
         data: {
           remindersQueued: recordsNeedingReasons.length,
           employeesQueued: recordsByEmployee.size,
