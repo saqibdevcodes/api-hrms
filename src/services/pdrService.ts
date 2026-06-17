@@ -680,6 +680,10 @@ export class PdrService {
     const limit = filters?.limit || 10;
     const skip = (page - 1) * limit;
 
+
+    let pdrIds: any[] = [];
+
+
     let whereClause: any = {};
     const isHR = userRole === Role.HR; // HR role only
     const isAdmin = userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
@@ -719,10 +723,61 @@ export class PdrService {
         // Managers see BOTH their own PDRs AND subordinate PDRs
         if (userRole === Role.EMPLOYEE) {
           // Regular manager (not HR)
-          whereClause.OR = [
-            { userId: userId }, // Their own PDRs
-            { linemanager_id: userId }, // PDRs where they are the line manager
-          ];
+          // whereClause.OR = [
+          //   { userId: userId }, // Their own PDRs
+          //   { linemanager_id: userId }, // PDRs where they are the line manager
+          // ];
+
+
+
+
+          const allEmployeeIDs = [userId];
+
+          let managerIDs = [userId];
+
+
+          while (managerIDs.length > 0) {
+          
+            const pdrUserIds = await prisma.pdr.findMany({
+              where: {
+                linemanager_id: {
+                  in: managerIDs,
+                },
+              },
+              select: {
+                userId: true,
+              },
+            });
+
+            managerIDs = pdrUserIds.map((p) => p.userId);
+            
+            allEmployeeIDs.push(...managerIDs);
+
+          }
+
+
+
+          pdrIds = await prisma.pdr.findMany({
+            where: {
+              userId: {
+                in: allEmployeeIDs,
+              },
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          whereClause.id = {
+            in: pdrIds.map(pdr => pdr.id),
+          };
+
+
+
+
+
+
+
         } else if (isHR) {
           // HR with LINE_MANAGER rank: by default show all (unless section specified)
           // No filter - shows all PDRs
@@ -758,9 +813,13 @@ export class PdrService {
       };
     }
 
+
+
     const [pdrs, total] = await Promise.all([
       prisma.pdr.findMany({
-        where: whereClause,
+        where: {
+          ...whereClause
+        },  
         skip,
         take: limit,
         orderBy: {
@@ -859,6 +918,27 @@ export class PdrService {
     return result;
   }
 
+
+
+  private static async getLineManagerVisibleEmployeeIds(
+    managerUserId: string,
+  ): Promise<string[]> {
+    const allEmployeeIDs = [managerUserId];
+    let managerIDs = [managerUserId];
+    while (managerIDs.length > 0) {
+      const rows = await prisma.pdr.findMany({
+        where: { linemanager_id: { in: managerIDs } },
+        select: { userId: true },
+      });
+      managerIDs = rows.map((r) => r.userId);
+      allEmployeeIDs.push(...managerIDs);
+    }
+    return [...new Set(allEmployeeIDs)];
+  }
+
+
+
+
   /**
    * Get single PDR with full details
    */
@@ -896,15 +976,21 @@ export class PdrService {
       throw new Error("PDR not found");
     }
 
-    // Check access permissions
-    // HR has access to all PDRs (can do HR tasks)
-    // Also check if user is the owner, manager, or director
+    let canViewAsLineManager = false;
+
+    if (userRank === UserRank.LINE_MANAGER && userRole === Role.EMPLOYEE) {
+      const visibleEmployeeIds =
+        await this.getLineManagerVisibleEmployeeIds(userId);
+      canViewAsLineManager = visibleEmployeeIds.includes(pdr.userId);
+    }
+    
     const hasAccess =
-      userRole === Role.ADMIN || // Keep for backward compatibility
-      userRole === "HR" || // HR role has access to all PDRs
+      userRole === Role.ADMIN ||
+      userRole === Role.HR ||
       pdr.userId === userId ||
-      pdr.linemanager_id === userId ||
-      pdr.director_id === userId;
+      pdr.linemanager_id === userId ||  // optional; covered by tree anyway
+      pdr.director_id === userId ||
+      canViewAsLineManager;
 
     if (!hasAccess) {
       throw new Error("Access denied to this PDR");
