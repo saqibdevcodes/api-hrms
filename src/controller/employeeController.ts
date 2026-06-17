@@ -151,10 +151,11 @@ export class EmployeeController {
     }
   }
 
-
-
   // Get if employee has system access
-  static async getHasSystemAccessEmplyees(req: AuthenticatedRequest, res: Response) {
+  static async getHasSystemAccessEmplyees(
+    req: AuthenticatedRequest,
+    res: Response,
+  ) {
     try {
       const {
         page = 1,
@@ -171,8 +172,6 @@ export class EmployeeController {
         employeeId: { not: null }, // Only get users with employeeId (employees)
         hasSystemAccess: true,
       };
-
-     
 
       // Get employees with proper filtering BEFORE pagination
       const [employees, total] = await Promise.all([
@@ -1244,7 +1243,7 @@ export class EmployeeController {
           where: {
             userRank: {
               in: ["DIRECTOR", "LINE_MANAGER"],
-          },
+            },
             isActive: true,
             employeeId: { not: null },
           },
@@ -1256,8 +1255,8 @@ export class EmployeeController {
             employeeId: true,
             department: true,
             userRank: true, // optional but useful now
-        },
-        orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+          },
+          orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
         });
       } else if (rank === "EMPLOYEE") {
         // Fetch all line managers for employees to report to
@@ -1298,6 +1297,50 @@ export class EmployeeController {
       res.status(500).json({
         success: false,
         message: "Failed to fetch supervisors",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  static async getEmployeeStatus(req: Request, res: Response) {
+    const employeeId = req.params.id;
+
+    console.log("testingemp", employeeId);
+
+    try {
+      const leaves = await prisma.employeeLeave.findFirst({
+        where: { userId: req.params.id },
+        select: {
+          annualLeaves: true,
+          sickLeaves: true,
+          casualLeaves: true,
+          compensatoryLeaves: true,
+          maternityLeaves: true,
+          paternityLeaves: true,
+        },
+      });
+      const attendace = await prisma.attendance.findMany({
+        where: { employeeId: req.params.id },
+        orderBy: { date: "desc" },
+        select: {
+          checkIn: true,
+          checkOut: true,
+          totalHours: true,
+          date: true,
+          status: true,
+        },
+        take: 10,
+      });
+      res.json({
+        success: true,
+        message: "Employee status retrieved successfully",
+        data: { leaves, attendace },
+      });
+    } catch (error) {
+      console.error("Error fetching employee status:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch employee status",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
