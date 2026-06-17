@@ -1,7 +1,10 @@
 // services/pdrService.ts
 import { PdrOverallStatus, PdrStatus, UserRank, Role } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { queuePdrCreatedEmail, queuePdrStatusEmail } from "../queues/email.jobs";
+import {
+  queuePdrCreatedEmail,
+  queuePdrStatusEmail,
+} from "../queues/email.jobs";
 
 export interface PdrCreationData {
   userId: string;
@@ -360,7 +363,7 @@ export class PdrService {
     });
 
 
-    // await queuePdrCreatedEmail(pdr.id.toString());
+    await queuePdrCreatedEmail(pdr.id.toString());
 
 
     return pdr;
@@ -632,8 +635,7 @@ export class PdrService {
     section?: "mine" | "team" | "all",
   ): Record<string, unknown> | null {
     const isHR = userRole === Role.HR;
-    const isAdmin =
-      userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
+    const isAdmin = userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
 
     if (isHR) {
       if (!section) return null;
@@ -671,6 +673,7 @@ export class PdrService {
       section?: "mine" | "team" | "all"; // Section filter for HR users
       department?: string; // New department filter
       includeSummary?: boolean;
+      search?: string;
     },
   ) {
     const page = filters?.page || 1;
@@ -679,8 +682,7 @@ export class PdrService {
 
     let whereClause: any = {};
     const isHR = userRole === Role.HR; // HR role only
-    const isAdmin =
-      userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
+    const isAdmin = userRole === Role.ADMIN || userRole === Role.SUPERADMIN;
 
     // Section-based filtering for HR users
     if (isHR && filters?.section) {

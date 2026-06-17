@@ -8,6 +8,7 @@ import {
   syncAttendanceValidator,
   getAttendanceDataValidator,
   getAttendanceStatsValidator,
+  getEmpDashboardValidator,
   clearDeviceAttendanceValidator,
   uploadAllEmployeesValidator,
 } from "../validators/zktecoValidator";
@@ -82,6 +83,13 @@ router.get(
   getAttendanceStatsValidator,
   validateRequest,
   ZKTecoController.getAttendanceStats
+);
+router.get(
+  "/attendance/emp-dashboard",
+  authenticate,
+  getEmpDashboardValidator,
+  validateRequest,
+  ZKTecoController.getEmpStatsData
 );
 router.get(
   "/attendance/fetch-all-from-machine",

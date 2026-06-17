@@ -934,3 +934,28 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt      
 }
+
+enum EmailJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model EmailJob {
+  id          String         @id @default(cuid())
+  event       String
+  payload     Json
+  status      EmailJobStatus @default(PENDING)
+  attempts    Int            @default(0)
+  maxAttempts Int            @default(3)
+  lastError   String?        @db.Text
+  scheduledAt DateTime       @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([status, scheduledAt])
+  @@map("email_jobs")
+}
