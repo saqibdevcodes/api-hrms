@@ -89,10 +89,16 @@ export const getPdrsQueryValidator = [
     .optional()
     .isInt({ min: 1 })
     .withMessage("Page must be a positive integer"),
-  query("limit")
+    query("limit")
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .custom((value) => {
+        if (parseInt(value) === -1) return true;
+        const num = Number(value);
+        if (Number.isInteger(num) && num >= 1 && num <= 100) {
+            return true;
+        }
+        throw new Error("Limit must be between 1 and 100, or -1 for all records");
+    }),
   query("status")
     .optional()
     .isString()
