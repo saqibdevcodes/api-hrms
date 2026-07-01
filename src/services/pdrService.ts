@@ -832,8 +832,9 @@ export class PdrService {
         if (userRole === Role.EMPLOYEE) {
           // Regular director (not HR)
           whereClause.OR = [
-            { userId: userId }, // Their own PDRs
-            { director_id: userId }, // PDRs where they are the director
+            { userId: userId },          // Their own PDRs
+            { director_id: userId },     // PDRs where they are the director
+            { linemanager_id: userId },  // PDRs where they are the line manager
           ];
         } else if (isHR) {
           // HR with DIRECTOR rank: by default show all
