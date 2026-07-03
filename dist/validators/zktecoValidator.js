@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadAllEmployeesValidator = exports.clearDeviceAttendanceValidator = exports.getAttendanceStatsValidator = exports.getAttendanceDataValidator = exports.syncAttendanceValidator = exports.uploadEmployeeValidator = exports.deviceIdValidator = exports.addDeviceValidator = void 0;
+exports.uploadAllEmployeesValidator = exports.clearDeviceAttendanceValidator = exports.getAttendanceStatsValidator = exports.getEmpDashboardValidator = exports.getAttendanceDataValidator = exports.syncAttendanceValidator = exports.uploadEmployeeValidator = exports.deviceIdValidator = exports.addDeviceValidator = void 0;
 const express_validator_1 = require("express-validator");
 exports.addDeviceValidator = [
     (0, express_validator_1.body)("id")
@@ -91,6 +91,12 @@ exports.getAttendanceDataValidator = [
         .optional()
         .isInt({ min: 1, max: 100 })
         .withMessage("Limit must be between 1 and 100"),
+];
+exports.getEmpDashboardValidator = [
+    (0, express_validator_1.query)("date")
+        .optional()
+        .isISO8601()
+        .withMessage("Date must be a valid ISO 8601 date"),
 ];
 exports.getAttendanceStatsValidator = [
     (0, express_validator_1.query)("startDate")

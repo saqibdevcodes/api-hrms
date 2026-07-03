@@ -10,29 +10,23 @@ class EmailService {
     static async sendEmail(to, subject, html, options) {
         try {
             const fromName = process.env.MAIL_FROM_NAME || env_1.config.COMPANY_NAME;
-            const fromAddress = process.env.MAIL_FROM_ADDRESS || env_1.config.SMTP_USER;
+            const fromAddress = process.env.MAIL_FROM_ADDRESS ||
+                process.env.MAIL_USERNAME ||
+                env_1.config.SMTP_USER;
             const mailOptions = {
                 from: `"${fromName}" <${fromAddress}>`,
                 to,
                 subject,
                 html,
             };
-            // Add CC if provided
-            if (options?.cc && options.cc.length > 0) {
+            if (options?.cc?.length) {
                 mailOptions.cc = options.cc.join(", ");
             }
-            // Add BCC if provided
-            if (options?.bcc && options.bcc.length > 0) {
+            if (options?.bcc?.length) {
                 mailOptions.bcc = options.bcc.join(", ");
             }
             const info = await this.transporter.sendMail(mailOptions);
             console.log("✅ Email sent → %s | %s | messageId: %s", to, subject, info.messageId);
-            if (options?.cc?.length) {
-                console.log("CC: %s", options.cc.join(", "));
-            }
-            if (options?.bcc?.length) {
-                console.log("BCC: %s", options.bcc.join(", "));
-            }
             return info;
         }
         catch (error) {
@@ -59,7 +53,7 @@ class EmailService {
     }
     static async sendEmailOTP(to, otp, emailType) {
         const subject = `Email Verification - ${env_1.config.COMPANY_NAME}`;
-        const emailTypeText = emailType === 'personal' ? 'Personal Email' : 'Official Email';
+        const emailTypeText = emailType === "personal" ? "Personal Email" : "Official Email";
         const html = `
       <!DOCTYPE html>
       <html>
@@ -128,11 +122,11 @@ class EmailService {
 }
 exports.EmailService = EmailService;
 EmailService.transporter = nodemailer_1.default.createTransport({
-    host: env_1.config.SMTP_HOST || "smtp.gmail.com",
-    port: env_1.config.SMTP_PORT || 587,
-    secure: env_1.config.SMTP_PORT === 465, // true for 465, false for other ports
+    host: process.env.MAIL_HOST || env_1.config.SMTP_HOST || "smtp.gmail.com",
+    port: Number(process.env.MAIL_PORT || env_1.config.SMTP_PORT || 587),
+    secure: Number(process.env.MAIL_PORT || env_1.config.SMTP_PORT || 587) === 465,
     auth: {
-        user: env_1.config.SMTP_USER,
-        pass: env_1.config.SMTP_PASS,
+        user: process.env.MAIL_USERNAME || env_1.config.SMTP_USER,
+        pass: process.env.MAIL_PASSWORD || env_1.config.SMTP_PASS,
     },
 });

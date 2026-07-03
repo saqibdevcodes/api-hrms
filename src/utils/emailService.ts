@@ -3,12 +3,12 @@ import { config } from "../config/env";
 
 export class EmailService {
   private static transporter = nodemailer.createTransport({
-    host: config.SMTP_HOST || "smtp.gmail.com",
-    port: config.SMTP_PORT || 587,
-    secure: config.SMTP_PORT === 465, // true for 465, false for other ports
+    host: process.env.MAIL_HOST || config.SMTP_HOST || "smtp.gmail.com",
+    port: Number(process.env.MAIL_PORT || config.SMTP_PORT || 587),
+    secure: Number(process.env.MAIL_PORT || config.SMTP_PORT || 587) === 465,
     auth: {
-      user: config.SMTP_USER,
-      pass: config.SMTP_PASS,
+      user: process.env.MAIL_USERNAME || config.SMTP_USER,
+      pass: process.env.MAIL_PASSWORD || config.SMTP_PASS,
     },
   });
 
@@ -16,11 +16,14 @@ export class EmailService {
     to: string,
     subject: string,
     html: string,
-    options?: { cc?: string[]; bcc?: string[] }
+    options?: { cc?: string[]; bcc?: string[] },
   ) {
     try {
       const fromName = process.env.MAIL_FROM_NAME || config.COMPANY_NAME;
-      const fromAddress = process.env.MAIL_FROM_ADDRESS || config.SMTP_USER;
+      const fromAddress =
+        process.env.MAIL_FROM_ADDRESS ||
+        process.env.MAIL_USERNAME ||
+        config.SMTP_USER;
 
       const mailOptions: any = {
         from: `"${fromName}" <${fromAddress}>`,
@@ -29,25 +32,23 @@ export class EmailService {
         html,
       };
 
-      // Add CC if provided
-      if (options?.cc && options.cc.length > 0) {
+      if (options?.cc?.length) {
         mailOptions.cc = options.cc.join(", ");
       }
 
-      // Add BCC if provided
-      if (options?.bcc && options.bcc.length > 0) {
+      if (options?.bcc?.length) {
         mailOptions.bcc = options.bcc.join(", ");
       }
 
       const info = await this.transporter.sendMail(mailOptions);
 
-      console.log("✅ Email sent → %s | %s | messageId: %s", to, subject, info.messageId);
-      if (options?.cc?.length) {
-        console.log("CC: %s", options.cc.join(", "));
-      }
-      if (options?.bcc?.length) {
-        console.log("BCC: %s", options.bcc.join(", "));
-      }
+      console.log(
+        "✅ Email sent → %s | %s | messageId: %s",
+        to,
+        subject,
+        info.messageId,
+      );
+
       return info;
     } catch (error) {
       console.error("Error sending email:", error);
@@ -76,8 +77,9 @@ export class EmailService {
 
   static async sendEmailOTP(to: string, otp: string, emailType: string) {
     const subject = `Email Verification - ${config.COMPANY_NAME}`;
-    const emailTypeText = emailType === 'personal' ? 'Personal Email' : 'Official Email';
-    
+    const emailTypeText =
+      emailType === "personal" ? "Personal Email" : "Official Email";
+
     const html = `
       <!DOCTYPE html>
       <html>

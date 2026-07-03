@@ -1,7 +1,7 @@
 import { EmailQueueService } from "../services/emailQueueService";
 
 const POLL_INTERVAL_MS = Number(process.env.EMAIL_WORKER_POLL_INTERVAL_MS) || 5000;
-const CONCURRENCY = Number(process.env.EMAIL_WORKER_CONCURRENCY) || 5;
+const CONCURRENCY = Number(process.env.EMAIL_WORKER_CONCURRENCY) || 50;
 
 let interval: ReturnType<typeof setInterval> | null = null;
 let running = false;

@@ -142,7 +142,7 @@ class EmployeeLeaveController {
                     errors: errors.array(),
                 });
             }
-            const { userId, annualLeaves, sickLeaves, casualLeaves, compensatoryLeaves, maternityLeaves, paternityLeaves, leavePolicyId, } = req.body;
+            const { userId, annualLeaves, sickLeaves, casualLeaves, leavePolicyId, } = req.body;
             // Check if user exists
             const user = await prisma_1.prisma.user.findUnique({
                 where: { id: userId },
@@ -169,9 +169,6 @@ class EmployeeLeaveController {
                     annualLeaves: parseInt(annualLeaves),
                     sickLeaves: parseInt(sickLeaves),
                     casualLeaves: parseInt(casualLeaves),
-                    compensatoryLeaves: parseInt(compensatoryLeaves),
-                    maternityLeaves: parseInt(maternityLeaves),
-                    paternityLeaves: parseInt(paternityLeaves),
                     leavePolicyId,
                     datetime: new Date(),
                 },
@@ -215,7 +212,7 @@ class EmployeeLeaveController {
                     errors: errors.array(),
                 });
             }
-            const { annualLeaves, sickLeaves, casualLeaves, compensatoryLeaves, maternityLeaves, paternityLeaves, leavePolicyId, } = req.body;
+            const { annualLeaves, sickLeaves, casualLeaves, leavePolicyId, } = req.body;
             const employeeLeave = await prisma_1.prisma.employeeLeave.findUnique({
                 where: { userId },
             });
@@ -231,9 +228,6 @@ class EmployeeLeaveController {
                     annualLeaves: parseInt(annualLeaves),
                     sickLeaves: parseInt(sickLeaves),
                     casualLeaves: parseInt(casualLeaves),
-                    compensatoryLeaves: parseInt(compensatoryLeaves),
-                    maternityLeaves: parseInt(maternityLeaves),
-                    paternityLeaves: parseInt(paternityLeaves),
                     leavePolicyId,
                     datetime: new Date(),
                 },
@@ -295,9 +289,6 @@ class EmployeeLeaveController {
                     annualLeaves: leavePolicy.annualLeaves,
                     sickLeaves: leavePolicy.sickLeaves,
                     casualLeaves: leavePolicy.casualLeaves,
-                    compensatoryLeaves: 0,
-                    maternityLeaves: leavePolicy.maternityLeaves,
-                    paternityLeaves: leavePolicy.paternityLeaves,
                     leavePolicyId,
                     datetime: new Date(),
                 },

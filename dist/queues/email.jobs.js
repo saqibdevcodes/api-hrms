@@ -2,14 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.queueAttendanceReminderEmail = exports.queuePdrCreatedEmail = exports.queuePdrStatusEmail = void 0;
 const client_1 = require("@prisma/client");
-const email_queue_1 = require("./email.queue");
 const email_events_1 = require("../constants/email.events");
+const emailQueueService_1 = require("../services/emailQueueService");
 const pdrEmailNotificationService_1 = require("../services/pdrEmailNotificationService");
 const queuePdrStatusEmail = (data) => {
     if (!pdrEmailNotificationService_1.PdrEmailNotificationService.shouldNotify(data.targetStatus)) {
         return Promise.resolve(null);
     }
-    return email_queue_1.emailQueue.add(email_events_1.EMAIL_EVENTS.PDR_STATUS_NOTIFY, data);
+    return emailQueueService_1.EmailQueueService.enqueue(email_events_1.EMAIL_EVENTS.PDR_STATUS_NOTIFY, data);
 };
 exports.queuePdrStatusEmail = queuePdrStatusEmail;
 /** After HR creates a PDR (single or bulk via createPdr). */
@@ -21,6 +21,6 @@ const queuePdrCreatedEmail = (pdrId) => {
 };
 exports.queuePdrCreatedEmail = queuePdrCreatedEmail;
 const queueAttendanceReminderEmail = (data) => {
-    return email_queue_1.emailQueue.add(email_events_1.EMAIL_EVENTS.ATTENDANCE_REMINDER, data);
+    return emailQueueService_1.EmailQueueService.enqueue(email_events_1.EMAIL_EVENTS.ATTENDANCE_REMINDER, data);
 };
 exports.queueAttendanceReminderEmail = queueAttendanceReminderEmail;

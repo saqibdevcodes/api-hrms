@@ -5,6 +5,42 @@ exports.PdrService = void 0;
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../lib/prisma");
 const email_jobs_1 = require("../queues/email.jobs");
+const pdrInclude = {
+    user: {
+        select: {
+            id: true,
+            employeeId: true,
+            firstName: true,
+            lastName: true,
+            officialEmail: true,
+            position: true,
+            department: true,
+        },
+    },
+    linemanager: {
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            officialEmail: true,
+        },
+    },
+    director: {
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            officialEmail: true,
+        },
+    },
+    comments: {
+        where: {
+            commentType: "REVERT",
+            isResolved: false,
+        },
+        orderBy: { datetime: "desc" },
+    },
+};
 class PdrService {
     /**
      * Split `users.manager` into candidates (single email or comma/semicolon-separated).
@@ -128,8 +164,7 @@ class PdrService {
             }
         }
         else {
-            linemanagerId =
-                await this.resolveManagerFieldToLineManagerUserId(user.manager);
+            linemanagerId = await this.resolveManagerFieldToLineManagerUserId(user.manager);
         }
         // Find director if not provided
         let directorId = data.directorId;
@@ -176,7 +211,7 @@ class PdrService {
                 },
             },
         });
-        // await queuePdrCreatedEmail(pdr.id.toString());
+        await (0, email_jobs_1.queuePdrCreatedEmail)(pdr.id.toString());
         return pdr;
     }
     /**
@@ -403,24 +438,138 @@ class PdrService {
         }
         return null;
     }
+    static async getAllSubordinateIds(managerId, visited = new Set()) {
+        const directReports = await prisma_1.prisma.pdr.findMany({
+            where: {
+                linemanager_id: managerId,
+            },
+            select: {
+                userId: true,
+                user: {
+                    select: {
+                        userRank: true,
+                    },
+                },
+            },
+        });
+        const subordinateIds = [];
+        for (const report of directReports) {
+            if (visited.has(report.userId))
+                continue;
+            visited.add(report.userId);
+            subordinateIds.push(report.userId);
+            // Only recurse if the subordinate is also a line manager
+            if (report.user?.userRank === client_1.UserRank.LINE_MANAGER) {
+                const nestedIds = await this.getAllSubordinateIds(report.userId, visited);
+                subordinateIds.push(...nestedIds);
+            }
+        }
+        return subordinateIds;
+    }
+    static async getTeamHierarchy(managerId) {
+        const directReports = await prisma_1.prisma.pdr.findMany({
+            where: {
+                linemanager_id: managerId,
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        userRank: true,
+                        email: true,
+                    },
+                },
+            },
+        });
+        return Promise.all(directReports.map(async (pdr) => ({
+            pdr,
+            children: pdr.user?.userRank === client_1.UserRank.LINE_MANAGER
+                ? await this.getTeamHierarchy(pdr.userId)
+                : [],
+        })));
+    }
     static async getPdrsForUser(userId, userRole, userRank, filters) {
         const page = filters?.page || 1;
         const limit = filters?.limit || 10;
         const skip = (page - 1) * limit;
-        let whereClause = {};
+        let baseWhereClause = {};
         const isHR = userRole === client_1.Role.HR; // HR role only
         const isAdmin = userRole === client_1.Role.ADMIN || userRole === client_1.Role.SUPERADMIN;
+        const buildCommonFilterAnd = () => {
+            const AND = [];
+            if (filters?.status) {
+                AND.push({ overallStatus: filters.status });
+            }
+            if (filters?.cycle) {
+                AND.push({ pdr_cycle: filters.cycle });
+            }
+            if (filters?.department) {
+                AND.push({
+                    user: {
+                        department: filters.department,
+                    },
+                });
+            }
+            if (filters?.search?.trim()) {
+                const search = filters.search.trim();
+                AND.push({
+                    OR: [
+                        {
+                            pdr_cycle: {
+                                contains: search,
+                            },
+                        },
+                        {
+                            user: {
+                                firstName: {
+                                    contains: search,
+                                },
+                            },
+                        },
+                        {
+                            user: {
+                                lastName: {
+                                    contains: search,
+                                },
+                            },
+                        },
+                        {
+                            user: {
+                                officialEmail: {
+                                    contains: search,
+                                },
+                            },
+                        },
+                    ],
+                });
+            }
+            return AND;
+        };
+        const applyCommonFilters = (scopeWhere) => {
+            const commonFilters = buildCommonFilterAnd();
+            if (commonFilters.length === 0) {
+                return scopeWhere;
+            }
+            if (!scopeWhere || Object.keys(scopeWhere).length === 0) {
+                return { AND: commonFilters };
+            }
+            return {
+                AND: [scopeWhere, ...commonFilters],
+            };
+        };
         // Section-based filtering for HR users
         if (isHR && filters?.section) {
             if (filters.section === "mine") {
                 // Section 1: My PDRs (HR's own PDRs)
-                whereClause.userId = userId;
+                baseWhereClause.userId = userId;
             }
             else if (filters.section === "team" &&
                 userRank === client_1.UserRank.LINE_MANAGER) {
                 // Section 2: Team PDRs (Only for HR with LINE_MANAGER rank)
                 // PDRs where HR is the line manager, but exclude HR's own PDRs
-                whereClause.AND = [
+                baseWhereClause.AND = [
                     { linemanager_id: userId },
                     { userId: { not: userId } },
                 ];
@@ -432,7 +581,7 @@ class PdrService {
         }
         else if (isAdmin) {
             // ADMIN can only view all employee PDRs (excluding their own)
-            whereClause.userId = { not: userId };
+            baseWhereClause.userId = { not: userId };
         }
         else {
             // Non-HR users or HR without section filter - use role-based filtering
@@ -440,16 +589,15 @@ class PdrService {
                 userRank !== client_1.UserRank.LINE_MANAGER &&
                 userRank !== client_1.UserRank.DIRECTOR) {
                 // Regular employees see only their own PDRs
-                whereClause.userId = userId;
+                baseWhereClause.userId = userId;
             }
             else if (userRank === client_1.UserRank.LINE_MANAGER) {
                 // Managers see BOTH their own PDRs AND subordinate PDRs
                 if (userRole === client_1.Role.EMPLOYEE) {
-                    // Regular manager (not HR)
-                    whereClause.OR = [
-                        { userId: userId }, // Their own PDRs
-                        { linemanager_id: userId }, // PDRs where they are the line manager
-                    ];
+                    const subordinateIds = await this.getAllSubordinateIds(userId);
+                    baseWhereClause.userId = {
+                        in: [userId, ...subordinateIds],
+                    };
                 }
                 else if (isHR) {
                     // HR with LINE_MANAGER rank: by default show all (unless section specified)
@@ -457,12 +605,13 @@ class PdrService {
                 }
             }
             else if (userRank === client_1.UserRank.DIRECTOR) {
-                // Directors see their own PDRs AND PDRs where they are the director
+                // Directors see their own PDRs AND PDRs where they are director/line manager.
+                // Separate lists are also returned below as `directorPdrLists`.
                 if (userRole === client_1.Role.EMPLOYEE) {
-                    // Regular director (not HR)
-                    whereClause.OR = [
+                    baseWhereClause.OR = [
                         { userId: userId }, // Their own PDRs
                         { director_id: userId }, // PDRs where they are the director
+                        { linemanager_id: userId }, // PDRs where they are the line manager
                     ];
                 }
                 else if (isHR) {
@@ -475,58 +624,70 @@ class PdrService {
                 // No filter applied
             }
         }
-        // Additional filters
-        if (filters?.status) {
-            whereClause.overallStatus = filters.status;
-        }
-        if (filters?.cycle) {
-            whereClause.pdr_cycle = filters.cycle;
-        }
+        const whereClause = applyCommonFilters(baseWhereClause);
         const [pdrs, total] = await Promise.all([
             prisma_1.prisma.pdr.findMany({
                 where: whereClause,
                 skip,
                 take: limit,
-                orderBy: { creation_date: "desc" },
-                include: {
+                orderBy: {
                     user: {
-                        select: {
-                            id: true,
-                            employeeId: true,
-                            firstName: true,
-                            lastName: true,
-                            officialEmail: true,
-                            position: true,
-                            department: true,
-                        },
-                    },
-                    linemanager: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            officialEmail: true,
-                        },
-                    },
-                    director: {
-                        select: {
-                            id: true,
-                            firstName: true,
-                            lastName: true,
-                            officialEmail: true,
-                        },
-                    },
-                    comments: {
-                        where: {
-                            commentType: "REVERT",
-                            isResolved: false,
-                        },
-                        orderBy: { datetime: "desc" },
+                        firstName: "asc",
                     },
                 },
+                include: pdrInclude,
             }),
             prisma_1.prisma.pdr.count({ where: whereClause }),
         ]);
+        let teamHierarchy = [];
+        if (userRank === client_1.UserRank.LINE_MANAGER) {
+            teamHierarchy = await this.getTeamHierarchy(userId);
+        }
+        let directorPdrLists;
+        if (userRole === client_1.Role.EMPLOYEE && userRank === client_1.UserRank.DIRECTOR) {
+            const [ownPdrs, directorReviewPdrs, lineManagerReviewPdrs] = await Promise.all([
+                prisma_1.prisma.pdr.findMany({
+                    where: applyCommonFilters({
+                        userId,
+                    }),
+                    orderBy: {
+                        user: {
+                            firstName: "asc",
+                        },
+                    },
+                    include: pdrInclude,
+                }),
+                prisma_1.prisma.pdr.findMany({
+                    where: applyCommonFilters({
+                        director_id: userId,
+                        userId: { not: userId },
+                    }),
+                    orderBy: {
+                        user: {
+                            firstName: "asc",
+                        },
+                    },
+                    include: pdrInclude,
+                }),
+                prisma_1.prisma.pdr.findMany({
+                    where: applyCommonFilters({
+                        linemanager_id: userId,
+                        userId: { not: userId },
+                    }),
+                    orderBy: {
+                        user: {
+                            firstName: "asc",
+                        },
+                    },
+                    include: pdrInclude,
+                }),
+            ]);
+            directorPdrLists = {
+                ownPdrs,
+                directorReviewPdrs,
+                lineManagerReviewPdrs,
+            };
+        }
         const isPrivilegedViewer = userRole === client_1.Role.HR ||
             userRole === client_1.Role.ADMIN ||
             userRole === client_1.Role.SUPERADMIN;
@@ -545,7 +706,29 @@ class PdrService {
                 result.summary = await this.getPdrSummary(scopeWhere);
             }
         }
+        if (teamHierarchy.length > 0) {
+            result.teamHierarchy = teamHierarchy;
+        }
+        if (directorPdrLists) {
+            result.directorPdrLists = directorPdrLists;
+        }
         return result;
+    }
+    /**
+     * Get single PDR with full details
+     */
+    static async getLineManagerVisibleEmployeeIds(managerUserId) {
+        const allEmployeeIDs = [managerUserId];
+        let managerIDs = [managerUserId];
+        while (managerIDs.length > 0) {
+            const rows = await prisma_1.prisma.pdr.findMany({
+                where: { linemanager_id: { in: managerIDs } },
+                select: { userId: true },
+            });
+            managerIDs = rows.map((r) => r.userId);
+            allEmployeeIDs.push(...managerIDs);
+        }
+        return [...new Set(allEmployeeIDs)];
     }
     /**
      * Get single PDR with full details
@@ -577,14 +760,17 @@ class PdrService {
         if (!pdr) {
             throw new Error("PDR not found");
         }
-        // Check access permissions
-        // HR has access to all PDRs (can do HR tasks)
-        // Also check if user is the owner, manager, or director
-        const hasAccess = userRole === client_1.Role.ADMIN || // Keep for backward compatibility
-            userRole === "HR" || // HR role has access to all PDRs
+        let canViewAsLineManager = false;
+        if (userRank === client_1.UserRank.LINE_MANAGER && userRole === client_1.Role.EMPLOYEE) {
+            const visibleEmployeeIds = await this.getLineManagerVisibleEmployeeIds(userId);
+            canViewAsLineManager = visibleEmployeeIds.includes(pdr.userId);
+        }
+        const hasAccess = userRole === client_1.Role.ADMIN ||
+            userRole === client_1.Role.HR ||
             pdr.userId === userId ||
-            pdr.linemanager_id === userId ||
-            pdr.director_id === userId;
+            pdr.linemanager_id === userId || // optional; covered by tree anyway
+            pdr.director_id === userId ||
+            canViewAsLineManager;
         if (!hasAccess) {
             throw new Error("Access denied to this PDR");
         }

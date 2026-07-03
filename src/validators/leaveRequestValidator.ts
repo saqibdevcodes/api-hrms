@@ -2,17 +2,7 @@ import { body, query } from "express-validator";
 
 export const createLeaveRequestValidation = [
   body("leaveType")
-    .isIn([
-      "ANNUAL",
-      "SICK",
-      "MATERNITY",
-      "PATERNITY",
-      "PERSONAL",
-      "EMERGENCY",
-      "BEREAVEMENT",
-      "STUDY",
-      "UNPAID",
-    ])
+    .isIn(["ANNUAL", "SICK", "CASUAL"])
     .withMessage("Invalid leave type"),
 
   body("startDate")
@@ -57,17 +47,7 @@ export const createLeaveRequestValidation = [
 export const updateLeaveRequestValidation = [
   body("leaveType")
     .optional()
-    .isIn([
-      "ANNUAL",
-      "SICK",
-      "MATERNITY",
-      "PATERNITY",
-      "PERSONAL",
-      "EMERGENCY",
-      "BEREAVEMENT",
-      "STUDY",
-      "UNPAID",
-    ])
+    .isIn(["ANNUAL", "SICK", "CASUAL"])
     .withMessage("Invalid leave type"),
 
   body("startDate")
@@ -130,17 +110,7 @@ export const getLeaveRequestsValidation = [
 
   query("leaveType")
     .optional()
-    .isIn([
-      "ANNUAL",
-      "SICK",
-      "MATERNITY",
-      "PATERNITY",
-      "PERSONAL",
-      "EMERGENCY",
-      "BEREAVEMENT",
-      "STUDY",
-      "UNPAID",
-    ])
+    .isIn(["ANNUAL", "SICK", "CASUAL"])
     .withMessage("Invalid leave type"),
 
   query("startDate")

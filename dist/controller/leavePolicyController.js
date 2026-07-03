@@ -110,15 +110,13 @@ class LeavePolicyController {
                     errors: errors.array(),
                 });
             }
-            const { name, annualLeaves, sickLeaves, casualLeaves, maternityLeaves, paternityLeaves, isActive = true, } = req.body;
+            const { name, annualLeaves, sickLeaves, casualLeaves, isActive = true, } = req.body;
             const leavePolicy = await prisma_1.prisma.leavePolicy.create({
                 data: {
                     name,
                     annualLeaves: parseInt(annualLeaves),
                     sickLeaves: parseInt(sickLeaves),
                     casualLeaves: parseInt(casualLeaves),
-                    maternityLeaves: parseInt(maternityLeaves),
-                    paternityLeaves: parseInt(paternityLeaves),
                     isActive,
                 },
             });
@@ -155,7 +153,7 @@ class LeavePolicyController {
                     errors: errors.array(),
                 });
             }
-            const { name, annualLeaves, sickLeaves, casualLeaves, maternityLeaves, paternityLeaves, isActive, } = req.body;
+            const { name, annualLeaves, sickLeaves, casualLeaves, isActive } = req.body;
             const leavePolicy = await prisma_1.prisma.leavePolicy.findUnique({
                 where: { id },
             });
@@ -172,8 +170,6 @@ class LeavePolicyController {
                     annualLeaves: parseInt(annualLeaves),
                     sickLeaves: parseInt(sickLeaves),
                     casualLeaves: parseInt(casualLeaves),
-                    maternityLeaves: parseInt(maternityLeaves),
-                    paternityLeaves: parseInt(paternityLeaves),
                     isActive,
                 },
             });

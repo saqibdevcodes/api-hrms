@@ -4,17 +4,7 @@ exports.getLeaveRequestsValidation = exports.approveRejectLeaveRequestValidation
 const express_validator_1 = require("express-validator");
 exports.createLeaveRequestValidation = [
     (0, express_validator_1.body)("leaveType")
-        .isIn([
-        "ANNUAL",
-        "SICK",
-        "MATERNITY",
-        "PATERNITY",
-        "PERSONAL",
-        "EMERGENCY",
-        "BEREAVEMENT",
-        "STUDY",
-        "UNPAID",
-    ])
+        .isIn(["ANNUAL", "SICK", "CASUAL"])
         .withMessage("Invalid leave type"),
     (0, express_validator_1.body)("startDate")
         .isISO8601()
@@ -52,17 +42,7 @@ exports.createLeaveRequestValidation = [
 exports.updateLeaveRequestValidation = [
     (0, express_validator_1.body)("leaveType")
         .optional()
-        .isIn([
-        "ANNUAL",
-        "SICK",
-        "MATERNITY",
-        "PATERNITY",
-        "PERSONAL",
-        "EMERGENCY",
-        "BEREAVEMENT",
-        "STUDY",
-        "UNPAID",
-    ])
+        .isIn(["ANNUAL", "SICK", "CASUAL"])
         .withMessage("Invalid leave type"),
     (0, express_validator_1.body)("startDate")
         .optional()
@@ -115,17 +95,7 @@ exports.getLeaveRequestsValidation = [
         .withMessage("Invalid status"),
     (0, express_validator_1.query)("leaveType")
         .optional()
-        .isIn([
-        "ANNUAL",
-        "SICK",
-        "MATERNITY",
-        "PATERNITY",
-        "PERSONAL",
-        "EMERGENCY",
-        "BEREAVEMENT",
-        "STUDY",
-        "UNPAID",
-    ])
+        .isIn(["ANNUAL", "SICK", "CASUAL"])
         .withMessage("Invalid leave type"),
     (0, express_validator_1.query)("startDate")
         .optional()

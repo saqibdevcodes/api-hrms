@@ -12,7 +12,7 @@ router.use(auth_1.authenticate);
  * @desc    Get all departments with pagination and search
  * @access  Private (HR/Admin)
  */
-router.get("/", auth_1.hrAndAdmin, departmentController_1.DepartmentController.getAllDepartments);
+router.get("/", departmentController_1.DepartmentController.getAllDepartments);
 /**
  * @route   GET /departments/:id
  * @desc    Get department by ID

@@ -5,6 +5,15 @@ const express_validator_1 = require("express-validator");
 const prisma_1 = require("../lib/prisma");
 const notificationService_1 = require("../services/notificationService");
 const index_1 = require("../index");
+const tabulation = (value) => {
+    if (value === "ANNUAL") {
+        return "annualLeaves";
+    }
+    if (value === "SICK") {
+        return "sickLeaves";
+    }
+    return "casualLeaves";
+};
 class LeaveRequestController {
     // Get all leave requests (HR and Admin can see all, employees see only their own)
     static async getAllLeaveRequests(req, res) {
@@ -418,6 +427,16 @@ class LeaveRequestController {
                             lastName: true,
                             employeeId: true,
                         },
+                    },
+                },
+            });
+            console.log(leaveRequest);
+            // Update employee's leave balance
+            await prisma_1.prisma.employeeLeave.update({
+                where: { userId: leaveRequest.employeeId },
+                data: {
+                    [tabulation(leaveRequest.leaveType)]: {
+                        increment: leaveRequest.days,
                     },
                 },
             });

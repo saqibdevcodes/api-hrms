@@ -1,10 +1,9 @@
-
 generator client {
   provider = "prisma-client-js"
 
   engineType = "client"
-
 }
+
 datasource db {
   provider = "mysql"
 }
@@ -138,8 +137,7 @@ model User {
   Loan          Loan[]
   AdvanceSalary AdvanceSalary[]
 
-
-  hasSystemAccess Boolean  @default(true)
+  hasSystemAccess Boolean @default(true)
 
   @@map("users")
 }
@@ -229,16 +227,14 @@ model OffDay {
 
 // Leave Policies
 model LeavePolicy {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  annualLeaves    Int      @default(21)
-  sickLeaves      Int      @default(10)
-  casualLeaves    Int      @default(5)
-  maternityLeaves Int      @default(90)
-  paternityLeaves Int      @default(15)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String   @unique
+  annualLeaves Int      @default(21)
+  sickLeaves   Int      @default(10)
+  casualLeaves Int      @default(5)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
   users         User[]
@@ -248,18 +244,15 @@ model LeavePolicy {
 }
 
 model EmployeeLeave {
-  id                 Int          @id @default(autoincrement())
-  userId             String       @unique
-  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  annualLeaves       Int
-  sickLeaves         Int
-  casualLeaves       Int
-  compensatoryLeaves Int
-  maternityLeaves    Int
-  paternityLeaves    Int
-  leavePolicyId      String?
-  leavePolicy        LeavePolicy? @relation(fields: [leavePolicyId], references: [id])
-  datetime           DateTime
+  id            Int          @id @default(autoincrement())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  annualLeaves  Int
+  sickLeaves    Int
+  casualLeaves  Int
+  leavePolicyId String?
+  leavePolicy   LeavePolicy? @relation(fields: [leavePolicyId], references: [id])
+  datetime      DateTime
 
   @@map("employee_leaves")
 }
@@ -490,7 +483,7 @@ model AttendanceDeduction {
   id              String       @id @default(cuid())
   attendanceId    String
   attendance      Attendance[]
-  deductionReason String   @db.Text
+  deductionReason String       @db.Text
   deductValue     Float
   leaveId         Int?
   datetime        DateTime
@@ -555,7 +548,7 @@ model PerformanceReview {
   goalsMet      Int          @default(0)
   totalGoals    Int          @default(0)
   manager       String
-  feedback      String? @db.Text
+  feedback      String?      @db.Text
   status        ReviewStatus @default(DRAFT)
   dateCreated   DateTime     @default(now())
   dateCompleted DateTime?
@@ -573,7 +566,7 @@ model PerformanceReview {
 model Notification {
   id         String               @id @default(cuid())
   title      String
-  message    String @db.Text
+  message    String               @db.Text
   type       NotificationType
   priority   NotificationPriority @default(MEDIUM)
   isRead     Boolean              @default(false)
@@ -598,7 +591,7 @@ model Loan {
   totalAmount  Decimal?
   installments Int?
   tenure       Int? // in months
-  reason       String? @db.Text
+  reason       String?   @db.Text
   startDate    DateTime?
   endDate      DateTime?
   status       String
@@ -693,13 +686,7 @@ enum AttendanceStatus {
 enum LeaveType {
   ANNUAL
   SICK
-  MATERNITY
-  PATERNITY
-  PERSONAL
-  EMERGENCY
-  BEREAVEMENT
-  STUDY
-  UNPAID
+  CASUAL
 }
 
 enum RequestStatus {
@@ -854,7 +841,7 @@ model PdrStatusTransition {
   toStatus      PdrOverallStatus
   changedBy     String // User ID
   changedByRole String // "EMPLOYEE", "LINE_MANAGER", "HR", "DIRECTOR"
-  comment       String? @db.Text
+  comment       String?          @db.Text
   createdAt     DateTime         @default(now())
 
   @@map("pdr_status_transitions")
@@ -925,14 +912,13 @@ model PdrOverallComment {
   @@map("pdroverallcomment")
 }
 
-
 model Document {
-  id  Int @id @default(autoincrement())
-  name  String
-  description String @db.Text
-  file  String @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt      
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String   @db.Text
+  file        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 enum EmailJobStatus {

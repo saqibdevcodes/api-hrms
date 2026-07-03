@@ -18,9 +18,9 @@ class PdrController {
             const status = req.query.status;
             const cycle = req.query.cycle;
             const section = req.query.section;
-            const includeSummary = req.query.includeSummary === "true" ||
-                req.query.includeSummary === "1";
-            const result = await pdrService_1.PdrService.getPdrsForUser(req.user.id, req.user.role, req.user.userRank, { page, limit, status, cycle, section, includeSummary });
+            const department = req.query.department;
+            const includeSummary = req.query.includeSummary === "true" || req.query.includeSummary === "1";
+            const result = await pdrService_1.PdrService.getPdrsForUser(req.user.id, req.user.role, req.user.userRank, { page, limit, status, cycle, section, department, includeSummary });
             res.status(200).json(result);
         }
         catch (error) {

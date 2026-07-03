@@ -1124,9 +1124,6 @@ class ZKTecoService {
                     annualLeaves: employeeLeave.annualLeaves,
                     casualLeaves: employeeLeave.casualLeaves,
                     sickLeaves: employeeLeave.sickLeaves,
-                    compensatoryLeaves: employeeLeave.compensatoryLeaves,
-                    maternityLeaves: employeeLeave.maternityLeaves,
-                    paternityLeaves: employeeLeave.paternityLeaves,
                 },
                 policyLimits: employeeLeave.user.leavePolicy
                     ? {

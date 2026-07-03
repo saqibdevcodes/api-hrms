@@ -181,8 +181,6 @@ async function main() {
       annualLeaves: 21,
       sickLeaves: 10,
       casualLeaves: 5,
-      maternityLeaves: 90,
-      paternityLeaves: 15,
       isActive: true,
     },
   });
@@ -291,7 +289,7 @@ async function main() {
       position: "HR Manager",
       department: "Human Resources",
       manager: "Admin",
-      status: UserStatus.ACTIVE // Added this assuming you want an active status
+      status: UserStatus.ACTIVE, // Added this assuming you want an active status
     },
   });
 

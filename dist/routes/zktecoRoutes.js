@@ -18,6 +18,7 @@ router.post("/devices/upload-all-employees", auth_1.authenticate, zktecoValidato
 router.post("/attendance/sync", auth_1.authenticate, zktecoValidator_1.syncAttendanceValidator, auth_1.validateRequest, zktecoController_1.ZKTecoController.syncAttendanceData);
 router.get("/attendance/data", auth_1.authenticate, zktecoValidator_1.getAttendanceDataValidator, auth_1.validateRequest, zktecoController_1.ZKTecoController.getAttendanceData);
 router.get("/attendance/stats", auth_1.authenticate, zktecoValidator_1.getAttendanceStatsValidator, auth_1.validateRequest, zktecoController_1.ZKTecoController.getAttendanceStats);
+router.get("/attendance/emp-dashboard", auth_1.authenticate, zktecoValidator_1.getEmpDashboardValidator, auth_1.validateRequest, zktecoController_1.ZKTecoController.getEmpStatsData);
 router.get("/attendance/fetch-all-from-machine", auth_1.authenticate, zktecoController_1.ZKTecoController.fetchAllAttendanceFromMachine);
 router.get("/attendance/zkteco-records", auth_1.authenticate, zktecoController_1.ZKTecoController.getAllZKTecoRecords);
 router.get("/attendance/export", auth_1.authenticate, zktecoController_1.ZKTecoController.exportAttendanceData);

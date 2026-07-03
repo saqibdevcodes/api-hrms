@@ -502,9 +502,6 @@ export class EmployeeController {
                 annualLeaves: leavePolicy.annualLeaves,
                 sickLeaves: leavePolicy.sickLeaves,
                 casualLeaves: leavePolicy.casualLeaves,
-                compensatoryLeaves: 0,
-                maternityLeaves: leavePolicy.maternityLeaves,
-                paternityLeaves: leavePolicy.paternityLeaves,
                 leavePolicyId: leavePolicy.id,
                 datetime: new Date(),
               },
@@ -1314,9 +1311,6 @@ export class EmployeeController {
           annualLeaves: true,
           sickLeaves: true,
           casualLeaves: true,
-          compensatoryLeaves: true,
-          maternityLeaves: true,
-          paternityLeaves: true,
         },
       });
       const attendace = await prisma.attendance.findMany({

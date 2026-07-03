@@ -5,6 +5,16 @@ import { AuthenticatedRequest } from "../types/auth";
 import { NotificationService } from "../services/notificationService";
 import { getSocketManager } from "../index";
 
+const tabulation = (value: string) => {
+  if (value === "ANNUAL") {
+    return "annualLeaves";
+  }
+  if (value === "SICK") {
+    return "sickLeaves";
+  }
+  return "casualLeaves";
+};
+
 export class LeaveRequestController {
   // Get all leave requests (HR and Admin can see all, employees see only their own)
   static async getAllLeaveRequests(req: AuthenticatedRequest, res: Response) {
@@ -489,6 +499,18 @@ export class LeaveRequestController {
               lastName: true,
               employeeId: true,
             },
+          },
+        },
+      });
+
+      console.log(leaveRequest);
+
+      // Update employee's leave balance
+      await prisma.employeeLeave.update({
+        where: { userId: leaveRequest.employeeId },
+        data: {
+          [tabulation(leaveRequest.leaveType)]: {
+            increment: leaveRequest.days,
           },
         },
       });

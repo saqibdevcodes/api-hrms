@@ -106,6 +106,8 @@ router.get("/designations", auth_1.authenticate, employeeController_1.EmployeeCo
 router.get("/supervisors-by-rank", auth_1.authenticate, employeeController_1.EmployeeController.getSupervisorsByRank);
 // GET /api/employees - Get all employees (HR and Admin only)
 router.get("/", auth_1.authenticate, auth_1.hrAndAdmin, employeeController_1.EmployeeController.getAllEmployees);
+// GET /api/employees/employeeStatus/:id - Get employee status (for dashboard)
+router.get("/employeeStatus/:id", employeeController_1.EmployeeController.getEmployeeStatus);
 // GET /api/employees/:id - Get employee by ID (HR and Admin only)
 router.get("/:id", auth_1.authenticate, auth_1.hrAndAdmin, employeeController_1.EmployeeController.getEmployeeById);
 // POST /api/employees - Create new employee (HR and Admin only)
