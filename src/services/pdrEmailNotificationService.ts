@@ -255,7 +255,7 @@ export class PdrEmailNotificationService {
         );
         break;
 
-      case PdrOverallStatus.MANAGER_FILLING:
+      case PdrOverallStatus.MANAGER_PENDING:
         if (
           fromStatus === PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
           fromStatus === PdrOverallStatus.HR_REVERTED_TO_MANAGER
