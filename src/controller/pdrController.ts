@@ -184,12 +184,12 @@ export class PdrController {
         pdr.overallStatus === PdrOverallStatus.CREATED_BY_HR ||
         pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE
       ) {
-        targetStatus = PdrOverallStatus.EMPLOYEE_FILLING;
+        targetStatus = PdrOverallStatus.EMPLOYEE_PENDING;
       } else if (
         pdr.overallStatus === PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
         pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_MANAGER
       ) {
-        targetStatus = PdrOverallStatus.MANAGER_FILLING;
+        targetStatus = PdrOverallStatus.MANAGER_PENDING;
       } else if (
         pdr.overallStatus === PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER
       ) {
@@ -212,7 +212,7 @@ export class PdrController {
         pdr.linemanager_id === req.user.id ||
         (req.user.role === "HR" &&
           req.user.userRank === "LINE_MANAGER" &&
-          targetStatus === PdrOverallStatus.MANAGER_FILLING)
+          targetStatus === PdrOverallStatus.MANAGER_PENDING)
       ) {
         // User is the line manager OR HR with LINE_MANAGER rank filling manager section
         // Use LINE_MANAGER for filling manager sections
@@ -271,9 +271,9 @@ export class PdrController {
       // Determine target status
       let targetStatus: PdrOverallStatus;
 
-      if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_FILLING) {
+      if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_PENDING) {
         targetStatus = PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
-      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_FILLING) {
+      } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_PENDING) {
         targetStatus = PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
       } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING) {
         // After revising (triggered by employee disagreement), manager sends back to employee for acknowledgment

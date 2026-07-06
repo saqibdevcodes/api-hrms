@@ -752,6 +752,7 @@ enum PdrOverallStatus {
 
   // 2-5. Employee Fill & Submit (with potential HR loop)
   EMPLOYEE_FILLING // 2: Employee is filling
+  EMPLOYEE_PENDING
   EMPLOYEE_SUBMITTED_TO_HR // 3: Employee submitted to HR for review
   HR_REVIEWING_EMPLOYEE // 4: HR reviewing employee's part
   HR_REVERTED_TO_EMPLOYEE // 5: HR sent back to employee (loops back to 2)
@@ -759,6 +760,7 @@ enum PdrOverallStatus {
 
   // 7-11. Manager Fill & Submit (with potential HR loop)
   MANAGER_FILLING // 7: Manager is filling
+  MANAGER_PENDING
   MANAGER_SUBMITTED_TO_HR // 8: Manager submitted to HR
   HR_REVIEWING_MANAGER // 9: HR reviewing manager's part
   HR_REVERTED_TO_MANAGER // 10: HR sent back to manager (loops back to 7)

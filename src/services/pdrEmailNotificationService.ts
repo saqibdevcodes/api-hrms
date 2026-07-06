@@ -44,7 +44,7 @@ export interface PdrEmailJobData {
 const SKIP_NOTIFY_STATUSES: PdrOverallStatus[] = [
   PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
   PdrOverallStatus.HR_REVIEWING_MANAGER,
-  PdrOverallStatus.EMPLOYEE_FILLING,
+  PdrOverallStatus.EMPLOYEE_PENDING,
   PdrOverallStatus.DIRECTOR_REVIEWING,
 ];
 
@@ -200,11 +200,7 @@ export class PdrEmailNotificationService {
     const link = pdrLink(pdr.id);
     const out: { to: string; subject: string; html: string }[] = [];
 
-    const push = (
-      to: string | null,
-      subject: string,
-      body: string,
-    ) => {
+    const push = (to: string | null, subject: string, body: string) => {
       if (!to) return;
       out.push({ to, subject, html: emailLayout(subject, body) });
     };
@@ -227,7 +223,11 @@ export class PdrEmailNotificationService {
           ${employeeDetailsBlock(pdr)}
           <p><a href="${link}">Review PDR</a></p>`;
         for (const to of hrEmails) {
-          push(to, `${cycle} — ${employeeName} submitted PDR (employee section)`, body);
+          push(
+            to,
+            `${cycle} — ${employeeName} submitted PDR (employee section)`,
+            body,
+          );
         }
         break;
       }

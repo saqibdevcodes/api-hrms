@@ -191,13 +191,20 @@ export class PdrService {
   > = {
     CREATED_BY_HR: [
       {
-        nextStatus: PdrOverallStatus.EMPLOYEE_FILLING,
+        nextStatus: PdrOverallStatus.EMPLOYEE_PENDING,
         allowedRoles: ["EMPLOYEE", "HR"],
       },
     ],
+    EMPLOYEE_PENDING: [
+      {
+        nextStatus: "EMPLOYEE_SUBMITTED_TO_HR",
+        allowedRoles: ["EMPLOYEE"],
+      },
+    ],
+
     EMPLOYEE_FILLING: [
       {
-        nextStatus: PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR,
+        nextStatus: "EMPLOYEE_SUBMITTED_TO_HR",
         allowedRoles: ["EMPLOYEE"],
       },
     ],
@@ -223,17 +230,23 @@ export class PdrService {
     ],
     HR_REVERTED_TO_EMPLOYEE: [
       {
-        nextStatus: PdrOverallStatus.EMPLOYEE_FILLING,
+        nextStatus: PdrOverallStatus.EMPLOYEE_PENDING,
         allowedRoles: ["EMPLOYEE"],
       },
     ],
     HR_APPROVED_EMPLOYEE: [
       {
-        nextStatus: PdrOverallStatus.MANAGER_FILLING,
+        nextStatus: PdrOverallStatus.MANAGER_PENDING,
         allowedRoles: ["LINE_MANAGER", "HR"],
       },
     ],
     MANAGER_FILLING: [
+      {
+        nextStatus: PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
+        allowedRoles: ["LINE_MANAGER"],
+      },
+    ],
+    MANAGER_PENDING: [
       {
         nextStatus: PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
         allowedRoles: ["LINE_MANAGER"],
@@ -261,7 +274,7 @@ export class PdrService {
     ],
     HR_REVERTED_TO_MANAGER: [
       {
-        nextStatus: PdrOverallStatus.MANAGER_FILLING,
+        nextStatus: PdrOverallStatus.MANAGER_PENDING,
         allowedRoles: ["LINE_MANAGER"],
       },
     ],
@@ -1214,7 +1227,7 @@ export class PdrService {
           ...whereClause,
           overallStatus: {
             in: [
-              PdrOverallStatus.EMPLOYEE_FILLING,
+              PdrOverallStatus.EMPLOYEE_PENDING,
               PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
             ],
           },
@@ -1225,7 +1238,7 @@ export class PdrService {
           ...whereClause,
           overallStatus: {
             in: [
-              PdrOverallStatus.MANAGER_FILLING,
+              PdrOverallStatus.MANAGER_PENDING,
               PdrOverallStatus.MANAGER_REVISING,
             ],
           },
