@@ -1,6 +1,7 @@
 import { Request } from "express";
-import { Role, UserRank } from "../generated/prisma";
-import { Prisma } from "@prisma/client";
+// import { Role, UserRank } from "../generated/prisma";
+import { Prisma, Role, UserRank } from "@prisma/client";
+
 
 // Authentication Types
 export interface LoginRequest {

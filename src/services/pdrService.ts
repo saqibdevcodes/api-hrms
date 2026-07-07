@@ -820,8 +820,21 @@ export class PdrService {
     },
   ) {
     const page = filters?.page || 1;
-    const limit = filters?.limit || 10;
-    const skip = (page - 1) * limit;
+
+    const rawLimit = filters?.limit || 10;
+    const isUnlimited = rawLimit === -1;
+
+
+    // When unlimited, don't pass skip/take to Prisma
+const take = isUnlimited ? undefined : rawLimit;
+const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
+
+
+
+    // const limit = filters?.limit || 10;
+
+
+    
 
     let baseWhereClause: any = {};
     const isHR = userRole === Role.HR; // HR role only
@@ -967,8 +980,8 @@ export class PdrService {
     const [pdrs, total] = await Promise.all([
       prisma.pdr.findMany({
         where: whereClause,
-        skip,
-        take: limit,
+        ...(skip !== undefined && { skip }),
+        ...(take !== undefined && { take }),
         orderBy: {
           user: {
             firstName: "asc",
@@ -1063,11 +1076,11 @@ export class PdrService {
     } = {
       data: pdrs,
       pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(total / limit),
+        currentPage: isUnlimited ? 1 : page,
+        totalPages: isUnlimited ? 1 : Math.ceil(total / rawLimit),
         totalRecords: total,
-        limit,
-      },
+        limit: isUnlimited ? total : rawLimit,
+      }
     };
 
     if (isPrivilegedViewer && filters?.includeSummary) {

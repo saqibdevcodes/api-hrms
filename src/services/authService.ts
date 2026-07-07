@@ -11,7 +11,8 @@ import {
   TokenPair,
   AuthenticationError,
 } from "../types/auth";
-import { Role } from "../generated/prisma";
+// import { Role } from "../generated/prisma";
+import { Role } from "@prisma/client";
 
 // OTP storage interface
 interface OTPData {
