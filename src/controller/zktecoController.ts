@@ -198,9 +198,9 @@ export class ZKTecoController {
       // If deviceId filter is needed, we can add a deviceId field to attendance records
       // For now, we'll get all attendance records
 
-      // ✅ NO 3-DAY FILTER NEEDED!
+      // ✅ NO STAGING-AGE FILTER NEEDED!
       // Once data is in the attendance table, it's already been finalized
-      // (either auto-finalized after 3 days OR force-finalized by SuperAdmin)
+      // (either auto-finalized after 1 day OR force-finalized by SuperAdmin)
       // So we show ALL attendance records immediately!
 
       console.log("📊 Fetching attendance records (all finalized data)");
@@ -566,11 +566,6 @@ export class ZKTecoController {
       });
     }
   }
-
-
-
-
-
 
   static async getEmpStatsData(req: Request, res: Response) {
     try {
@@ -1012,23 +1007,6 @@ export class ZKTecoController {
       });
     }
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   static async uploadEmployeeToDevice(
     req: AuthenticatedRequest,
@@ -1881,11 +1859,15 @@ export class ZKTecoController {
 
       if (startDate || endDate) {
         where.date = {};
+
         if (startDate) {
-          where.date.gte = new Date(startDate as string);
+          where.date.gte = new Date(
+            `${startDate as string}T00:00:00.000+05:00`,
+          );
         }
+
         if (endDate) {
-          where.date.lte = new Date(endDate as string);
+          where.date.lte = new Date(`${endDate as string}T23:59:59.999+05:00`);
         }
       }
 
@@ -1894,6 +1876,20 @@ export class ZKTecoController {
           departmentId: departmentId as string,
         };
       }
+
+      const totalEmployees = await prisma.user.count({
+        where: {
+          employeeId: { not: null },
+          isActive: true,
+        },
+      });
+
+      const todayAttendance = await prisma.attendance.findMany({
+        where,
+        select: {
+          employeeId: true,
+        },
+      });
 
       // NOTE:
       // `Attendance.status` can remain PRESENT after finalization even when punches indicate LATE/ABSENT.
@@ -1925,7 +1921,7 @@ export class ZKTecoController {
         ),
       ).length;
 
-      const absentCount = attendanceRecords.filter((record: any) => {
+      const absentCounts = attendanceRecords.filter((record: any) => {
         const hasAbsentStatus = record.zktecoRecords.some(
           (zkr: any) =>
             zkr.overallStatus === "ABSENT" ||
@@ -1939,23 +1935,20 @@ export class ZKTecoController {
         (record: any) => record.status === "WORK_FROM_HOME",
       ).length;
 
-      const presentCount = Math.max(totalRecords - absentCount, 0);
+      // const presentCount = Math.max(totalRecords - absentCount, 0);
+
+      const absentCount = totalEmployees - todayAttendance.length;
+      const presentCount = totalEmployees - absentCount;
 
       const stats = {
+        todaysAttendance: todayAttendance.length,
+        totalEmployees: totalEmployees,
         total: totalRecords,
         present: presentCount,
         absent: absentCount,
         late: lateCount,
         halfDay: halfDayCount,
         workFromHome: wfhCount,
-        presentPercentage:
-          totalRecords > 0
-            ? ((presentCount / totalRecords) * 100).toFixed(2)
-            : "0",
-        absentPercentage:
-          totalRecords > 0
-            ? ((absentCount / totalRecords) * 100).toFixed(2)
-            : "0",
       };
 
       res.json({
@@ -2228,7 +2221,7 @@ export class ZKTecoController {
 
       res.json({
         success: result.success,
-        message: `Finalized ${result.finalized} records (3+ days old) with ${result.errors} errors`,
+        message: `Finalized ${result.finalized} records (1+ day old) with ${result.errors} errors`,
         data: {
           finalized: result.finalized,
           errors: result.errors,
@@ -2457,7 +2450,11 @@ export class ZKTecoController {
         return;
       }
 
-      const { sendAll = false, fromDate, toDate } = req.body as {
+      const {
+        sendAll = false,
+        fromDate,
+        toDate,
+      } = req.body as {
         sendAll?: boolean;
         fromDate?: string;
         toDate?: string;
@@ -2499,8 +2496,9 @@ export class ZKTecoController {
         return;
       }
 
-      const recordsByEmployee =
-        AttendanceReminderService.groupByEmployee(recordsNeedingReasons);
+      const recordsByEmployee = AttendanceReminderService.groupByEmployee(
+        recordsNeedingReasons,
+      );
 
       const jobs = await Promise.all(
         Array.from(recordsByEmployee.entries()).map(([employeeId, records]) =>
@@ -2529,9 +2527,7 @@ export class ZKTecoController {
                 records[0].employee?.officialEmail ||
                 records[0].employee?.email,
               recordCount: records.length,
-              dates: records.map((r) =>
-                new Date(r.date).toLocaleDateString(),
-              ),
+              dates: records.map((r) => new Date(r.date).toLocaleDateString()),
             }),
           ),
         },

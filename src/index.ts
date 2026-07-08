@@ -345,7 +345,7 @@ const startServer = async () => {
       console.log("");
 
       // Schedule automatic attendance finalization (runs daily at 2 AM)
-      // This automatically finalizes staging records that are 3+ days old
+      // This automatically finalizes staging records that are 1+ day old
       cron.schedule(
         "0 2 * * *",
         async () => {

@@ -1724,7 +1724,7 @@ export class ZKTecoService {
     try {
       console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
 
-      // Step 1: Save to STAGING table first (3-day delay before finalization)
+      // Step 1: Save to STAGING table first (1-day delay before finalization)
       // Store all timestamps as PKT in the database so DB values match wall-clock time
       const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
       const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
@@ -1746,7 +1746,7 @@ export class ZKTecoService {
       });
 
       console.log(
-        `📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 3 days)`,
+        `📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 1 day)`,
       );
 
       // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
@@ -2056,7 +2056,7 @@ export class ZKTecoService {
       }
 
       // Step 5: Mark staging record as processed
-      // NO ATTENDANCE RECORD CREATED YET - Will be created after 3 days by finalization cron
+      // NO ATTENDANCE RECORD CREATED YET - Will be created after 1 day by finalization cron
       await prisma.zKTecoAttendanceStaging.update({
         where: { id: stagingRecord.id },
         data: {
@@ -2070,7 +2070,7 @@ export class ZKTecoService {
         `✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp.toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} PKT (DB stores UTC: ${attendanceData.timestamp.toISOString()})`,
       );
       console.log(
-        `⏳ Record will be finalized and moved to attendance after 3 days`,
+        `⏳ Record will be finalized and moved to attendance after 1 day`,
       );
 
       return true;

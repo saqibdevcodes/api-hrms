@@ -1,20 +1,20 @@
 /**
  * Finalization Service
  *
- * Handles the 3-day staging to final record finalization process
+ * Handles the 1-day staging to final record finalization process.
  *
  * Flow:
- * 1. Device punches → ZKTecoAttendanceStaging (immediate)
- * 2. After 3 days → ZKTecoAttendanceRecord (finalized)
- * 3. After 3 days → Attendance table (finalized)
+ * 1. Device punches -> ZKTecoAttendanceStaging (immediate)
+ * 2. After 1 day -> ZKTecoAttendanceRecord (finalized)
+ * 3. After 1 day -> Attendance table (finalized)
  */
 
 import { prisma } from "../lib/prisma";
 
 export class FinalizationService {
   /**
-   * Finalize staging records that are 3+ days old
-   * This should be run by a cron job every hour or day
+   * Finalize staging records that are 1+ day old.
+   * This should be run by a cron job every hour or day.
    */
   public async finalizeStagingRecords(): Promise<{
     success: boolean;
@@ -24,17 +24,17 @@ export class FinalizationService {
     try {
       console.log("🔄 Starting finalization process...");
 
-      // Find all staging records that are 3+ days old and not yet finalized
+      // Find all staging records that are 1+ day old and not yet finalized
       // createdAt is stored as PKT, so compare with PKT "now"
       const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-      const threeDaysAgo = new Date(Date.now() + PKT_OFFSET_MS);
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const oneDayAgo = new Date(Date.now() + PKT_OFFSET_MS);
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
       const stagingRecords = await prisma.zKTecoAttendanceStaging.findMany({
         where: {
           isFinalized: false,
           createdAt: {
-            lte: threeDaysAgo,
+            lte: oneDayAgo,
           },
         },
         orderBy: {
