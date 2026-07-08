@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import { config } from "../config/env";
 import { JwtPayload, RefreshTokenPayload, TokenPair } from "../types/auth";
-import { Role } from "../generated/prisma";
+// import { Role } from "../generated/prisma";
+import { Role } from "@prisma/client";
 
 export class JwtUtils {
   /**

@@ -9,7 +9,8 @@ import {
   ApiResponse,
   FieldError,
 } from "../types/auth";
-import { Role } from "../generated/prisma";
+// import { Role } from "../generated/prisma";
+import { Role } from "@prisma/client";
 
 /**
  * Middleware to validate request using express-validator
