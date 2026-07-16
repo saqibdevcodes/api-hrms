@@ -22,28 +22,28 @@ router.post(
   authenticate,
   addDeviceValidator,
   validateRequest,
-  ZKTecoController.addDevice
+  ZKTecoController.addDevice,
 );
 router.delete(
   "/devices/:deviceId",
   authenticate,
   deviceIdValidator,
   validateRequest,
-  ZKTecoController.removeDevice
+  ZKTecoController.removeDevice,
 );
 router.get(
   "/devices/:deviceId/status",
   authenticate,
   deviceIdValidator,
   validateRequest,
-  ZKTecoController.getDeviceStatus
+  ZKTecoController.getDeviceStatus,
 );
 router.get(
   "/devices/:deviceId/info",
   authenticate,
   deviceIdValidator,
   validateRequest,
-  ZKTecoController.getDeviceInfo
+  ZKTecoController.getDeviceInfo,
 );
 
 // Employee Management Routes
@@ -52,14 +52,14 @@ router.post(
   authenticate,
   uploadEmployeeValidator,
   validateRequest,
-  ZKTecoController.uploadEmployeeToDevice
+  ZKTecoController.uploadEmployeeToDevice,
 );
 router.post(
   "/devices/upload-all-employees",
   authenticate,
   uploadAllEmployeesValidator,
   validateRequest,
-  ZKTecoController.uploadAllEmployeesToDevice
+  ZKTecoController.uploadAllEmployeesToDevice,
 );
 
 // Attendance Data Routes
@@ -68,107 +68,112 @@ router.post(
   authenticate,
   syncAttendanceValidator,
   validateRequest,
-  ZKTecoController.syncAttendanceData
+  ZKTecoController.syncAttendanceData,
+);
+router.get(
+  "/attendance/export",
+  authenticate,
+  ZKTecoController.exportAttendanceExcel,
 );
 router.get(
   "/attendance/data",
   authenticate,
   getAttendanceDataValidator,
   validateRequest,
-  ZKTecoController.getAttendanceData
+  ZKTecoController.getAttendanceData,
 );
 router.get(
   "/attendance/stats",
   authenticate,
   getAttendanceStatsValidator,
   validateRequest,
-  ZKTecoController.getAttendanceStats
+  ZKTecoController.getAttendanceStats,
 );
 router.get(
   "/attendance/emp-dashboard",
   authenticate,
   getEmpDashboardValidator,
   validateRequest,
-  ZKTecoController.getEmpStatsData
+  ZKTecoController.getEmpStatsData,
 );
 router.get(
   "/attendance/fetch-all-from-machine",
   authenticate,
-  ZKTecoController.fetchAllAttendanceFromMachine
+  ZKTecoController.fetchAllAttendanceFromMachine,
 );
 router.get(
   "/attendance/zkteco-records",
   authenticate,
-  ZKTecoController.getAllZKTecoRecords
+  ZKTecoController.getAllZKTecoRecords,
 );
 router.get(
   "/attendance/export",
   authenticate,
-  ZKTecoController.exportAttendanceData
+  ZKTecoController.exportAttendanceData,
 );
 
 router.post(
   "/attendance/late-reason",
   authenticate,
-  ZKTecoController.addLateReason
+  ZKTecoController.addLateReason,
 );
 router.put(
   "/attendance/late-reason/:id",
   authenticate,
-  ZKTecoController.updateLateReason
+  ZKTecoController.updateLateReason,
 );
 
 router.post(
   "/attendance/request-reason",
   authenticate,
-  ZKTecoController.requestReason
+  ZKTecoController.requestReason,
 );
 
 router.post(
   "/attendance/late-reason-reminders",
   authenticate,
-  ZKTecoController.sendLateReasonReminders
+  ZKTecoController.sendLateReasonReminders,
 );
 
 router.post(
   "/employees/create-from-zkteco",
   authenticate,
-  ZKTecoController.createEmployeeFromZKTeco
+  ZKTecoController.createEmployeeFromZKTeco,
 );
 
 // Get employee deduction history
 router.get(
   "/employees/:employeeId/deduction-history",
   authenticate,
-  ZKTecoController.getEmployeeDeductionHistory
+  ZKTecoController.getEmployeeDeductionHistory,
 );
 
 // Get employee leave balance
 router.get(
   "/employees/:employeeId/leave-balance",
   authenticate,
-  ZKTecoController.getEmployeeLeaveBalance
+  ZKTecoController.getEmployeeLeaveBalance,
 );
 
 // Debug attendance records for a specific date
 router.get(
   "/employees/:employeeId/debug-attendance/:date",
   authenticate,
-  ZKTecoController.debugAttendanceRecords
+  ZKTecoController.debugAttendanceRecords,
 );
 
 // Fix attendance records for a specific date
 router.post(
   "/employees/:employeeId/fix-attendance/:date",
   authenticate,
-  ZKTecoController.fixAttendanceRecords
+  ZKTecoController.fixAttendanceRecords,
 );
 
 // Validate records for deduction
 router.post(
   "/attendance/validate-records",
   authenticate,
-  ZKTecoController.validateRecordsForDeduction
+  ZKTecoController.validateRecordsForDeduction,
 );
 
 // Device Operations Routes
@@ -177,7 +182,7 @@ router.post(
   authenticate,
   clearDeviceAttendanceValidator,
   validateRequest,
-  ZKTecoController.clearDeviceAttendance
+  ZKTecoController.clearDeviceAttendance,
 );
 
 // iClock protocol routes (for ZKTeco device communication)
@@ -200,12 +205,12 @@ router.post("/iclock/fdata", ZKTecoController.handleIClockFData); // Add face da
 router.post(
   "/attendance/force-finalize-all",
   authenticate,
-  ZKTecoController.forceFinalizeAll
+  ZKTecoController.forceFinalizeAll,
 );
 router.post(
   "/attendance/run-finalization-cron",
   authenticate,
-  ZKTecoController.runFinalizationCron
+  ZKTecoController.runFinalizationCron,
 );
 
 export default router;

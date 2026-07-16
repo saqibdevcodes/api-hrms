@@ -10,6 +10,7 @@ import { AuthenticatedRequest } from "../types/auth";
 import { EmailService } from "../utils/emailService";
 import { AttendanceReminderService } from "../services/attendanceReminderService";
 import { queueAttendanceReminderEmail } from "../queues/email.jobs";
+import ExcelJS from "exceljs";
 
 export class ZKTecoController {
   static async getDevices(req: Request, res: Response) {
@@ -135,12 +136,16 @@ export class ZKTecoController {
         endDate,
         employeeId,
         departmentId,
+        search,
+        arrivalStatus,
         page = 1,
         limit = 50,
       } = req.query;
 
-      const skip = (Number(page) - 1) * Number(limit);
-      const take = Number(limit);
+      const pageNumber = Number(page);
+      const limitNumber = Number(limit);
+      const skip = (pageNumber - 1) * limitNumber;
+      const take = limitNumber;
 
       // 🔐 SECURITY: Get authenticated user from request
       const authenticatedRequest = req as any;
@@ -156,52 +161,155 @@ export class ZKTecoController {
       );
 
       if (canViewAllRecords) {
-        // 🔓 PRIVILEGED ACCESS: Can see all records, optionally filtered by employeeId and/or department
+        where.employee = {
+          employeeId: {
+            not: null,
+          },
+          isActive: true,
+        };
 
-        // Build employee filter if either employeeId or departmentId is specified
-        if (employeeId || departmentId) {
-          where.employee = {};
+        if (employeeId) {
+          where.employee.id = employeeId as string;
+        }
 
-          if (employeeId) {
-            where.employee.id = employeeId as string;
-          }
+        if (departmentId) {
+          where.employee.departmentId = departmentId as string;
+        }
 
-          if (departmentId) {
-            where.employee.departmentId = departmentId as string;
-          }
+        if (search) {
+          const searchValue = String(search).trim();
+
+          where.employee.OR = [
+            {
+              firstName: {
+                contains: searchValue,
+              },
+            },
+            {
+              lastName: {
+                contains: searchValue,
+              },
+            },
+            {
+              email: {
+                contains: searchValue,
+              },
+            },
+            {
+              employeeId: {
+                contains: searchValue,
+              },
+            },
+          ];
         }
 
         console.log(
           `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`,
         );
       } else {
-        // 🔒 DEFAULT/EMPLOYEE ACCESS: STRICTLY restrict to own records
-        // If user role is EMPLOYEE or any other unhandled role, they see ONLY their own data
         where.employeeId = currentUser.id;
+
         console.log(
           `👤 User ${currentUser.email} (${currentUser.role}) viewing their own attendance`,
         );
       }
 
-      // 📅 DATE FILTERING: Apply date range if specified
+      // 📅 DATE FILTERING: If no dates are sent, show only today's attendance
+      // 📅 DATE FILTERING
+      const getPakistanToday = () => {
+        return new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Karachi",
+        });
+      };
+
+      const getDateRange = (date: string) => {
+        const start = new Date(`${date}T00:00:00.000Z`);
+        const end = new Date(`${date}T00:00:00.000Z`);
+        end.setUTCDate(end.getUTCDate() + 1);
+
+        return { start, end };
+      };
+
+      let selectedDate: string | null = null;
+
+      // If user sends date filters, use them normally
       if (startDate || endDate) {
-        where.date = {};
-        if (startDate) {
-          where.date.gte = new Date(startDate as string); // Greater than or equal to start date
-        }
-        if (endDate) {
-          where.date.lte = new Date(endDate as string); // Less than or equal to end date
+        const filterStartDate = (startDate as string) || (endDate as string);
+        const filterEndDate = (endDate as string) || filterStartDate;
+
+        const start = new Date(`${filterStartDate}T00:00:00.000Z`);
+        const end = new Date(`${filterEndDate}T00:00:00.000Z`);
+        end.setUTCDate(end.getUTCDate() + 1);
+
+        where.date = {
+          gte: start,
+          lt: end,
+        };
+
+        selectedDate = filterStartDate;
+      } else {
+        // If no date is sent, first check today's attendance
+        const today = getPakistanToday();
+        const todayRange = getDateRange(today);
+
+        const todayCount = await prisma.attendance.count({
+          where: {
+            ...where,
+            date: {
+              gte: todayRange.start,
+              lt: todayRange.end,
+            },
+          },
+        });
+
+        if (todayCount > 0) {
+          // Today attendance exists
+          where.date = {
+            gte: todayRange.start,
+            lt: todayRange.end,
+          };
+
+          selectedDate = today;
+        } else {
+          // No today attendance, find latest previous attendance date
+          const latestAttendance = await prisma.attendance.findFirst({
+            where: {
+              ...where,
+              date: {
+                lt: todayRange.start,
+              },
+            },
+            select: {
+              date: true,
+            },
+            orderBy: {
+              date: "desc",
+            },
+          });
+
+          if (latestAttendance) {
+            const latestDate = latestAttendance.date
+              .toISOString()
+              .split("T")[0];
+            const latestRange = getDateRange(latestDate);
+
+            where.date = {
+              gte: latestRange.start,
+              lt: latestRange.end,
+            };
+
+            selectedDate = latestDate;
+          } else {
+            // No attendance data found at all
+            where.date = {
+              gte: todayRange.start,
+              lt: todayRange.end,
+            };
+
+            selectedDate = today;
+          }
         }
       }
-
-      // 🔧 FUTURE ENHANCEMENT: Device filtering can be added here
-      // If deviceId filter is needed, we can add a deviceId field to attendance records
-      // For now, we'll get all attendance records
-
-      // ✅ NO STAGING-AGE FILTER NEEDED!
-      // Once data is in the attendance table, it's already been finalized
-      // (either auto-finalized after 1 day OR force-finalized by SuperAdmin)
-      // So we show ALL attendance records immediately!
 
       console.log("📊 Fetching attendance records (all finalized data)");
       console.log(`   User: ${currentUser.email} (${currentUser.role})`);
@@ -209,68 +317,63 @@ export class ZKTecoController {
       console.log(`   Employee Filter: ${employeeId || "none"}`);
       console.log(`   Where Clause:`, JSON.stringify(where, null, 2));
 
-      const [attendanceRecords, total] = await Promise.all([
-        prisma.attendance.findMany({
-          where,
-          select: {
-            id: true,
-            employeeId: true,
-            date: true,
-            checkIn: true,
-            checkOut: true,
-            status: true,
-            notes: true,
-            reason: true, // ✅ Explicitly select reason field
-            createdAt: true,
-            updatedAt: true,
-            employee: {
-              select: {
-                id: true,
-                employeeId: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-                department: true,
-                shift: {
-                  select: {
-                    id: true,
-                    name: true,
-                    startTime: true,
-                    endTime: true,
-                    breakTime: true,
-                    halfDayStart: true,
-                    fullDayStart: true,
-                    earlyOut: true,
-                  },
+      const attendanceRecords = await prisma.attendance.findMany({
+        where,
+        select: {
+          id: true,
+          employeeId: true,
+          date: true,
+          checkIn: true,
+          checkOut: true,
+          status: true,
+          notes: true,
+          reason: true,
+          createdAt: true,
+          updatedAt: true,
+          employee: {
+            select: {
+              id: true,
+              employeeId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
+              shift: {
+                select: {
+                  id: true,
+                  name: true,
+                  startTime: true,
+                  endTime: true,
+                  breakTime: true,
+                  halfDayStart: true,
+                  fullDayStart: true,
+                  earlyOut: true,
                 },
-                departmentEntity: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+              },
+              departmentEntity: {
+                select: {
+                  id: true,
+                  name: true,
                 },
               },
             },
-            zktecoRecords: {
-              select: {
-                id: true,
-                timestamp: true,
-                checkType: true,
-                overallStatus: true,
-              },
-              orderBy: {
-                timestamp: "asc",
-              },
+          },
+          zktecoRecords: {
+            select: {
+              id: true,
+              timestamp: true,
+              checkType: true,
+              overallStatus: true,
+            },
+            orderBy: {
+              timestamp: "asc",
             },
           },
-          orderBy: {
-            date: "desc",
-          },
-          skip,
-          take,
-        }),
-        prisma.attendance.count({ where }),
-      ]);
+        },
+        orderBy: {
+          date: "desc",
+        },
+      });
 
       // Helper function to calculate attendance status based on shift timing
       const calculateAttendanceStatus = (
@@ -544,16 +647,64 @@ export class ZKTecoController {
         };
       });
 
+      const normalizeArrivalStatus = (value: any): string[] => {
+        if (!value) return [];
+
+        switch (String(value)) {
+          case "ON_TIME":
+            return ["ON_TIME_ARRIVAL", "PRESENT"];
+
+          case "LATE_ARRIVAL":
+            return ["LATE"];
+
+          case "HALF_DAY_ARRIVAL":
+            return ["HALF_DAY", "HALF_DAY_LEAVE"];
+
+          case "EARLY_OUT":
+            return ["EARLY_OUT"];
+
+          default:
+            return [String(value)];
+        }
+      };
+
+      const allowedStatuses = normalizeArrivalStatus(arrivalStatus);
+
+      const filteredRecords =
+        allowedStatuses.length > 0
+          ? transformedRecords.filter((record: any) => {
+              return (
+                allowedStatuses.includes(record.status) ||
+                allowedStatuses.includes(record.checkInStatus) ||
+                allowedStatuses.includes(record.checkOutStatus)
+              );
+            })
+          : transformedRecords;
+
+      const total = filteredRecords.length;
+
+      const paginatedRecords = filteredRecords.slice(skip, skip + take);
+
+      const departments = await prisma.department.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true },
+      });
+
       res.json({
         success: true,
         message: "Attendance data retrieved successfully",
         data: {
-          records: transformedRecords,
+          records: paginatedRecords,
+          departments,
           pagination: {
-            page: Number(page),
-            limit: Number(limit),
+            page: pageNumber,
+            currentPage: pageNumber,
+            limit: limitNumber,
             total,
-            pages: Math.ceil(total / Number(limit)),
+            totalRecords: total,
+            pages: Math.ceil(total / limitNumber),
+            totalPages: Math.ceil(total / limitNumber),
           },
         },
       });
@@ -1855,49 +2006,120 @@ export class ZKTecoController {
     try {
       const { startDate, endDate, departmentId } = req.query;
 
-      const where: any = {};
+      // Pakistan today in YYYY-MM-DD format
+      const getPakistanToday = () => {
+        return new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Karachi",
+        });
+      };
 
-      if (startDate || endDate) {
-        where.date = {};
+      // For MySQL DATE column, use pure UTC date range
+      const getDateRange = (date: string) => {
+        const start = new Date(`${date}T00:00:00.000Z`);
+        const end = new Date(`${date}T00:00:00.000Z`);
+        end.setUTCDate(end.getUTCDate() + 1);
 
-        if (startDate) {
-          where.date.gte = new Date(
-            `${startDate as string}T00:00:00.000+05:00`,
-          );
-        }
+        return { start, end };
+      };
 
-        if (endDate) {
-          where.date.lte = new Date(`${endDate as string}T23:59:59.999+05:00`);
-        }
-      }
+      const formatDateOnly = (date: Date) => {
+        return date.toISOString().split("T")[0];
+      };
+
+      const employeeWhere: any = {
+        employeeId: { not: null },
+        isActive: true,
+      };
 
       if (departmentId) {
-        where.employee = {
-          departmentId: departmentId as string,
-        };
+        employeeWhere.departmentId = departmentId as string;
       }
 
-      const totalEmployees = await prisma.user.count({
-        where: {
+      const baseAttendanceWhere: any = {
+        employee: {
           employeeId: { not: null },
           isActive: true,
+          ...(departmentId ? { departmentId: departmentId as string } : {}),
         },
+      };
+
+      let selectedStartDate: string;
+      let selectedEndDate: string;
+      let isFallbackDate = false;
+
+      // CASE 1: User selected date/range manually
+      if (startDate || endDate) {
+        selectedStartDate = (startDate as string) || (endDate as string);
+        selectedEndDate = (endDate as string) || selectedStartDate;
+      } else {
+        // CASE 2: No date selected, first check today's attendance
+        const today = getPakistanToday();
+        const todayRange = getDateRange(today);
+
+        const todayAttendanceCount = await prisma.attendance.count({
+          where: {
+            ...baseAttendanceWhere,
+            date: {
+              gte: todayRange.start,
+              lt: todayRange.end,
+            },
+          },
+        });
+
+        if (todayAttendanceCount > 0) {
+          selectedStartDate = today;
+          selectedEndDate = today;
+        } else {
+          // CASE 3: Today has no attendance, get latest previous attendance date
+          const latestAttendance = await prisma.attendance.findFirst({
+            where: {
+              ...baseAttendanceWhere,
+              date: {
+                lt: todayRange.start,
+              },
+            },
+            select: {
+              date: true,
+            },
+            orderBy: {
+              date: "desc",
+            },
+          });
+
+          if (latestAttendance) {
+            const latestDate = formatDateOnly(latestAttendance.date);
+
+            selectedStartDate = latestDate;
+            selectedEndDate = latestDate;
+            isFallbackDate = true;
+          } else {
+            // CASE 4: No attendance found at all
+            selectedStartDate = today;
+            selectedEndDate = today;
+          }
+        }
+      }
+
+      const startRange = getDateRange(selectedStartDate);
+      const endRange = getDateRange(selectedEndDate);
+
+      const attendanceWhere: any = {
+        ...baseAttendanceWhere,
+        date: {
+          gte: startRange.start,
+          lt: endRange.end,
+        },
+      };
+
+      const totalEmployees = await prisma.user.count({
+        where: employeeWhere,
       });
 
-      const todayAttendance = await prisma.attendance.findMany({
-        where,
-        select: {
-          employeeId: true,
-        },
-      });
-
-      // NOTE:
-      // `Attendance.status` can remain PRESENT after finalization even when punches indicate LATE/ABSENT.
-      // Derive stats from linked ZKTeco status + check-in/out for accurate analytics.
       const attendanceRecords = await prisma.attendance.findMany({
-        where,
+        where: attendanceWhere,
         select: {
           id: true,
+          employeeId: true,
           status: true,
           checkIn: true,
           checkOut: true,
@@ -1909,47 +2131,84 @@ export class ZKTecoController {
         },
       });
 
-      const totalRecords = attendanceRecords.length;
+      const attendedEmployeeIds = new Set<string>();
+      const absentEmployeeIds = new Set<string>();
+      const lateEmployeeIds = new Set<string>();
+      const halfDayEmployeeIds = new Set<string>();
+      const wfhEmployeeIds = new Set<string>();
 
-      const lateCount = attendanceRecords.filter((record: any) =>
-        record.zktecoRecords.some((zkr: any) => zkr.overallStatus === "LATE"),
-      ).length;
+      for (const record of attendanceRecords) {
+        attendedEmployeeIds.add(record.employeeId);
 
-      const halfDayCount = attendanceRecords.filter((record: any) =>
-        record.zktecoRecords.some(
-          (zkr: any) => zkr.overallStatus === "HALF_DAY_LEAVE",
-        ),
-      ).length;
+        const zkStatuses = record.zktecoRecords.map((zkr) => zkr.overallStatus);
 
-      const absentCounts = attendanceRecords.filter((record: any) => {
-        const hasAbsentStatus = record.zktecoRecords.some(
-          (zkr: any) =>
-            zkr.overallStatus === "ABSENT" ||
-            zkr.overallStatus === "FULL_DAY_LEAVE",
-        );
-        const hasNoPunches = !record.checkIn && !record.checkOut;
-        return hasAbsentStatus || hasNoPunches;
-      }).length;
+        const isLate = zkStatuses.includes("LATE");
 
-      const wfhCount = attendanceRecords.filter(
-        (record: any) => record.status === "WORK_FROM_HOME",
-      ).length;
+        const isHalfDay = zkStatuses.includes("HALF_DAY_LEAVE");
 
-      // const presentCount = Math.max(totalRecords - absentCount, 0);
+        const isAbsent =
+          zkStatuses.includes("ABSENT") ||
+          zkStatuses.includes("FULL_DAY_LEAVE") ||
+          (!record.checkIn && !record.checkOut);
 
-      const absentCount = totalEmployees - todayAttendance.length;
-      const presentCount = totalEmployees - absentCount;
+        const isWorkFromHome = record.status === "WORK_FROM_HOME";
+
+        if (isAbsent) {
+          absentEmployeeIds.add(record.employeeId);
+        }
+
+        if (isLate) {
+          lateEmployeeIds.add(record.employeeId);
+        }
+
+        if (isHalfDay) {
+          halfDayEmployeeIds.add(record.employeeId);
+        }
+
+        if (isWorkFromHome) {
+          wfhEmployeeIds.add(record.employeeId);
+        }
+      }
+
+      const employeesWithoutAttendance =
+        totalEmployees - attendedEmployeeIds.size;
+
+      const absentCount = employeesWithoutAttendance + absentEmployeeIds.size;
+
+      const presentCount = attendedEmployeeIds.size - absentEmployeeIds.size;
 
       const stats = {
-        todaysAttendance: todayAttendance.length,
-        totalEmployees: totalEmployees,
-        total: totalRecords,
-        present: presentCount,
-        absent: absentCount,
-        late: lateCount,
-        halfDay: halfDayCount,
-        workFromHome: wfhCount,
+        dateFrom: selectedStartDate,
+        dateTo: selectedEndDate,
+        isFallbackDate,
+
+        totalEmployees,
+
+        totalAttendanceRecords: attendanceRecords.length,
+        todaysAttendance: attendedEmployeeIds.size,
+
+        present: Math.max(presentCount, 0),
+        absent: Math.max(absentCount, 0),
+        late: lateEmployeeIds.size,
+        halfDay: halfDayEmployeeIds.size,
+        workFromHome: wfhEmployeeIds.size,
       };
+      const rawTodayCount = await prisma.attendance.count({
+        where: {
+          date: {
+            gte: startRange.start,
+            lt: startRange.end,
+          },
+        },
+      });
+
+      const filteredTodayCount = await prisma.attendance.count({
+        where: attendanceWhere,
+      });
+
+      console.log("Raw today attendance:", rawTodayCount);
+      console.log("Filtered today attendance:", filteredTodayCount);
+      console.log("attendanceWhere:", JSON.stringify(attendanceWhere, null, 2));
 
       res.json({
         success: true,
@@ -2675,6 +2934,751 @@ export class ZKTecoController {
       res.status(500).json({
         success: false,
         message: "Failed to send reason request",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  static async exportAttendanceExcel(req: Request, res: Response) {
+    try {
+      const {
+        startDate,
+        endDate,
+        departmentIds,
+        arrivalStatuses,
+        search,
+        includeSummary = "true",
+        includeReasons = "true",
+        includeZktecoLogs = "false",
+        includeWfh = "true",
+      } = req.query;
+
+      const authenticatedRequest = req as any;
+      const currentUser = authenticatedRequest.user;
+
+      const departmentIdList = departmentIds
+        ? String(departmentIds).split(",").filter(Boolean)
+        : [];
+
+      const arrivalStatusList = arrivalStatuses
+        ? String(arrivalStatuses).split(",").filter(Boolean)
+        : [];
+
+      const fromDate = String(startDate);
+      const toDate = String(endDate || startDate);
+
+      const start = new Date(`${fromDate}T00:00:00.000Z`);
+      const end = new Date(`${toDate}T00:00:00.000Z`);
+      end.setUTCDate(end.getUTCDate() + 1);
+
+      const canViewAllRecords = ["ADMIN", "HR", "SUPERADMIN"].includes(
+        currentUser.role,
+      );
+
+      const where: any = {
+        date: {
+          gte: start,
+          lt: end,
+        },
+      };
+
+      if (canViewAllRecords) {
+        where.employee = {
+          employeeId: {
+            not: null,
+          },
+          isActive: true,
+        };
+
+        if (departmentIdList.length) {
+          where.employee.departmentId = {
+            in: departmentIdList,
+          };
+        }
+
+        if (search) {
+          const searchValue = String(search).trim();
+
+          where.employee.OR = [
+            { firstName: { contains: searchValue } },
+            { lastName: { contains: searchValue } },
+            { email: { contains: searchValue } },
+            { employeeId: { contains: searchValue } },
+          ];
+        }
+      } else {
+        where.employeeId = currentUser.id;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+
+      workbook.creator = "HRMS Portal";
+      workbook.created = new Date();
+      workbook.modified = new Date();
+
+      const formatStatus = (value: any) => {
+        if (!value) return "N/A";
+
+        return String(value)
+          .replace(/_/g, " ")
+          .toLowerCase()
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+      };
+
+      const formatDate = (value: Date | string | null | undefined) => {
+        if (!value) return "N/A";
+
+        const date = value instanceof Date ? value : new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+          return "N/A";
+        }
+
+        return date.toLocaleDateString("en-GB", {
+          timeZone: "UTC",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+      };
+
+      const formatTime = (value: Date | string | null | undefined) => {
+        if (!value) return "N/A";
+
+        const date = value instanceof Date ? value : new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+          return "N/A";
+        }
+
+        /*
+         * The attendance DATETIME values are already stored as Pakistan
+         * local wall-clock times, but Prisma interprets them as UTC.
+         *
+         * Formatting with UTC prevents another +5-hour conversion and
+         * preserves the exact time shown in the database.
+         */
+        return date.toLocaleString("en-GB", {
+          timeZone: "UTC",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        });
+      };
+
+      const getDepartmentName = (record: any) => {
+        return (
+          record.employee?.departmentEntity?.name ||
+          record.employee?.department?.name ||
+          record.employee?.department ||
+          "N/A"
+        );
+      };
+
+      const normalizeStatusGroup = (record: any) => {
+        const status = String(record.status || "").toUpperCase();
+        const checkInStatus = String(record.checkInStatus || "").toUpperCase();
+        const checkOutStatus = String(
+          record.checkOutStatus || "",
+        ).toUpperCase();
+
+        if (
+          status.includes("WORK_FROM_HOME") ||
+          status.includes("WFH") ||
+          checkInStatus.includes("WORK_FROM_HOME") ||
+          checkInStatus.includes("WFH") ||
+          checkOutStatus.includes("WORK_FROM_HOME") ||
+          checkOutStatus.includes("WFH")
+        ) {
+          return "WORK_FROM_HOME";
+        }
+
+        if (
+          status.includes("HALF_DAY") ||
+          checkInStatus.includes("HALF_DAY") ||
+          checkOutStatus.includes("HALF_DAY")
+        ) {
+          return "HALF_DAY_ARRIVAL";
+        }
+
+        if (status.includes("LATE") || checkInStatus.includes("LATE")) {
+          return "LATE_ARRIVAL";
+        }
+
+        if (
+          status.includes("EARLY_OUT") ||
+          checkOutStatus.includes("EARLY_OUT")
+        ) {
+          return "EARLY_OUT";
+        }
+
+        if (
+          status.includes("PRESENT") ||
+          status.includes("ON_TIME") ||
+          checkInStatus.includes("ON_TIME")
+        ) {
+          return "ON_TIME";
+        }
+
+        return status || "UNKNOWN";
+      };
+
+      const applyTitleRow = (
+        worksheet: ExcelJS.Worksheet,
+        title: string,
+        subtitle: string,
+        totalColumns: number,
+      ) => {
+        worksheet.spliceRows(1, 0, [title]);
+        worksheet.spliceRows(2, 0, [subtitle]);
+        worksheet.spliceRows(3, 0, []);
+
+        worksheet.mergeCells(1, 1, 1, totalColumns);
+        worksheet.mergeCells(2, 1, 2, totalColumns);
+
+        worksheet.getRow(1).height = 30;
+        worksheet.getRow(2).height = 23;
+        worksheet.getRow(3).height = 6;
+
+        const titleCell = worksheet.getCell(1, 1);
+        titleCell.font = {
+          bold: true,
+          size: 16,
+          color: { argb: "FFFFFFFF" },
+        };
+        titleCell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF0F172A" },
+        };
+        titleCell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+
+        const subtitleCell = worksheet.getCell(2, 1);
+        subtitleCell.font = {
+          bold: true,
+          size: 10,
+          color: { argb: "FF1E3A8A" },
+        };
+        subtitleCell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFDBEAFE" },
+        };
+        subtitleCell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+      };
+
+      const applyHeaderStyle = (
+        worksheet: ExcelJS.Worksheet,
+        headerRowNumber = 1,
+      ) => {
+        const headerRow = worksheet.getRow(headerRowNumber);
+
+        headerRow.height = 26;
+
+        headerRow.eachCell((cell) => {
+          cell.font = {
+            bold: true,
+            color: { argb: "FFFFFFFF" },
+            size: 10,
+          };
+
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FF1E40AF" },
+          };
+
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: "center",
+            wrapText: true,
+          };
+
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFCBD5E1" } },
+            left: { style: "thin", color: { argb: "FFCBD5E1" } },
+            bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+            right: { style: "thin", color: { argb: "FFCBD5E1" } },
+          };
+        });
+      };
+
+      const applyBodyStyle = (
+        worksheet: ExcelJS.Worksheet,
+        startRowNumber = 2,
+      ) => {
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber < startRowNumber) return;
+
+          row.height = 23;
+
+          row.eachCell((cell) => {
+            cell.font = {
+              size: 10,
+              color: { argb: "FF0F172A" },
+            };
+
+            cell.alignment = {
+              vertical: "middle",
+              horizontal: "center",
+              wrapText: true,
+            };
+
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFE2E8F0" } },
+              left: { style: "thin", color: { argb: "FFE2E8F0" } },
+              bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+              right: { style: "thin", color: { argb: "FFE2E8F0" } },
+            };
+
+            if (rowNumber % 2 === 0) {
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFF8FAFC" },
+              };
+            }
+          });
+        });
+      };
+
+      const applySheetSettings = (
+        worksheet: ExcelJS.Worksheet,
+        headerRowNumber = 1,
+      ) => {
+        worksheet.views = [
+          {
+            state: "frozen",
+            ySplit: headerRowNumber,
+          },
+        ];
+
+        worksheet.autoFilter = {
+          from: {
+            row: headerRowNumber,
+            column: 1,
+          },
+          to: {
+            row: headerRowNumber,
+            column: worksheet.columnCount,
+          },
+        };
+      };
+
+      const styleStatusCell = (cell: ExcelJS.Cell, value: any) => {
+        const status = String(value || "").toUpperCase();
+
+        let bgColor = "FFE5E7EB";
+        let textColor = "FF374151";
+
+        if (status.includes("ON TIME") || status.includes("PRESENT")) {
+          bgColor = "FFD1FAE5";
+          textColor = "FF065F46";
+        }
+
+        if (status.includes("LATE") || status.includes("HALF DAY")) {
+          bgColor = "FFFEF3C7";
+          textColor = "FF92400E";
+        }
+
+        if (status.includes("EARLY OUT")) {
+          bgColor = "FFFFEDD5";
+          textColor = "FFC2410C";
+        }
+
+        if (status.includes("WORK FROM HOME") || status.includes("WFH")) {
+          bgColor = "FFDBEAFE";
+          textColor = "FF1E40AF";
+        }
+
+        if (status.includes("ABSENT")) {
+          bgColor = "FFFEE2E2";
+          textColor = "FF991B1B";
+        }
+
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: bgColor },
+        };
+
+        cell.font = {
+          bold: true,
+          color: { argb: textColor },
+          size: 10,
+        };
+
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: "center",
+          wrapText: true,
+        };
+      };
+
+      const styleNumberAlertCell = (
+        cell: ExcelJS.Cell,
+        value: number,
+        type: "late" | "early",
+      ) => {
+        if (!value || value <= 0) return;
+
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: {
+            argb: type === "late" ? "FFFEE2E2" : "FFFFEDD5",
+          },
+        };
+
+        cell.font = {
+          bold: true,
+          color: {
+            argb: type === "late" ? "FFDC2626" : "FFC2410C",
+          },
+          size: 10,
+        };
+      };
+
+      const styleMetricSheet = (
+        worksheet: ExcelJS.Worksheet,
+        startRowNumber = 5,
+      ) => {
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber < startRowNumber) return;
+
+          const metricCell = row.getCell(1);
+          const valueCell = row.getCell(2);
+
+          metricCell.font = {
+            bold: true,
+            color: { argb: "FF334155" },
+            size: 10,
+          };
+
+          valueCell.font = {
+            bold: true,
+            color: { argb: "FF0F172A" },
+            size: 10,
+          };
+
+          metricCell.alignment = { vertical: "middle", horizontal: "left" };
+          valueCell.alignment = { vertical: "middle", horizontal: "left" };
+        });
+      };
+
+      const attendanceSheet = workbook.addWorksheet("Attendance Records");
+
+      attendanceSheet.columns = [
+        { header: "Employee ID", key: "employeeId", width: 15 },
+        { header: "Employee Name", key: "employeeName", width: 25 },
+        { header: "Email", key: "email", width: 30 },
+        { header: "Department", key: "department", width: 22 },
+        { header: "Date", key: "date", width: 15 },
+        { header: "Check In", key: "checkIn", width: 22 },
+        { header: "Check In Status", key: "checkInStatus", width: 20 },
+        { header: "Check Out", key: "checkOut", width: 22 },
+        { header: "Check Out Status", key: "checkOutStatus", width: 20 },
+        { header: "Status", key: "status", width: 18 },
+        { header: "Late Minutes", key: "lateMinutes", width: 15 },
+        { header: "Early Out Minutes", key: "earlyOutMinutes", width: 18 },
+        { header: "Working Hours", key: "workingHours", width: 18 },
+        { header: "Shift", key: "shift", width: 18 },
+        ...(includeReasons === "true"
+          ? [{ header: "Reason", key: "reason", width: 45 }]
+          : []),
+      ];
+
+      let totalRecords = 0;
+      let skip = 0;
+      const take = 1000;
+
+      const summary = {
+        onTime: 0,
+        lateArrival: 0,
+        halfDayArrival: 0,
+        earlyOut: 0,
+        workFromHome: 0,
+        absent: 0,
+      };
+
+      const zktecoLogRows: any[] = [];
+
+      while (true) {
+        const records = await prisma.attendance.findMany({
+          where,
+          select: {
+            id: true,
+            date: true,
+            checkIn: true,
+            checkOut: true,
+            status: true,
+            reason: true,
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                department: true,
+                departmentEntity: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+                shift: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+            zktecoRecords: {
+              select: {
+                timestamp: true,
+                checkType: true,
+                overallStatus: true,
+              },
+              orderBy: {
+                timestamp: "asc",
+              },
+            },
+          },
+          orderBy: {
+            date: "asc",
+          },
+          skip,
+          take,
+        });
+
+        if (!records.length) break;
+
+        for (const record of records) {
+          const checkInRecord = record.zktecoRecords.find(
+            (item: any) => item.checkType === "check_in",
+          );
+
+          const checkOutRecord = record.zktecoRecords.find(
+            (item: any) => item.checkType === "check_out",
+          );
+
+          const transformedRecord: any = {
+            ...record,
+            checkInStatus: checkInRecord?.overallStatus || null,
+            checkOutStatus: checkOutRecord?.overallStatus || null,
+          };
+
+          const statusGroup = normalizeStatusGroup(transformedRecord);
+
+          if (
+            arrivalStatusList.length &&
+            !arrivalStatusList.includes(statusGroup)
+          ) {
+            continue;
+          }
+
+          if (includeWfh !== "true" && statusGroup === "WORK_FROM_HOME") {
+            continue;
+          }
+
+          if (statusGroup === "ON_TIME") summary.onTime++;
+          else if (statusGroup === "LATE_ARRIVAL") summary.lateArrival++;
+          else if (statusGroup === "HALF_DAY_ARRIVAL") summary.halfDayArrival++;
+          else if (statusGroup === "EARLY_OUT") summary.earlyOut++;
+          else if (statusGroup === "WORK_FROM_HOME") summary.workFromHome++;
+          else if (
+            String(record.status || "")
+              .toUpperCase()
+              .includes("ABSENT")
+          ) {
+            summary.absent++;
+          }
+
+          totalRecords++;
+
+          attendanceSheet.addRow({
+            employeeId: record.employee?.employeeId || "N/A",
+            employeeName:
+              `${record.employee?.firstName || ""} ${record.employee?.lastName || ""}`.trim() ||
+              "N/A",
+            email: record.employee?.email || "N/A",
+            department: getDepartmentName(record),
+            date: formatDate(record.date),
+            checkIn: formatTime(record.checkIn),
+            checkInStatus: formatStatus(transformedRecord.checkInStatus),
+            checkOut: formatTime(record.checkOut),
+            checkOutStatus: formatStatus(transformedRecord.checkOutStatus),
+            status: formatStatus(record.status),
+            lateMinutes: 0,
+            earlyOutMinutes: 0,
+            workingHours: "N/A",
+            shift: record.employee?.shift?.name || "No Shift",
+            ...(includeReasons === "true"
+              ? { reason: record.reason || "N/A" }
+              : {}),
+          });
+
+          if (includeZktecoLogs === "true") {
+            record.zktecoRecords.forEach((log: any) => {
+              zktecoLogRows.push({
+                employeeId: record.employee?.employeeId || "N/A",
+                employeeName:
+                  `${record.employee?.firstName || ""} ${record.employee?.lastName || ""}`.trim() ||
+                  "N/A",
+                department: getDepartmentName(record),
+                date: formatDate(record.date),
+                timestamp: formatTime(log.timestamp),
+                checkType: formatStatus(log.checkType),
+                status: formatStatus(log.overallStatus),
+              });
+            });
+          }
+        }
+
+        skip += take;
+      }
+
+      applyTitleRow(
+        attendanceSheet,
+        "Attendance Report",
+        `From ${fromDate} to ${toDate} | Generated At: ${new Date().toLocaleString()}`,
+        attendanceSheet.columnCount,
+      );
+
+      applyHeaderStyle(attendanceSheet, 4);
+      applyBodyStyle(attendanceSheet, 5);
+      applySheetSettings(attendanceSheet, 4);
+
+      ["checkInStatus", "checkOutStatus", "status"].forEach((columnKey) => {
+        attendanceSheet.getColumn(columnKey).eachCell((cell, rowNumber) => {
+          if (rowNumber <= 4) return;
+          styleStatusCell(cell, cell.value);
+        });
+      });
+
+      attendanceSheet.getColumn("lateMinutes").eachCell((cell, rowNumber) => {
+        if (rowNumber <= 4) return;
+        styleNumberAlertCell(cell, Number(cell.value || 0), "late");
+      });
+
+      attendanceSheet
+        .getColumn("earlyOutMinutes")
+        .eachCell((cell, rowNumber) => {
+          if (rowNumber <= 4) return;
+          styleNumberAlertCell(cell, Number(cell.value || 0), "early");
+        });
+
+      if (includeSummary === "true") {
+        const summarySheet = workbook.addWorksheet("Summary");
+
+        summarySheet.columns = [
+          { header: "Metric", key: "metric", width: 28 },
+          { header: "Value", key: "value", width: 45 },
+        ];
+
+        summarySheet.addRows([
+          { metric: "Start Date", value: fromDate },
+          { metric: "End Date", value: toDate },
+          { metric: "Total Records", value: totalRecords },
+          { metric: "On Time", value: summary.onTime },
+          { metric: "Late Arrival", value: summary.lateArrival },
+          { metric: "Half Day Arrival", value: summary.halfDayArrival },
+          { metric: "Early Out", value: summary.earlyOut },
+          { metric: "Work From Home", value: summary.workFromHome },
+          { metric: "Absent", value: summary.absent },
+          {
+            metric: "Department Filter",
+            value: departmentIdList.length
+              ? `${departmentIdList.length} department(s) selected`
+              : "All Departments",
+          },
+          {
+            metric: "Status Filter",
+            value: arrivalStatusList.length
+              ? arrivalStatusList.map(formatStatus).join(", ")
+              : "All Statuses",
+          },
+          { metric: "Search Filter", value: search || "None" },
+          { metric: "Generated By", value: currentUser.email || "System" },
+          { metric: "Generated At", value: new Date().toLocaleString() },
+        ]);
+
+        applyTitleRow(
+          summarySheet,
+          "Attendance Summary",
+          `From ${fromDate} to ${toDate}`,
+          summarySheet.columnCount,
+        );
+
+        applyHeaderStyle(summarySheet, 4);
+        applyBodyStyle(summarySheet, 5);
+        applySheetSettings(summarySheet, 4);
+        styleMetricSheet(summarySheet, 5);
+      }
+
+      if (includeZktecoLogs === "true" && zktecoLogRows.length) {
+        const logsSheet = workbook.addWorksheet("ZKTeco Logs");
+
+        logsSheet.columns = [
+          { header: "Employee ID", key: "employeeId", width: 15 },
+          { header: "Employee Name", key: "employeeName", width: 25 },
+          { header: "Department", key: "department", width: 22 },
+          { header: "Date", key: "date", width: 15 },
+          { header: "Timestamp", key: "timestamp", width: 24 },
+          { header: "Check Type", key: "checkType", width: 18 },
+          { header: "Status", key: "status", width: 22 },
+        ];
+
+        logsSheet.addRows(zktecoLogRows);
+
+        applyTitleRow(
+          logsSheet,
+          "ZKTeco Attendance Logs",
+          `From ${fromDate} to ${toDate}`,
+          logsSheet.columnCount,
+        );
+
+        applyHeaderStyle(logsSheet, 4);
+        applyBodyStyle(logsSheet, 5);
+        applySheetSettings(logsSheet, 4);
+
+        logsSheet.getColumn("status").eachCell((cell, rowNumber) => {
+          if (rowNumber <= 4) return;
+          styleStatusCell(cell, cell.value);
+        });
+      }
+
+      const filename = `Attendance_Report_${fromDate}_to_${toDate}.xlsx`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error("Error exporting attendance report:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to export attendance report",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }

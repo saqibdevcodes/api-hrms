@@ -8,7 +8,7 @@ export const addDeviceValidator = [
     .withMessage("Device ID must be between 3 and 50 characters")
     .matches(/^[a-zA-Z0-9_-]+$/)
     .withMessage(
-      "Device ID can only contain letters, numbers, underscores, and hyphens"
+      "Device ID can only contain letters, numbers, underscores, and hyphens",
     ),
 
   body("name")
@@ -108,8 +108,8 @@ export const getAttendanceDataValidator = [
 
   query("limit")
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage("Limit must be between 1 and 100"),
+    .isInt({ min: 1, max: 500 })
+    .withMessage("Limit must be between 1 and 500"),
 ];
 
 export const getEmpDashboardValidator = [
@@ -143,4 +143,3 @@ export const clearDeviceAttendanceValidator = [
 export const uploadAllEmployeesValidator = [
   body("deviceId").notEmpty().withMessage("Device ID is required"),
 ];
-
