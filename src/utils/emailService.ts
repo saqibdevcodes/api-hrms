@@ -16,7 +16,7 @@ export class EmailService {
     to: string,
     subject: string,
     html: string,
-    options?: { cc?: string[]; bcc?: string[] },
+    options?: { cc?: string[]; bcc?: string[]; attachments?: any[]; icalEvent?: any },
   ) {
     try {
       const fromName = process.env.MAIL_FROM_NAME || config.COMPANY_NAME;
@@ -38,6 +38,14 @@ export class EmailService {
 
       if (options?.bcc?.length) {
         mailOptions.bcc = options.bcc.join(", ");
+      }
+
+      if (options?.attachments?.length) {
+        mailOptions.attachments = options.attachments;
+      }
+
+      if (options?.icalEvent) {
+        mailOptions.icalEvent = options.icalEvent;
       }
 
       const info = await this.transporter.sendMail(mailOptions);

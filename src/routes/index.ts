@@ -19,11 +19,13 @@ import loanRoutes from "./loans";
 import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
 import documnetRoutes from "./documentRoutes";
+import eventRoutes from "./eventRoutes";
 
 const router = Router();
 
 router.use("/pdr", pdrRoutes);
 router.use("/documents", documnetRoutes);
+router.use("/events", eventRoutes);
 
 // Authentication routes (public)
 router.use("/auth", authRoutes);

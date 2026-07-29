@@ -3019,10 +3019,33 @@ export class ZKTecoController {
       const formatStatus = (value: any) => {
         if (!value) return "N/A";
 
-        return String(value)
-          .replace(/_/g, " ")
-          .toLowerCase()
-          .replace(/\b\w/g, (char) => char.toUpperCase());
+        const valStr = String(value).toUpperCase();
+
+        switch (valStr) {
+          case "FULL_DAY_LEAVE":
+            return "Leave";
+          case "HALF_DAY_LEAVE":
+          case "HALF_DAY":
+            return "Half Day Leave";
+          case "LATE":
+            return "Late";
+          case "EARLY_OUT":
+            return "Early Out";
+          case "ON_TIME_ARRIVAL":
+          case "ON_TIME_LEAVE":
+          case "PRESENT":
+            return "On Time";
+          case "ABSENT":
+            return "Absent";
+          case "WORK_FROM_HOME":
+          case "WFH":
+            return "Work From Home";
+          default:
+            return String(value)
+              .replace(/_/g, " ")
+              .toLowerCase()
+              .replace(/\b\w/g, (char) => char.toUpperCase());
+        }
       };
 
       const formatDate = (value: Date | string | null | undefined) => {
@@ -3287,6 +3310,11 @@ export class ZKTecoController {
         }
 
         if (status.includes("LATE") || status.includes("HALF DAY")) {
+          bgColor = "FFFEF3C7";
+          textColor = "FF92400E";
+        }
+
+        if (status === "LEAVE" || status.includes("FULL DAY")) {
           bgColor = "FFFEF3C7";
           textColor = "FF92400E";
         }

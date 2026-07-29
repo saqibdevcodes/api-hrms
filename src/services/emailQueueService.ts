@@ -9,6 +9,7 @@ import {
   PdrEmailJobData,
   PdrEmailNotificationService,
 } from "./pdrEmailNotificationService";
+import { EventNotificationService } from "./eventNotificationService";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 60_000;
@@ -34,35 +35,37 @@ export class EmailQueueService {
   }
 
   static async claimNextJob(): Promise<EmailJob | null> {
-    const candidate = await prisma.emailJob.findFirst({
-      where: {
-        status: EmailJobStatus.PENDING,
-        scheduledAt: { lte: new Date() },
-      },
-      orderBy: { scheduledAt: "asc" },
-    });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = await prisma.emailJob.findFirst({
+        where: {
+          status: EmailJobStatus.PENDING,
+          scheduledAt: { lte: new Date(Date.now() + 60000) },
+        },
+        orderBy: { scheduledAt: "asc" },
+      });
 
-    if (!candidate) {
-      return null;
+      if (!candidate) {
+        return null;
+      }
+
+      const claimed = await prisma.emailJob.updateMany({
+        where: {
+          id: candidate.id,
+          status: EmailJobStatus.PENDING,
+        },
+        data: {
+          status: EmailJobStatus.PROCESSING,
+          startedAt: new Date(),
+          attempts: { increment: 1 },
+        },
+      });
+
+      if (claimed.count > 0) {
+        return prisma.emailJob.findUnique({ where: { id: candidate.id } });
+      }
     }
 
-    const claimed = await prisma.emailJob.updateMany({
-      where: {
-        id: candidate.id,
-        status: EmailJobStatus.PENDING,
-      },
-      data: {
-        status: EmailJobStatus.PROCESSING,
-        startedAt: new Date(),
-        attempts: { increment: 1 },
-      },
-    });
-
-    if (claimed.count === 0) {
-      return null;
-    }
-
-    return prisma.emailJob.findUnique({ where: { id: candidate.id } });
+    return null;
   }
 
   static async markCompleted(jobId: string): Promise<void> {
@@ -120,6 +123,18 @@ export class EmailQueueService {
         );
         break;
 
+      case EMAIL_EVENTS.EVENT_CREATED:
+        await EventNotificationService.processEventCreatedJob(job.payload);
+        break;
+
+      case EMAIL_EVENTS.EVENT_REQUIREMENT_NOTIFY:
+        await EventNotificationService.processRequirementJob(job.payload);
+        break;
+
+      case EMAIL_EVENTS.EVENT_CANCELLED:
+        await EventNotificationService.processEventCancelledJob(job.payload);
+        break;
+
       default:
         throw new Error(`Unknown email event: ${job.event}`);
     }
@@ -153,15 +168,19 @@ export class EmailQueueService {
     return true;
   }
 
-  static async processBatch(concurrency = 5): Promise<number> {
+  static async processBatch(concurrency = 50): Promise<number> {
     let processed = 0;
 
-    for (let i = 0; i < concurrency; i++) {
+    while (processed < concurrency) {
       const hasJob = await this.processNext();
       if (!hasJob) {
         break;
       }
       processed++;
+    }
+
+    if (processed > 0) {
+      console.log(`📤 Batch completed: Successfully processed ${processed} email job(s)`);
     }
 
     return processed;

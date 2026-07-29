@@ -139,6 +139,10 @@ model User {
 
   hasSystemAccess Boolean @default(true)
 
+  eventAssigneeRecords EventAssignee[] @relation("EventAssigneeUser")
+  requirementAssignedRecords EventRequirement[] @relation("RequirementAssignedEmployee")
+  hostedEvents Event[] @relation("EventHostUser")
+
   @@map("users")
 }
 
@@ -946,4 +950,232 @@ model EmailJob {
 
   @@index([status, scheduledAt])
   @@map("email_jobs")
+}
+
+// Event Management Enums & Models
+
+enum EventPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum EventMode {
+  OFFLINE
+  ONLINE
+  HYBRID
+}
+
+enum EventStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Master Table: Predefined Event Types (SUPERADMIN)
+model EventTypeMaster {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  events EventEventType[]
+
+  @@map("event_types_master")
+}
+
+// Master Table: Predefined Venues (SUPERADMIN)
+model VenueMaster {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  address       String?  @db.Text
+  capacity      Int?
+  contactPerson String?
+  contactNumber String?
+  notes         String?  @db.Text
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  events Event[]
+
+  @@map("venues_master")
+}
+
+// Master Table: Hierarchical Requirements (SUPERADMIN)
+model RequirementMaster {
+  id          String   @id @default(cuid())
+  parentId    String?
+  name        String
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   RequirementMaster?  @relation("RequirementHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children RequirementMaster[] @relation("RequirementHierarchy")
+
+  eventRequirements EventRequirement[]
+
+  @@map("requirements_master")
+}
+
+// Core Event Model
+model Event {
+  id          String        @id @default(cuid())
+  title       String
+  description String?       @db.Text
+  eventDate   DateTime      @db.Date
+  eventEndDate DateTime?    @db.Date
+  startTime   DateTime
+  endTime     DateTime?
+  priority    EventPriority @default(NORMAL)
+  mode        EventMode     @default(OFFLINE)
+  status      EventStatus   @default(SCHEDULED)
+
+  cancellationReason String? @db.Text
+
+  // Online / Hybrid Meeting Info
+  onlinePlatform String? // Zoom, Google Meet, Microsoft Teams, Other
+  meetingLink    String? @db.Text
+  meetingId      String?
+  onlineNotes    String? @db.Text
+
+  // Venue
+  venueId            String?
+  venue              VenueMaster? @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  customVenueName    String?
+  customVenueAddress String?      @db.Text
+
+  // Custom Event Type
+  customEventType String?
+
+  // Outsourcing
+  isOutsourced           Boolean  @default(false)
+  outsourcingDescription String?  @db.Text
+  vendorName             String?
+  vendorContactPerson    String?
+  vendorContactNumber    String?
+  vendorEmail            String?
+  estimatedCost          Decimal? @db.Decimal(10, 2)
+  outsourcingNotes       String?  @db.Text
+
+  // Event Host
+  eventHostId         String?
+  eventHostUser       User?    @relation("EventHostUser", fields: [eventHostId], references: [id], onDelete: SetNull)
+  customEventHostName String?
+
+  // Internal Notes & Audit
+  internalNotes String? @db.Text
+  createdById   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  eventTypes   EventEventType[]
+  requirements EventRequirement[]
+  assignees    EventAssignee[]
+  checklists   EventChecklist[]
+  attachments  EventAttachment[]
+  activityLogs EventActivityLog[]
+
+  @@map("events")
+}
+
+// Many-to-many join table for Event -> EventTypeMaster
+model EventEventType {
+  id          String          @id @default(cuid())
+  eventId     String
+  event       Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventTypeId String
+  eventType   EventTypeMaster @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, eventTypeId])
+  @@map("event_event_types")
+}
+
+// Event Requirement Selections
+model EventRequirement {
+  id                String             @id @default(cuid())
+  eventId           String
+  event             Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  requirementId     String?
+  requirement       RequirementMaster? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  customRequirement String?
+  quantity          Int?
+  unit              String?
+  notes             String?            @db.Text
+
+  // Department & Assigned Responsible Employee for this Requirement
+  departmentName     String?
+  assignedEmployeeId String?
+  assignedEmployee   User?              @relation("RequirementAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+
+  @@map("event_requirements")
+}
+
+// Event Team / Assignees
+model EventAssignee {
+  id                    String    @id @default(cuid())
+  eventId               String
+  event                 Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  employeeId            String?
+  employee              User?     @relation("EventAssigneeUser", fields: [employeeId], references: [id], onDelete: SetNull)
+  externalName          String?
+  responsibilityType    String    // Event Manager, Responsible Person, Management, Coordinator, Support Staff, Technical Support, Other
+  notes                 String?   @db.Text
+
+  acknowledgementStatus String    @default("PENDING") // PENDING, ACCEPTED, DECLINED
+  acknowledgedAt        DateTime?
+
+  @@map("event_assignees")
+}
+
+// Event Checklists
+model EventChecklist {
+  id            String    @id @default(cuid())
+  eventId       String
+  event         Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title         String
+  completed     Boolean   @default(false)
+  completedById String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("event_checklists")
+}
+
+// Event Attachments
+model EventAttachment {
+  id           String   @id @default(cuid())
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name         String
+  fileUrl      String   @db.Text
+  fileSize     Int?
+  fileType     String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@map("event_attachments")
+}
+
+// Event Activity Log
+model EventActivityLog {
+  id            String   @id @default(cuid())
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  action        String // CREATED, UPDATED, STATUS_CHANGED, CANCELLED, REQUIREMENT_ADDED, ASSIGNEE_ADDED, etc.
+  description   String   @db.Text
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  @@map("event_activity_logs")
 }

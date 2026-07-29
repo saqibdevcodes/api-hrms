@@ -29,4 +29,4 @@ export type {
   NotificationPriority,
   PdrStatus,
   PdrOverallStatus,
-} from "../generated/prisma";
+} from "@prisma/client";
