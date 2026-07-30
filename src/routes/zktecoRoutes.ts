@@ -135,6 +135,17 @@ router.post(
   ZKTecoController.sendLateReasonReminders,
 );
 
+router.get(
+  "/attendance/unmarked",
+  authenticate,
+  ZKTecoController.getUnmarkedAttendance,
+);
+router.post(
+  "/attendance/send-unmarked-reminders",
+  authenticate,
+  ZKTecoController.sendUnmarkedAttendanceReminders,
+);
+
 router.post(
   "/employees/create-from-zkteco",
   authenticate,

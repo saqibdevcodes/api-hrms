@@ -2,6 +2,7 @@ import { EmailService } from "../utils/emailService";
 import { EmailQueueService } from "./emailQueueService";
 import { EMAIL_EVENTS } from "../constants/email.events";
 import { ICalGenerator } from "../utils/iCalGenerator";
+import { prisma } from "../lib/prisma";
 
 export class EventNotificationService {
   /**
@@ -161,6 +162,120 @@ export class EventNotificationService {
       } catch (queueErr) {
         console.error("Failed to enqueue cancellation email job:", queueErr);
       }
+    }
+  }
+
+  /**
+   * Send notification to HR when a Line Manager submits a new event requiring approval
+   */
+  static async sendPendingApprovalNotificationToHR(event: any, createdBy: any) {
+    try {
+      const hrUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { role: "HR" },
+            { email: { equals: "nadia@iriscommunications.com.pk" } },
+          ],
+          status: "ACTIVE",
+          isActive: true,
+        },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      });
+
+      const recipientMap = new Map<string, { name: string }>();
+
+      for (const hrUser of hrUsers) {
+        if (hrUser.email) {
+          recipientMap.set(hrUser.email.toLowerCase(), {
+            name: `${hrUser.firstName} ${hrUser.lastName}`,
+          });
+        }
+      }
+
+      // Always ensure Nadia (HR) receives the approval alert notification
+      if (!recipientMap.has("nadia@iriscommunications.com.pk")) {
+        recipientMap.set("nadia@iriscommunications.com.pk", {
+          name: "Nadia (HR)",
+        });
+      }
+
+      const eventDateStr = new Date(event.eventDate).toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      const creatorName = createdBy ? `${createdBy.firstName} ${createdBy.lastName}` : "Line Manager";
+
+      for (const [recipientEmail, recipientInfo] of recipientMap.entries()) {
+        const subject = `[ACTION REQUIRED] New Event Pending HR Approval: "${event.title}"`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+            <div style="background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); color: white; padding: 24px; text-align: left;">
+              <h2 style="margin: 0; font-size: 20px;">⌛ Event Pending HR Approval</h2>
+              <p style="margin: 6px 0 0 0; opacity: 0.9; font-size: 14px;">Iris HRMS Event Management</p>
+            </div>
+            
+            <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+              <p style="font-size: 15px; margin-top: 0;">Hello <strong>${recipientInfo.name}</strong>,</p>
+              <p>A new event has been created by Line Manager <strong>${creatorName}</strong> and requires HR review & approval before member assignment notifications are sent out.</p>
+              
+              <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0; border-radius: 4px;">
+                <h3 style="margin: 0 0 10px 0; color: #78350f; font-size: 16px;">${event.title}</h3>
+                <p style="margin: 3px 0; font-size: 14px; color: #92400e;"><strong>Submitted By:</strong> ${creatorName}</p>
+                <p style="margin: 3px 0; font-size: 14px; color: #92400e;"><strong>Date:</strong> ${eventDateStr}</p>
+                <p style="margin: 3px 0; font-size: 14px; color: #92400e;"><strong>Mode / Venue:</strong> ${event.mode} | ${event.venue?.name || event.customVenueName || "To Be Specified"}</p>
+              </div>
+
+              <p style="font-size: 14px; color: #475569;">
+                Please log in to Iris HRMS Event Management to review and Approve or Cancel/Reject this event request.
+              </p>
+            </div>
+          </div>
+        `;
+
+        await EmailService.sendEmail(recipientEmail, subject, html).catch((err) =>
+          console.error(`Failed to send HR approval notification to ${recipientEmail}:`, err),
+        );
+      }
+    } catch (err) {
+      console.error("Error sending pending approval notifications to HR:", err);
+    }
+  }
+
+  /**
+   * Send notification to Line Manager when HR approves their submitted event
+   */
+  static async sendEventApprovedNotificationToManager(event: any, approvedBy: any) {
+    try {
+      if (!event.createdById) return;
+      const creator = await prisma.user.findUnique({
+        where: { id: event.createdById },
+        select: { firstName: true, lastName: true, email: true },
+      });
+
+      if (!creator || !creator.email) return;
+
+      const subject = `[EVENT APPROVED] Your Event "${event.title}" Has Been Approved`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #bbf7d0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+          <div style="background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 24px; text-align: left;">
+            <h2 style="margin: 0; font-size: 20px;">✅ Event Approved</h2>
+            <p style="margin: 6px 0 0 0; opacity: 0.9; font-size: 14px;">Iris HRMS Event Management</p>
+          </div>
+          
+          <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+            <p style="font-size: 15px; margin-top: 0;">Hello <strong>${creator.firstName} ${creator.lastName}</strong>,</p>
+            <p>Your submitted event <strong>"${event.title}"</strong> has been reviewed and <strong style="color: #15803d;">APPROVED</strong> by HR (${approvedBy ? `${approvedBy.firstName} ${approvedBy.lastName}` : "HR Management"}).</p>
+            <p>All assignment notifications and task emails have now been dispatched to event personnel.</p>
+          </div>
+        </div>
+      `;
+
+      await EmailService.sendEmail(creator.email, subject, html);
+    } catch (err) {
+      console.error("Error sending event approved notification to manager:", err);
     }
   }
 

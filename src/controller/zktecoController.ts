@@ -10,7 +10,33 @@ import { AuthenticatedRequest } from "../types/auth";
 import { EmailService } from "../utils/emailService";
 import { AttendanceReminderService } from "../services/attendanceReminderService";
 import { queueAttendanceReminderEmail } from "../queues/email.jobs";
-import ExcelJS from "exceljs";
+import ExcelJS from 'exceljs'
+const getDesignationName = (target: any) => {
+  const emp = target?.employee || target;
+  if (!emp) return "N/A";
+
+  const rawDesig = emp.designation || emp.designationEntity || emp.userRank;
+  if (!rawDesig) return emp.userRank || "N/A";
+
+  if (typeof rawDesig === "object" && rawDesig !== null) {
+    return rawDesig.title || rawDesig.name || rawDesig.description || emp.userRank || "N/A";
+  }
+
+  if (typeof rawDesig === "string") {
+    const trimmed = rawDesig.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return parsed.title || parsed.name || parsed.description || emp.userRank || "N/A";
+      } catch (e) {
+        // Not valid JSON string
+      }
+    }
+    return trimmed || emp.userRank || "N/A";
+  }
+
+  return emp.userRank || "N/A";
+};
 
 export class ZKTecoController {
   static async getDevices(req: Request, res: Response) {
@@ -408,9 +434,9 @@ export class ZKTecoController {
             const earlyOutMinutes =
               checkOutTime < todayShiftEnd
                 ? Math.floor(
-                    (todayShiftEnd.getTime() - checkOutTime.getTime()) /
-                      (1000 * 60),
-                  )
+                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                  (1000 * 60),
+                )
                 : 0;
 
             // Determine check-out status
@@ -468,9 +494,9 @@ export class ZKTecoController {
         const lateMinutes =
           checkInTime > todayShiftStart
             ? Math.floor(
-                (checkInTime.getTime() - todayShiftStart.getTime()) /
-                  (1000 * 60),
-              )
+              (checkInTime.getTime() - todayShiftStart.getTime()) /
+              (1000 * 60),
+            )
             : 0;
         console.log("checkInTime", new Date(checkInTime).toLocaleTimeString());
         console.log("checkOutTime", checkOutTime);
@@ -483,9 +509,9 @@ export class ZKTecoController {
           earlyOutMinutes =
             checkOutTime < todayShiftEnd
               ? Math.floor(
-                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
-                    (1000 * 60),
-                )
+                (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                (1000 * 60),
+              )
               : 0;
           console.log("earlyOutMinutes", earlyOutMinutes);
 
@@ -634,12 +660,12 @@ export class ZKTecoController {
             departmentEntity: record.employee.departmentEntity,
             shift: record.employee.shift
               ? {
-                  id: record.employee.shift.id,
-                  name: record.employee.shift.name,
-                  startTime: record.employee.shift.startTime,
-                  endTime: record.employee.shift.endTime,
-                  breakTime: record.employee.shift.breakTime,
-                }
+                id: record.employee.shift.id,
+                name: record.employee.shift.name,
+                startTime: record.employee.shift.startTime,
+                endTime: record.employee.shift.endTime,
+                breakTime: record.employee.shift.breakTime,
+              }
               : null,
           },
           createdAt: record.createdAt,
@@ -673,12 +699,12 @@ export class ZKTecoController {
       const filteredRecords =
         allowedStatuses.length > 0
           ? transformedRecords.filter((record: any) => {
-              return (
-                allowedStatuses.includes(record.status) ||
-                allowedStatuses.includes(record.checkInStatus) ||
-                allowedStatuses.includes(record.checkOutStatus)
-              );
-            })
+            return (
+              allowedStatuses.includes(record.status) ||
+              allowedStatuses.includes(record.checkInStatus) ||
+              allowedStatuses.includes(record.checkOutStatus)
+            );
+          })
           : transformedRecords;
 
       const total = filteredRecords.length;
@@ -796,9 +822,9 @@ export class ZKTecoController {
             const earlyOutMinutes =
               checkOutTime < todayShiftEnd
                 ? Math.floor(
-                    (todayShiftEnd.getTime() - checkOutTime.getTime()) /
-                      (1000 * 60),
-                  )
+                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                  (1000 * 60),
+                )
                 : 0;
             return {
               status: "ABSENT",
@@ -842,9 +868,9 @@ export class ZKTecoController {
         const lateMinutes =
           checkInTime > todayShiftStart
             ? Math.floor(
-                (checkInTime.getTime() - todayShiftStart.getTime()) /
-                  (1000 * 60),
-              )
+              (checkInTime.getTime() - todayShiftStart.getTime()) /
+              (1000 * 60),
+            )
             : 0;
 
         let earlyOutMinutes = 0;
@@ -853,9 +879,9 @@ export class ZKTecoController {
           earlyOutMinutes =
             checkOutTime < todayShiftEnd
               ? Math.floor(
-                  (todayShiftEnd.getTime() - checkOutTime.getTime()) /
-                    (1000 * 60),
-                )
+                (todayShiftEnd.getTime() - checkOutTime.getTime()) /
+                (1000 * 60),
+              )
               : 0;
 
           let workingSeconds =
@@ -1017,9 +1043,9 @@ export class ZKTecoController {
         }),
         selectedDate
           ? prisma.attendance.findFirst({
-              where: { employeeId: targetEmployeeId, date: selectedDate },
-              select: attendanceSelect,
-            })
+            where: { employeeId: targetEmployeeId, date: selectedDate },
+            select: attendanceSelect,
+          })
           : Promise.resolve(null),
         prisma.leaveRequest.count({
           where: {
@@ -1126,12 +1152,12 @@ export class ZKTecoController {
 
       const shift = employeeProfile?.shift
         ? {
-            id: employeeProfile.shift.id,
-            name: employeeProfile.shift.name,
-            startTime: employeeProfile.shift.startTime,
-            endTime: employeeProfile.shift.endTime,
-            breakTime: employeeProfile.shift.breakTime,
-          }
+          id: employeeProfile.shift.id,
+          name: employeeProfile.shift.name,
+          startTime: employeeProfile.shift.startTime,
+          endTime: employeeProfile.shift.endTime,
+          breakTime: employeeProfile.shift.breakTime,
+        }
         : null;
 
       res.json({
@@ -1271,8 +1297,7 @@ export class ZKTecoController {
         } catch (error) {
           failCount++;
           errors.push(
-            `Error uploading ${employee.firstName} ${employee.lastName}: ${
-              error instanceof Error ? error.message : "Unknown error"
+            `Error uploading ${employee.firstName} ${employee.lastName}: ${error instanceof Error ? error.message : "Unknown error"
             }`,
           );
         }
@@ -1498,11 +1523,11 @@ export class ZKTecoController {
         processingError: record.processingError,
         employee: record.User
           ? {
-              id: record.User.id,
-              employeeId: record.User.employeeId,
-              name: `${record.User.firstName} ${record.User.lastName}`,
-              email: record.User.email,
-            }
+            id: record.User.id,
+            employeeId: record.User.employeeId,
+            name: `${record.User.firstName} ${record.User.lastName}`,
+            email: record.User.email,
+          }
           : null,
       }));
 
@@ -1606,11 +1631,11 @@ export class ZKTecoController {
         processingError: record.processingError,
         employee: record.User
           ? {
-              id: record.User.id,
-              employeeId: record.User.employeeId,
-              name: `${record.User.firstName} ${record.User.lastName}`,
-              email: record.User.email,
-            }
+            id: record.User.id,
+            employeeId: record.User.employeeId,
+            name: `${record.User.firstName} ${record.User.lastName}`,
+            email: record.User.email,
+          }
           : null,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
@@ -2951,6 +2976,7 @@ export class ZKTecoController {
         includeReasons = "true",
         includeZktecoLogs = "false",
         includeWfh = "true",
+        includeUnmarked = "true",
       } = req.query;
 
       const authenticatedRequest = req as any;
@@ -3101,6 +3127,7 @@ export class ZKTecoController {
           "N/A"
         );
       };
+
 
       const normalizeStatusGroup = (record: any) => {
         const status = String(record.status || "").toUpperCase();
@@ -3687,6 +3714,183 @@ export class ZKTecoController {
         });
       }
 
+      if (includeUnmarked === "true") {
+        const unmarkedSheet = workbook.addWorksheet("Missing Attendance");
+
+        // Calculate off days and dates list
+        const dbOffDays = await prisma.offDay.findMany({
+          where: {
+            date: {
+              gte: new Date(`${fromDate}T00:00:00.000Z`),
+              lte: new Date(`${toDate}T23:59:59.999Z`),
+            },
+          },
+        });
+
+        const offDaysMap = new Map<string, string>();
+        dbOffDays.forEach((od) => {
+          if (od.date) {
+            const dStr = new Date(od.date).toISOString().split("T")[0];
+            offDaysMap.set(dStr, od.reason || "Official Off Day");
+          }
+        });
+
+        const dayNamesMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const datesList: string[] = [];
+        const curDate = new Date(`${fromDate}T00:00:00.000Z`);
+        const endDateObj = new Date(`${toDate}T00:00:00.000Z`);
+
+        const diffTime = Math.abs(endDateObj.getTime() - curDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        const maxDays = Math.min(diffDays, 31);
+
+        for (let i = 0; i < maxDays; i++) {
+          const dStr = curDate.toISOString().split("T")[0];
+          const dayOfWeek = curDate.getUTCDay();
+
+          if (dayOfWeek !== 0 && !offDaysMap.has(dStr)) {
+            datesList.push(dStr);
+          }
+          curDate.setUTCDate(curDate.getUTCDate() + 1);
+        }
+
+        if (datesList.length > 0) {
+          const overallStart = new Date(`${datesList[0]}T00:00:00.000Z`);
+          const overallEnd = new Date(`${datesList[datesList.length - 1]}T00:00:00.000Z`);
+          overallEnd.setUTCDate(overallEnd.getUTCDate() + 1);
+
+          const userWhere: any = {
+            isActive: true,
+            employeeId: { not: null },
+          };
+
+          if (departmentIdList.length) {
+            userWhere.departmentId = { in: departmentIdList };
+          }
+
+          if (search) {
+            const searchValue = String(search).trim();
+            userWhere.OR = [
+              { firstName: { contains: searchValue } },
+              { lastName: { contains: searchValue } },
+              { email: { contains: searchValue } },
+              { employeeId: { contains: searchValue } },
+            ];
+          }
+
+          const activeEmpList = await prisma.user.findMany({
+            where: userWhere,
+            select: {
+              id: true,
+              employeeId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
+              designation: true,
+              userRank: true,
+            },
+            orderBy: { firstName: "asc" },
+          });
+
+          const markedAtt = await prisma.attendance.findMany({
+            where: {
+              date: { gte: overallStart, lt: overallEnd },
+            },
+            select: { employeeId: true, date: true },
+          });
+
+          const stagingAtt = await prisma.zKTecoAttendanceStaging.findMany({
+            where: {
+              timestamp: { gte: overallStart, lt: overallEnd },
+              userId: { not: null },
+            },
+            select: { userId: true, timestamp: true },
+          });
+
+          const appLeaves = await prisma.leaveRequest.findMany({
+            where: {
+              status: "APPROVED",
+              startDate: { lte: overallEnd },
+              endDate: { gte: overallStart },
+            },
+            select: { employeeId: true, startDate: true, endDate: true },
+          });
+
+          const markedSet = new Set<string>();
+          markedAtt.forEach((a) => {
+            if (a.employeeId && a.date) {
+              const dStr = new Date(a.date).toISOString().split("T")[0];
+              markedSet.add(`${a.employeeId}_${dStr}`);
+            }
+          });
+          stagingAtt.forEach((s) => {
+            if (s.userId && s.timestamp) {
+              const dStr = new Date(s.timestamp).toISOString().split("T")[0];
+              markedSet.add(`${s.userId}_${dStr}`);
+            }
+          });
+
+          const unmarkedExportRows: any[] = [];
+          const sortedDates = [...datesList].reverse();
+
+          for (const dStr of sortedDates) {
+            const dStart = new Date(`${dStr}T00:00:00.000Z`);
+            const dEnd = new Date(`${dStr}T00:00:00.000Z`);
+            dEnd.setUTCDate(dEnd.getUTCDate() + 1);
+
+            const dayName = dayNamesMap[dStart.getUTCDay()];
+
+            for (const emp of activeEmpList) {
+              const key = `${emp.id}_${dStr}`;
+              if (!markedSet.has(key)) {
+                const leave = appLeaves.find(
+                  (l) =>
+                    l.employeeId === emp.id &&
+                    new Date(l.startDate) <= dEnd &&
+                    new Date(l.endDate) >= dStart,
+                );
+
+                unmarkedExportRows.push({
+                  dayName,
+                  date: dStr,
+                  employeeId: emp.employeeId || "—",
+                  employeeName: `${emp.firstName} ${emp.lastName}`,
+                  email: emp.email || "—",
+                  department: (emp as any).departmentEntity?.name || (typeof emp.department === "string" ? emp.department : (emp.department as any)?.name) || "—",
+                  designation: getDesignationName(emp),
+                  status: leave ? "On Approved Leave" : "Unmarked / Missing",
+                });
+              }
+            }
+          }
+
+          unmarkedSheet.columns = [
+            { header: "Day", key: "dayName", width: 15 },
+            { header: "Date", key: "date", width: 15 },
+            { header: "Employee ID", key: "employeeId", width: 15 },
+            { header: "Employee Name", key: "employeeName", width: 25 },
+            { header: "Email", key: "email", width: 28 },
+            { header: "Department", key: "department", width: 22 },
+            { header: "Designation", key: "designation", width: 22 },
+            { header: "Status", key: "status", width: 24 },
+          ];
+
+          unmarkedSheet.addRows(unmarkedExportRows);
+
+          applyTitleRow(
+            unmarkedSheet,
+            "Missing / Unmarked Attendance Report",
+            `From ${fromDate} to ${toDate}`,
+            unmarkedSheet.columnCount,
+          );
+
+          applyHeaderStyle(unmarkedSheet, 4);
+          applyBodyStyle(unmarkedSheet, 5);
+          applySheetSettings(unmarkedSheet, 4);
+        }
+      }
+
       const filename = `Attendance_Report_${fromDate}_to_${toDate}.xlsx`;
 
       res.setHeader(
@@ -3707,6 +3911,371 @@ export class ZKTecoController {
       res.status(500).json({
         success: false,
         message: "Failed to export attendance report",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  static async getUnmarkedAttendance(req: Request, res: Response) {
+    try {
+      const { startDate, endDate, date, departmentId, search } = req.query;
+
+      const pageNumber = Number(req.query.page) || 1;
+      const limitNumber = req.query.limit ? Number(req.query.limit) : 5000;
+      const skip = (pageNumber - 1) * limitNumber;
+      const take = limitNumber;
+
+      const getPakistanToday = () => {
+        return new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Karachi",
+        });
+      };
+
+      const todayStr = getPakistanToday();
+      let startStr = (startDate as string) || (date as string) || todayStr;
+      let endStr = (endDate as string) || (date as string) || startStr;
+
+      if (startStr > endStr) {
+        const temp = startStr;
+        startStr = endStr;
+        endStr = temp;
+      }
+
+      // Fetch registered off days from database
+      const dbOffDays = await prisma.offDay.findMany({
+        where: {
+          date: {
+            gte: new Date(`${startStr}T00:00:00.000Z`),
+            lte: new Date(`${endStr}T23:59:59.999Z`),
+          },
+        },
+      });
+
+      const offDaysMap = new Map<string, string>();
+      dbOffDays.forEach((od) => {
+        if (od.date) {
+          const dStr = new Date(od.date).toISOString().split("T")[0];
+          offDaysMap.set(dStr, od.reason || "Official Off Day");
+        }
+      });
+
+      const dayNamesMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const datesList: string[] = [];
+      const cur = new Date(`${startStr}T00:00:00.000Z`);
+      const end = new Date(`${endStr}T00:00:00.000Z`);
+
+      const diffTime = Math.abs(end.getTime() - cur.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      const maxDays = Math.min(diffDays, 31);
+
+      let totalOffDaysCount = 0;
+
+      for (let i = 0; i < maxDays; i++) {
+        const dStr = cur.toISOString().split("T")[0];
+        const dayOfWeek = cur.getUTCDay();
+
+        if (dayOfWeek === 0) {
+          // Sunday is an off day by default
+          totalOffDaysCount++;
+        } else if (offDaysMap.has(dStr)) {
+          // Off day explicitly registered in database (Saturdays off, Holidays, etc.)
+          totalOffDaysCount++;
+        } else {
+          // Valid working day (Working Saturday or Weekday)
+          datesList.push(dStr);
+        }
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+
+      if (datesList.length === 0) {
+        return res.status(200).json({
+          success: true,
+          summary: {
+            startDate: startStr,
+            endDate: endStr,
+            daysCount: 0,
+            totalActiveEmployees: 0,
+            uniqueUnmarkedEmployees: 0,
+            markedCount: 0,
+            unmarkedCount: 0,
+            onLeaveCount: 0,
+            unmarkedPercentage: 0,
+          },
+          pagination: { total: 0, page: 1, limit: limitNumber, totalPages: 1 },
+          data: [],
+        });
+      }
+
+      const overallStart = new Date(`${datesList[0]}T00:00:00.000Z`);
+      const overallEnd = new Date(`${datesList[datesList.length - 1]}T00:00:00.000Z`);
+      overallEnd.setUTCDate(overallEnd.getUTCDate() + 1);
+
+      const userWhere: any = {
+        isActive: true,
+        employeeId: { not: null },
+      };
+
+      if (departmentId) {
+        userWhere.departmentId = departmentId as string;
+      }
+
+      if (search) {
+        const searchValue = String(search).trim();
+        userWhere.OR = [
+          { firstName: { contains: searchValue } },
+          { lastName: { contains: searchValue } },
+          { email: { contains: searchValue } },
+          { employeeId: { contains: searchValue } },
+        ];
+      }
+
+      const allActiveEmployees = await prisma.user.findMany({
+        where: userWhere,
+        select: {
+          id: true,
+          employeeId: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          department: true,
+          designation: true,
+          position: true,
+          userRank: true,
+          phone: true,
+          profilePicture: true,
+          departmentId: true,
+        },
+        orderBy: { firstName: "asc" },
+      });
+
+      const markedAttendances = await prisma.attendance.findMany({
+        where: {
+          date: {
+            gte: overallStart,
+            lt: overallEnd,
+          },
+        },
+        select: { employeeId: true, date: true },
+      });
+
+      const stagingPunches = await prisma.zKTecoAttendanceStaging.findMany({
+        where: {
+          timestamp: {
+            gte: overallStart,
+            lt: overallEnd,
+          },
+          userId: { not: null },
+        },
+        select: { userId: true, timestamp: true },
+      });
+
+      const approvedLeaves = await prisma.leaveRequest.findMany({
+        where: {
+          status: "APPROVED",
+          startDate: { lte: overallEnd },
+          endDate: { gte: overallStart },
+        },
+        select: {
+          employeeId: true,
+          leaveType: true,
+          reason: true,
+          startDate: true,
+          endDate: true,
+        },
+      });
+
+      const markedSet = new Set<string>();
+      markedAttendances.forEach((a) => {
+        if (a.employeeId && a.date) {
+          const dStr = new Date(a.date).toISOString().split("T")[0];
+          markedSet.add(`${a.employeeId}_${dStr}`);
+        }
+      });
+      stagingPunches.forEach((s) => {
+        if (s.userId && s.timestamp) {
+          const dStr = new Date(s.timestamp).toISOString().split("T")[0];
+          markedSet.add(`${s.userId}_${dStr}`);
+        }
+      });
+
+      const unmarkedRecordsList: any[] = [];
+      let totalMarkedCount = 0;
+      let totalUnmarkedCount = 0;
+      let totalOnLeaveCount = 0;
+      const uniqueUnmarkedUserIds = new Set<string>();
+
+      const sortedDates = [...datesList].reverse();
+
+      for (const dStr of sortedDates) {
+        const dStart = new Date(`${dStr}T00:00:00.000Z`);
+        const dEnd = new Date(`${dStr}T00:00:00.000Z`);
+        dEnd.setUTCDate(dEnd.getUTCDate() + 1);
+
+        const dayOfWeekName = dayNamesMap[dStart.getUTCDay()];
+
+        for (const emp of allActiveEmployees) {
+          const key = `${emp.id}_${dStr}`;
+          if (markedSet.has(key)) {
+            totalMarkedCount++;
+          } else {
+            const leave = approvedLeaves.find(
+              (l) =>
+                l.employeeId === emp.id &&
+                new Date(l.startDate) <= dEnd &&
+                new Date(l.endDate) >= dStart,
+            );
+
+            if (leave) {
+              totalOnLeaveCount++;
+            } else {
+              totalUnmarkedCount++;
+            }
+
+            uniqueUnmarkedUserIds.add(emp.id);
+
+            unmarkedRecordsList.push({
+              id: key,
+              userId: emp.id,
+              employeeId: emp.employeeId,
+              firstName: emp.firstName,
+              lastName: emp.lastName,
+              fullName: `${emp.firstName} ${emp.lastName}`,
+              email: emp.email,
+              department: emp.department,
+              designation: getDesignationName(emp),
+              position: emp.position,
+              userRank: emp.userRank,
+              phone: emp.phone,
+              profilePicture: emp.profilePicture,
+              date: dStr,
+              dayName: dayOfWeekName,
+              status: leave ? "ON_LEAVE" : "UNMARKED",
+              leaveInfo: leave ? { leaveType: leave.leaveType, reason: leave.reason } : null,
+            });
+          }
+        }
+      }
+
+      const totalActiveEmployees = allActiveEmployees.length;
+      const totalPossibleEmployeeDays = totalActiveEmployees * datesList.length;
+      const unmarkedPercentage = totalPossibleEmployeeDays > 0
+        ? Math.round((totalUnmarkedCount / totalPossibleEmployeeDays) * 100)
+        : 0;
+
+      const paginatedUnmarkedRecords = unmarkedRecordsList.slice(skip, skip + take);
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          startDate: startStr,
+          endDate: endStr,
+          daysCount: datesList.length,
+          offDaysCount: totalOffDaysCount,
+          totalActiveEmployees,
+          uniqueUnmarkedEmployees: uniqueUnmarkedUserIds.size,
+          markedCount: totalMarkedCount,
+          unmarkedCount: totalUnmarkedCount,
+          onLeaveCount: totalOnLeaveCount,
+          unmarkedPercentage,
+        },
+        pagination: {
+          total: unmarkedRecordsList.length,
+          page: pageNumber,
+          limit: limitNumber,
+          totalPages: Math.ceil(unmarkedRecordsList.length / limitNumber) || 1,
+        },
+        data: paginatedUnmarkedRecords,
+      });
+    } catch (error: any) {
+      console.error("Error fetching unmarked attendance report:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch unmarked attendance report",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  static async sendUnmarkedAttendanceReminders(req: Request, res: Response) {
+    try {
+      const { date, employeeIds } = req.body;
+
+      const getPakistanToday = () => {
+        return new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Karachi",
+        });
+      };
+
+      const targetDateStr = date || getPakistanToday();
+      const targetDateStart = new Date(`${targetDateStr}T00:00:00.000Z`);
+      const targetDateEnd = new Date(`${targetDateStr}T00:00:00.000Z`);
+      targetDateEnd.setUTCDate(targetDateEnd.getUTCDate() + 1);
+
+      let targets: any[] = [];
+      if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+        targets = await prisma.user.findMany({
+          where: {
+            id: { in: employeeIds },
+            isActive: true,
+          },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+        });
+      } else {
+        const markedAttendances = await prisma.attendance.findMany({
+          where: { date: { gte: targetDateStart, lt: targetDateEnd } },
+          select: { employeeId: true },
+        });
+        const markedIds = new Set(markedAttendances.map((a) => a.employeeId));
+
+        targets = await prisma.user.findMany({
+          where: {
+            isActive: true,
+            employeeId: { not: null },
+            id: { notIn: Array.from(markedIds) },
+          },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+        });
+      }
+
+      let sentCount = 0;
+      for (const emp of targets) {
+        if (!emp.email) continue;
+        const subject = `[REMINDER] Attendance Not Marked for ${targetDateStr}`;
+        const html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 20px; text-align: left;">
+              <h2 style="margin: 0; font-size: 18px;">⚠️ Attendance Reminder</h2>
+              <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Iris HRMS Automated Notification</p>
+            </div>
+            <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+              <p style="font-size: 14px; margin-top: 0;">Dear <strong>${emp.firstName} ${emp.lastName}</strong>,</p>
+              <p>According to HR system records, you have not marked your attendance for today (<strong>${targetDateStr}</strong>).</p>
+              <p>If you are present at work, please check in using the biometric machine or submit your check-in reason in Iris HRMS.</p>
+              <p>If you are on leave or working remotely, please ensure your leave request is submitted.</p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="font-size: 12px; color: #64748b;">Iris HRMS Management System</p>
+            </div>
+          </div>
+        `;
+
+        try {
+          await EmailService.sendEmail(emp.email, subject, html);
+          sentCount++;
+        } catch (err) {
+          console.error(`Failed to send unmarked reminder to ${emp.email}:`, err);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Attendance reminders dispatched to ${sentCount} employee(s).`,
+        sentCount,
+      });
+    } catch (error: any) {
+      console.error("Error sending unmarked attendance reminders:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send unmarked attendance reminders",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }

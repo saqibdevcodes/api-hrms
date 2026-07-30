@@ -136,9 +136,17 @@ export const authorize = (allowedRoles: Role[]) => {
       if (!req.user) {
         throw new AuthenticationError("User not authenticated");
       }
-      console.log("User Role:", req.user.role, "Allowed Roles:", allowedRoles);
+      const userRoleStr = (req.user.role as string) || "";
+      const userRankStr = (req.user.userRank as string) || "";
 
-      const hasPermission = AuthService.hasRole(req.user.role, allowedRoles);
+      const isLineManager =
+        userRoleStr === "MANAGER" ||
+        userRankStr === "LINE_MANAGER" ||
+        userRankStr === "MANAGER";
+
+      const hasPermission =
+        AuthService.hasRole(req.user.role, allowedRoles) ||
+        (allowedRoles.includes("MANAGER" as Role) && isLineManager);
 
       if (!hasPermission) {
         throw new AuthorizationError(
@@ -319,7 +327,12 @@ export const hrAndAdmin = authorize(["HR" as Role, "ADMIN" as Role, "SUPERADMIN"
 /**
  * Manager and above middleware
  */
-// export const managerAndAbove = authorize(["MANAGER", "HR", "ADMIN"]);
+export const managerAndAbove = authorize([
+  "MANAGER" as Role,
+  "HR" as Role,
+  "ADMIN" as Role,
+  "SUPERADMIN" as Role,
+]);
 
 /**
  * HR-only middleware

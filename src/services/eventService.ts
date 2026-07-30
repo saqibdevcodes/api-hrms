@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { EventStatus } from "@prisma/client";
 import { EventNotificationService } from "./eventNotificationService";
 
 export class EventService {
@@ -182,26 +183,14 @@ export class EventService {
   }) {
     if (options.mode === "ONLINE") return;
 
-    const { venueId, customVenueName, eventDate, eventEndDate, startTime, endTime, excludeEventId } = options;
+    const { venueId, customVenueName, startTime, endTime, excludeEventId } = options;
 
     if (!venueId && !customVenueName) return;
 
-    const reqStartDateStr = eventDate.toISOString().substring(0, 10);
-    const reqEndDateStr = eventEndDate ? eventEndDate.toISOString().substring(0, 10) : reqStartDateStr;
-
-    const startHours = startTime.getHours();
-    const startMins = startTime.getMinutes();
-
-    let reqStartDateTime = new Date(`${reqStartDateStr}T${String(startHours).padStart(2, "0")}:${String(startMins).padStart(2, "0")}:00`);
-
-    let reqEndDateTime: Date;
-    if (endTime) {
-      const endHours = endTime.getHours();
-      const endMins = endTime.getMinutes();
-      reqEndDateTime = new Date(`${reqEndDateStr}T${String(endHours).padStart(2, "0")}:${String(endMins).padStart(2, "0")}:00`);
-    } else {
-      reqEndDateTime = new Date(reqStartDateTime.getTime() + 2 * 60 * 60 * 1000);
-    }
+    const reqStartDateTime = new Date(startTime);
+    const reqEndDateTime = endTime
+      ? new Date(endTime)
+      : new Date(reqStartDateTime.getTime() + 2 * 60 * 60 * 1000);
 
     const venueWhere: any = {
       status: { not: "CANCELLED" },
@@ -219,26 +208,14 @@ export class EventService {
     });
 
     for (const ev of existingEvents) {
-      const evStartDateStr = new Date(ev.eventDate).toISOString().substring(0, 10);
-      const evEndDateStr = ev.eventEndDate ? new Date(ev.eventEndDate).toISOString().substring(0, 10) : evStartDateStr;
-
-      const evStartH = new Date(ev.startTime).getHours();
-      const evStartM = new Date(ev.startTime).getMinutes();
-
-      const existingStart = new Date(`${evStartDateStr}T${String(evStartH).padStart(2, "0")}:${String(evStartM).padStart(2, "0")}:00`);
-
-      let existingEnd: Date;
-      if (ev.endTime) {
-        const evEndH = new Date(ev.endTime).getHours();
-        const evEndM = new Date(ev.endTime).getMinutes();
-        existingEnd = new Date(`${evEndDateStr}T${String(evEndH).padStart(2, "0")}:${String(evEndM).padStart(2, "0")}:00`);
-      } else {
-        existingEnd = new Date(existingStart.getTime() + 2 * 60 * 60 * 1000);
-      }
+      const existingStart = new Date(ev.startTime);
+      const existingEnd = ev.endTime
+        ? new Date(ev.endTime)
+        : new Date(existingStart.getTime() + 2 * 60 * 60 * 1000);
 
       if (reqStartDateTime < existingEnd && reqEndDateTime > existingStart) {
         const venueNameStr = ev.venue?.name || ev.customVenueName || "Selected Venue";
-        const conflictTimeStr = `${existingStart.toLocaleDateString()} ${existingStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${existingEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const conflictTimeStr = `${existingStart.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" })} ${existingStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - ${existingEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 
         throw new Error(
           `🚫 Venue Occupied Conflict: The venue "${venueNameStr}" is already booked for event "${ev.title}" during ${conflictTimeStr}. Please choose a different time or venue.`,
@@ -267,13 +244,32 @@ export class EventService {
       limit = 10,
     } = query;
 
+    const isHrOrAdmin = ["HR", "ADMIN", "SUPERADMIN"].includes(currentUser?.role);
+    const isManager = currentUser?.role === "MANAGER";
+    const isEmployee = currentUser?.role === "EMPLOYEE";
+
     const where: any = {};
 
-    if (currentUser.role === "EMPLOYEE") {
-      where.OR = [
-        { assignees: { some: { employeeId: currentUser.id } } },
-        { requirements: { some: { assignedEmployeeId: currentUser.id } } },
-        { eventHostId: currentUser.id },
+    if (isEmployee) {
+      where.AND = [
+        {
+          OR: [
+            { assignees: { some: { employeeId: currentUser.id } } },
+            { requirements: { some: { assignedEmployeeId: currentUser.id } } },
+            { eventHostId: currentUser.id },
+          ],
+        },
+      ];
+    } else if (isManager) {
+      where.AND = [
+        {
+          OR: [
+            { createdById: currentUser.id },
+            { assignees: { some: { employeeId: currentUser.id } } },
+            { requirements: { some: { assignedEmployeeId: currentUser.id } } },
+            { eventHostId: currentUser.id },
+          ],
+        },
       ];
     } else if (assignedEmployeeId) {
       where.assignees = {
@@ -284,13 +280,16 @@ export class EventService {
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search } },
-        { description: { contains: search } },
-        { customVenueName: { contains: search } },
-        { customEventType: { contains: search } },
-        { customEventHostName: { contains: search } },
-      ];
+      const searchCondition = {
+        OR: [
+          { title: { contains: search } },
+          { description: { contains: search } },
+          { customVenueName: { contains: search } },
+          { customEventType: { contains: search } },
+          { customEventHostName: { contains: search } },
+        ],
+      };
+      where.AND = [...(where.AND || []), searchCondition];
     }
 
     if (startDate && endDate) {
@@ -313,17 +312,19 @@ export class EventService {
     }
 
     if (eventType) {
-      where.OR = [
-        ...(where.OR || []),
-        {
-          eventTypes: {
-            some: {
-              eventTypeId: eventType,
+      const eventTypeCondition = {
+        OR: [
+          {
+            eventTypes: {
+              some: {
+                eventTypeId: eventType,
+              },
             },
           },
-        },
-        { customEventType: { contains: eventType } },
-      ];
+          { customEventType: { contains: eventType } },
+        ],
+      };
+      where.AND = [...(where.AND || []), eventTypeCondition];
     }
 
     const skip = (Number(page) - 1) * Number(limit);
@@ -374,9 +375,18 @@ export class EventService {
       prisma.event.count({ where }),
     ]);
 
-    const baseScopeWhere = currentUser.role === "EMPLOYEE"
+    const baseScopeWhere: any = isEmployee
       ? {
           OR: [
+            { assignees: { some: { employeeId: currentUser.id } } },
+            { requirements: { some: { assignedEmployeeId: currentUser.id } } },
+            { eventHostId: currentUser.id },
+          ],
+        }
+      : isManager
+      ? {
+          OR: [
+            { createdById: currentUser.id },
             { assignees: { some: { employeeId: currentUser.id } } },
             { requirements: { some: { assignedEmployeeId: currentUser.id } } },
             { eventHostId: currentUser.id },
@@ -404,31 +414,32 @@ export class EventService {
         where: {
           ...baseScopeWhere,
           eventDate: { gte: tomorrow },
-          status: { notIn: ["CANCELLED", "COMPLETED"] },
+          status: { notIn: [EventStatus.CANCELLED, EventStatus.COMPLETED] },
         },
       }),
       prisma.event.count({
         where: {
           ...baseScopeWhere,
           eventDate: { gte: today, lt: tomorrow },
+          status: { notIn: [EventStatus.CANCELLED] },
         },
       }),
       prisma.event.count({
         where: {
           ...baseScopeWhere,
-          status: "IN_PROGRESS",
+          status: EventStatus.IN_PROGRESS,
         },
       }),
       prisma.event.count({
         where: {
           ...baseScopeWhere,
-          status: "COMPLETED",
+          status: EventStatus.COMPLETED,
         },
       }),
       prisma.event.count({
         where: {
           ...baseScopeWhere,
-          status: "CANCELLED",
+          status: EventStatus.CANCELLED,
         },
       }),
       prisma.event.findMany({
@@ -549,7 +560,11 @@ export class EventService {
   // 7. CREATE EVENT
   // ==========================================
 
-  static async createEvent(data: any, createdById: string) {
+  static async createEvent(data: any, creatorInput: any) {
+    const createdById = typeof creatorInput === "string" ? creatorInput : creatorInput?.id;
+    const userRole = typeof creatorInput === "string" ? "HR" : creatorInput?.role;
+    const isHrOrAdmin = ["HR", "ADMIN", "SUPERADMIN"].includes(userRole);
+
     const {
       title,
       description,
@@ -585,6 +600,8 @@ export class EventService {
       checklists = [],
       attachments = [],
     } = data;
+
+    const initialStatus = (status as EventStatus) || EventStatus.SCHEDULED;
 
     const startDt = new Date(startTime);
     const eventDateDt = new Date(eventDate);
@@ -626,7 +643,7 @@ export class EventService {
         endTime: endTime ? new Date(endTime) : null,
         priority,
         mode,
-        status,
+        status: initialStatus,
         onlinePlatform: mode !== "OFFLINE" ? onlinePlatform || null : null,
         meetingLink: mode !== "OFFLINE" ? meetingLink || null : null,
         meetingId: mode !== "OFFLINE" ? meetingId || null : null,
@@ -690,7 +707,7 @@ export class EventService {
         activityLogs: {
           create: {
             action: "CREATED",
-            description: `Event created by ${createdBy ? `${createdBy.firstName} ${createdBy.lastName}` : "HR User"}`,
+            description: `Event created by ${createdBy ? `${createdBy.firstName} ${createdBy.lastName}` : "User"}`,
             performedById: createdById,
           },
         },
@@ -733,7 +750,8 @@ export class EventService {
   // 8. UPDATE EVENT
   // ==========================================
 
-  static async updateEvent(id: string, data: any, updatedById: string) {
+  static async updateEvent(id: string, data: any, updatedByInput: any) {
+    const updatedById = typeof updatedByInput === "string" ? updatedByInput : updatedByInput?.id;
     const existing = await prisma.event.findUnique({ where: { id } });
     if (!existing) throw new Error("Event not found");
 
@@ -752,7 +770,6 @@ export class EventService {
       priority,
       mode,
       status,
-      cancellationReason,
       onlinePlatform,
       meetingLink,
       meetingId,
@@ -766,7 +783,7 @@ export class EventService {
       eventTypeIdList = [],
       requirements = [],
       assignees = [],
-      isOutsourced,
+      isOutsourced = false,
       outsourcingDescription,
       vendorName,
       vendorContactPerson,
@@ -775,6 +792,7 @@ export class EventService {
       estimatedCost,
       outsourcingNotes,
       internalNotes,
+      cancellationReason,
     } = data;
 
     const eventDateDt = eventDate ? new Date(eventDate) : new Date(existing.eventDate);
@@ -887,14 +905,16 @@ export class EventService {
       },
     });
 
-    try {
-      await Promise.all([
-        EventNotificationService.sendEventCreatedNotifications(updatedEvent, updatedBy, true),
-        EventNotificationService.sendRequirementNotifications(updatedEvent, updatedBy, true),
-      ]);
-      EventNotificationService.triggerQueueProcessing();
-    } catch (emailErr) {
-      console.error("Failed to send event update emails:", emailErr);
+    if (updatedEvent.status !== EventStatus.PENDING_APPROVAL) {
+      try {
+        await Promise.all([
+          EventNotificationService.sendEventCreatedNotifications(updatedEvent, updatedBy, true),
+          EventNotificationService.sendRequirementNotifications(updatedEvent, updatedBy, true),
+        ]);
+        EventNotificationService.triggerQueueProcessing();
+      } catch (emailErr) {
+        console.error("Failed to send event update emails:", emailErr);
+      }
     }
 
     return updatedEvent;
@@ -946,15 +966,17 @@ export class EventService {
   }
 
   // ==========================================
-  // 10. UPDATE EVENT STATUS / CANCEL EVENT
+  // 10. UPDATE EVENT STATUS / APPROVE / CANCEL EVENT
   // ==========================================
 
   static async updateEventStatus(
     id: string,
     status: any,
     cancellationReason: string | undefined,
-    userId: string,
+    userInput: any,
   ) {
+    const userId = typeof userInput === "string" ? userInput : userInput?.id;
+
     const existing = await prisma.event.findUnique({
       where: { id },
       include: {
@@ -969,13 +991,18 @@ export class EventService {
     if (!existing) throw new Error("Event not found");
 
     if (status === "CANCELLED" && !cancellationReason) {
-      throw new Error("Cancellation reason is required when cancelling an event");
+      throw new Error("Cancellation reason is required when cancelling or rejecting an event");
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { firstName: true, lastName: true },
-    });
+    const user = typeof userInput === "object" && userInput?.firstName
+      ? userInput
+      : await prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, firstName: true, lastName: true, role: true },
+        });
+
+    const wasPending = existing.status === EventStatus.PENDING_APPROVAL;
+    const isApproving = wasPending && (status === EventStatus.SCHEDULED || status === "SCHEDULED");
 
     const updatedEvent = await prisma.event.update({
       where: { id },
@@ -986,15 +1013,30 @@ export class EventService {
           : {}),
         activityLogs: {
           create: {
-            action: status === "CANCELLED" ? "CANCELLED" : "STATUS_CHANGED",
-            description: `Status changed to ${status}${status === "CANCELLED" ? `. Reason: ${cancellationReason}` : ""} by ${user ? `${user.firstName} ${user.lastName}` : "User"}`,
+            action: isApproving ? "APPROVED" : (status === "CANCELLED" ? "CANCELLED" : "STATUS_CHANGED"),
+            description: isApproving
+              ? `Event request APPROVED by HR (${user ? `${user.firstName} ${user.lastName}` : "HR User"})`
+              : `Status changed to ${status}${status === "CANCELLED" ? `. Reason: ${cancellationReason}` : ""} by ${user ? `${user.firstName} ${user.lastName}` : "User"}`,
             performedById: userId,
           },
         },
       },
     });
 
-    if (status === "CANCELLED") {
+    if (isApproving) {
+      // HR Approved: Now dispatch member assignment & requirement emails!
+      try {
+        const fullEvent = await this.getEventById(id);
+        await Promise.all([
+          EventNotificationService.sendEventCreatedNotifications(fullEvent, user),
+          EventNotificationService.sendRequirementNotifications(fullEvent, user),
+          EventNotificationService.sendEventApprovedNotificationToManager(fullEvent, user),
+        ]);
+        EventNotificationService.triggerQueueProcessing();
+      } catch (emailErr) {
+        console.error("Failed to send approval event emails:", emailErr);
+      }
+    } else if (status === "CANCELLED") {
       try {
         await EventNotificationService.sendEventCancelledNotifications(
           existing,

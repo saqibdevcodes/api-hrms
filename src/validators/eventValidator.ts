@@ -57,7 +57,7 @@ export const createEventValidation = [
 export const updateEventStatusValidation = [
   body("status")
     .notEmpty()
-    .isIn(["DRAFT", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
+    .isIn(["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
     .withMessage("Invalid event status"),
 
   body("cancellationReason")

@@ -37,11 +37,13 @@ export class EventController {
    */
   static async createEvent(req: Request, res: Response) {
     try {
-      const userId = (req as any).user.id;
-      const event = await EventService.createEvent(req.body, userId);
+      const user = (req as any).user;
+      const event = await EventService.createEvent(req.body, user);
       res.status(201).json({
         success: true,
-        message: "Event created successfully",
+        message: event.status === "PENDING_APPROVAL"
+          ? "Event submitted for HR approval"
+          : "Event created successfully",
         data: event,
       });
     } catch (error: any) {
@@ -55,8 +57,8 @@ export class EventController {
    */
   static async updateEvent(req: Request, res: Response) {
     try {
-      const userId = (req as any).user.id;
-      const event = await EventService.updateEvent(req.params.id, req.body, userId);
+      const user = (req as any).user;
+      const event = await EventService.updateEvent(req.params.id, req.body, user);
       res.json({
         success: true,
         message: "Event updated successfully",
@@ -69,17 +71,17 @@ export class EventController {
   }
 
   /**
-   * Update status (e.g. Cancel Event)
+   * Update status (e.g. Approve or Cancel Event)
    */
   static async updateEventStatus(req: Request, res: Response) {
     try {
-      const userId = (req as any).user.id;
+      const user = (req as any).user;
       const { status, cancellationReason } = req.body;
       const event = await EventService.updateEventStatus(
         req.params.id,
         status,
         cancellationReason,
-        userId,
+        user,
       );
       res.json({
         success: true,

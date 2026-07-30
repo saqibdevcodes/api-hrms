@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, SuperAdmin, hrAndAdmin } from "../middleware/auth";
+import { authenticate, SuperAdmin, hrAndAdmin, managerAndAbove } from "../middleware/auth";
 import { validateRequest } from "../middleware/validateRequest";
 import { EventMasterController } from "../controller/eventMasterController";
 import { EventController } from "../controller/eventController";
@@ -94,7 +94,7 @@ router.get("/:id", authenticate, EventController.getEventById);
 router.post(
   "/",
   authenticate,
-  hrAndAdmin,
+  managerAndAbove,
   createEventValidation,
   validateRequest,
   EventController.createEvent,
@@ -103,7 +103,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  hrAndAdmin,
+  managerAndAbove,
   createEventValidation,
   validateRequest,
   EventController.updateEvent,
@@ -112,7 +112,7 @@ router.put(
 router.patch(
   "/:id/status",
   authenticate,
-  hrAndAdmin,
+  managerAndAbove,
   updateEventStatusValidation,
   validateRequest,
   EventController.updateEventStatus,
@@ -120,13 +120,13 @@ router.patch(
 
 router.post("/:id/acknowledge", authenticate, EventController.acknowledgeAssignment);
 
-router.post("/bulk-delete", authenticate, hrAndAdmin, EventController.deleteBulkEvents);
+router.post("/bulk-delete", authenticate, managerAndAbove, EventController.deleteBulkEvents);
 
-router.delete("/:id", authenticate, hrAndAdmin, EventController.deleteEvent);
+router.delete("/:id", authenticate, managerAndAbove, EventController.deleteEvent);
 
 // Checklist items
 router.patch("/checklists/:checklistId", authenticate, EventController.toggleChecklistItem);
-router.post("/:id/checklists", authenticate, hrAndAdmin, EventController.addChecklistItem);
-router.delete("/checklists/:checklistId", authenticate, hrAndAdmin, EventController.deleteChecklistItem);
+router.post("/:id/checklists", authenticate, managerAndAbove, EventController.addChecklistItem);
+router.delete("/checklists/:checklistId", authenticate, managerAndAbove, EventController.deleteChecklistItem);
 
 export default router;

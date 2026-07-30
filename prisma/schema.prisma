@@ -969,6 +969,7 @@ enum EventMode {
 
 enum EventStatus {
   DRAFT
+  PENDING_APPROVAL
   SCHEDULED
   IN_PROGRESS
   COMPLETED

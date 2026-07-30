@@ -10,7 +10,7 @@ import {
   createEmployeeValidation,
   updateEmployeeValidation,
 } from "../validators/employeeValidator";
-import { authenticate, hrAndAdmin, validateRequest } from "../middleware/auth";
+import { authenticate, hrAndAdmin, managerAndAbove, validateRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -131,8 +131,8 @@ router.get(
   EmployeeController.getSupervisorsByRank,
 );
 
-// GET /api/employees - Get all employees (HR and Admin only)
-router.get("/", authenticate, hrAndAdmin, EmployeeController.getAllEmployees);
+// GET /api/employees - Get all employees (HR, Admin, and Managers)
+router.get("/", authenticate, managerAndAbove, EmployeeController.getAllEmployees);
 
 // GET /api/employees/employeeStatus/:id - Get employee status (for dashboard)
 router.get("/employeeStatus/:id", EmployeeController.getEmployeeStatus);
