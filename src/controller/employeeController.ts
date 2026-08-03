@@ -89,13 +89,16 @@ export class EmployeeController {
         employeeId: { not: null }, // Only get users with employeeId (employees)
       };
 
-      // Add search filter
+      // Add search filter (name, employeeId, department, position)
       if (search) {
+        const searchStr = String(search).trim();
         where.OR = [
-          { firstName: { contains: search as string, mode: "insensitive" } },
-          { lastName: { contains: search as string, mode: "insensitive" } },
-          { email: { contains: search as string, mode: "insensitive" } },
-          { employeeId: { contains: search as string, mode: "insensitive" } },
+          { firstName: { contains: searchStr } },
+          { lastName: { contains: searchStr } },
+          { email: { contains: searchStr } },
+          { employeeId: { contains: searchStr } },
+          { position: { contains: searchStr } },
+          { department: { contains: searchStr } },
         ];
       }
 

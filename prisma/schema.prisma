@@ -51,7 +51,7 @@ model User {
   country         String  @default("Pakistan")
 
   // Employment Information
-  employeeId       String?    @unique // IC-EMP001, IC-ADM001, etc.
+  employeeId       String? // IC-EMP001, IC-ADM001, etc.
   userRank         UserRank?
   password         String
   status           UserStatus @default(ACTIVE)

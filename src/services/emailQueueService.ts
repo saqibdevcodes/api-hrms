@@ -10,6 +10,7 @@ import {
   PdrEmailNotificationService,
 } from "./pdrEmailNotificationService";
 import { EventNotificationService } from "./eventNotificationService";
+import { EmailService } from "../utils/emailService";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 60_000;
@@ -134,6 +135,14 @@ export class EmailQueueService {
       case EMAIL_EVENTS.EVENT_CANCELLED:
         await EventNotificationService.processEventCancelledJob(job.payload);
         break;
+
+      case "UNMARKED_ATTENDANCE_REMINDER": {
+        const payload = job.payload as any;
+        if (payload?.to && payload?.subject && payload?.html) {
+          await EmailService.sendEmail(payload.to, payload.subject, payload.html);
+        }
+        break;
+      }
 
       default:
         throw new Error(`Unknown email event: ${job.event}`);

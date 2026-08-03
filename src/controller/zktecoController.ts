@@ -10,6 +10,7 @@ import { AuthenticatedRequest } from "../types/auth";
 import { EmailService } from "../utils/emailService";
 import { AttendanceReminderService } from "../services/attendanceReminderService";
 import { queueAttendanceReminderEmail } from "../queues/email.jobs";
+import { EmailQueueService } from "../services/emailQueueService";
 import ExcelJS from 'exceljs'
 const getDesignationName = (target: any) => {
   const emp = target?.employee || target;
@@ -206,26 +207,12 @@ export class ZKTecoController {
           const searchValue = String(search).trim();
 
           where.employee.OR = [
-            {
-              firstName: {
-                contains: searchValue,
-              },
-            },
-            {
-              lastName: {
-                contains: searchValue,
-              },
-            },
-            {
-              email: {
-                contains: searchValue,
-              },
-            },
-            {
-              employeeId: {
-                contains: searchValue,
-              },
-            },
+            { firstName: { contains: searchValue } },
+            { lastName: { contains: searchValue } },
+            { email: { contains: searchValue } },
+            { employeeId: { contains: searchValue } },
+            { position: { contains: searchValue } },
+            { department: { contains: searchValue } },
           ];
         }
 
@@ -2543,8 +2530,8 @@ export class ZKTecoController {
         return;
       }
 
-      // Find the attendance record
-      const record = await prisma.attendance.findUnique({
+      // Find the attendance record or handles unmarked record ID
+      let record = await prisma.attendance.findUnique({
         where: { id: recordId },
         include: {
           employee: {
@@ -2558,6 +2545,68 @@ export class ZKTecoController {
           },
         },
       });
+
+      if (!record && String(recordId).startsWith("unmarked-")) {
+        const raw = String(recordId).substring("unmarked-".length);
+        const dateMatch = raw.match(/(\d{4}-\d{2}-\d{2})/);
+
+        if (dateMatch) {
+          const dateStr = dateMatch[1];
+          let userIdentifier = raw.split(/[-_]\d{4}-\d{2}-\d{2}/)[0];
+          if (!userIdentifier) {
+            userIdentifier = raw.split("_")[0];
+          }
+
+          const user = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { id: userIdentifier.trim() },
+                { employeeId: userIdentifier.trim() },
+              ],
+            },
+          });
+
+          if (user) {
+            const dateObj = new Date(`${dateStr}T00:00:00.000Z`);
+
+            record = await prisma.attendance.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId: user.id,
+                  date: dateObj,
+                },
+              },
+              create: {
+                employeeId: user.id,
+                date: dateObj,
+                status: "ABSENT",
+                reason: reason.trim(),
+              },
+              update: {
+                reason: reason.trim(),
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                  },
+                },
+              },
+            });
+
+            res.json({
+              success: true,
+              message: "Reason submitted successfully",
+              data: record,
+            });
+            return;
+          }
+        }
+      }
 
       if (!record) {
         res.status(404).json({
@@ -2640,8 +2689,8 @@ export class ZKTecoController {
         return;
       }
 
-      // Find the attendance record
-      const record = await prisma.attendance.findUnique({
+      // Find the attendance record or handles unmarked record ID
+      let record = await prisma.attendance.findUnique({
         where: { id },
         include: {
           employee: {
@@ -2655,6 +2704,68 @@ export class ZKTecoController {
           },
         },
       });
+
+      if (!record && String(id).startsWith("unmarked-")) {
+        const raw = String(id).substring("unmarked-".length);
+        const dateMatch = raw.match(/(\d{4}-\d{2}-\d{2})/);
+
+        if (dateMatch) {
+          const dateStr = dateMatch[1];
+          let userIdentifier = raw.split(/[-_]\d{4}-\d{2}-\d{2}/)[0];
+          if (!userIdentifier) {
+            userIdentifier = raw.split("_")[0];
+          }
+
+          const user = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { id: userIdentifier.trim() },
+                { employeeId: userIdentifier.trim() },
+              ],
+            },
+          });
+
+          if (user) {
+            const dateObj = new Date(`${dateStr}T00:00:00.000Z`);
+
+            record = await prisma.attendance.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId: user.id,
+                  date: dateObj,
+                },
+              },
+              create: {
+                employeeId: user.id,
+                date: dateObj,
+                status: "ABSENT",
+                reason: reason.trim(),
+              },
+              update: {
+                reason: reason.trim(),
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    employeeId: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                  },
+                },
+              },
+            });
+
+            res.json({
+              success: true,
+              message: "Reason updated successfully",
+              data: record,
+            });
+            return;
+          }
+        }
+      }
 
       if (!record) {
         res.status(404).json({
@@ -2839,7 +2950,12 @@ export class ZKTecoController {
       }
 
       // Validate employee email
-      const employeeEmail = record.employee?.email;
+      const employeeEmail =
+        record.employee?.email ||
+        record.employee?.officialEmail ||
+        record.rawUnmarked?.email ||
+        record.email;
+
       if (!employeeEmail) {
         res.status(400).json({
           success: false,
@@ -3789,8 +3905,18 @@ export class ZKTecoController {
               department: true,
               designation: true,
               userRank: true,
+              status: true,
             },
             orderBy: { firstName: "asc" },
+          });
+
+
+          const filteredActiveEmpList = activeEmpList.filter((emp) => {
+            if ((emp as any).role === "SUPER_ADMIN" || (emp as any).userRank === "SUPER_ADMIN") return false;
+            if ((emp as any).status === "INACTIVE" || (emp as any).isActive === false) return false;
+            const empId = String(emp.employeeId || "").trim();
+            if (!empId || empId === "—" || empId === "null" || empId === "undefined" || empId.startsWith("-")) return false;
+            return true;
           });
 
           const markedAtt = await prisma.attendance.findMany({
@@ -3841,7 +3967,7 @@ export class ZKTecoController {
 
             const dayName = dayNamesMap[dStart.getUTCDay()];
 
-            for (const emp of activeEmpList) {
+            for (const emp of filteredActiveEmpList) {
               const key = `${emp.id}_${dStr}`;
               if (!markedSet.has(key)) {
                 const leave = appLeaves.find(
@@ -4010,10 +4136,20 @@ export class ZKTecoController {
       const overallEnd = new Date(`${datesList[datesList.length - 1]}T00:00:00.000Z`);
       overallEnd.setUTCDate(overallEnd.getUTCDate() + 1);
 
+      const authenticatedRequest = req as any;
+      const currentUser = authenticatedRequest.user;
+      const isEmployeeRole =
+        currentUser &&
+        !["ADMIN", "HR", "SUPERADMIN"].includes(currentUser.role);
+
       const userWhere: any = {
         isActive: true,
         employeeId: { not: null },
       };
+
+      if (isEmployeeRole && currentUser?.id) {
+        userWhere.id = currentUser.id;
+      }
 
       if (departmentId) {
         userWhere.departmentId = departmentId as string;
@@ -4026,10 +4162,13 @@ export class ZKTecoController {
           { lastName: { contains: searchValue } },
           { email: { contains: searchValue } },
           { employeeId: { contains: searchValue } },
+          { position: { contains: searchValue } },
+          { department: { contains: searchValue } },
         ];
       }
 
-      const allActiveEmployees = await prisma.user.findMany({
+     
+      const rawActiveEmployees = await prisma.user.findMany({
         where: userWhere,
         select: {
           id: true,
@@ -4041,11 +4180,21 @@ export class ZKTecoController {
           designation: true,
           position: true,
           userRank: true,
+          role: true,
           phone: true,
           profilePicture: true,
           departmentId: true,
+          status: true,
         },
         orderBy: { firstName: "asc" },
+      });
+
+      const allActiveEmployees = rawActiveEmployees.filter((emp) => {
+        if ((emp as any).role === "SUPER_ADMIN" || (emp as any).userRank === "SUPER_ADMIN") return false;
+        if ((emp as any).status === "INACTIVE" || (emp as any).isActive === false) return false;
+        const empId = String(emp.employeeId || "").trim();
+        if (!empId || empId === "—" || empId === "null" || empId === "undefined" || empId.startsWith("-")) return false;
+        return true;
       });
 
       const markedAttendances = await prisma.attendance.findMany({
@@ -4213,12 +4362,24 @@ export class ZKTecoController {
 
       let targets: any[] = [];
       if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+        const extractedIds = employeeIds.map((item: string) => {
+          let str = String(item).trim();
+          if (str.startsWith("unmarked-")) {
+            const parts = str.split("-");
+            if (parts.length >= 2) str = parts[1];
+          }
+          return str.split("_")[0];
+        });
+
         targets = await prisma.user.findMany({
           where: {
-            id: { in: employeeIds },
+            OR: [
+              { id: { in: extractedIds } },
+              { employeeId: { in: extractedIds } },
+            ],
             isActive: true,
           },
-          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true, role: true, userRank: true, status: true },
         });
       } else {
         const markedAttendances = await prisma.attendance.findMany({
@@ -4227,49 +4388,104 @@ export class ZKTecoController {
         });
         const markedIds = new Set(markedAttendances.map((a) => a.employeeId));
 
+        const stagingPunches = await prisma.zKTecoAttendanceStaging.findMany({
+          where: {
+            timestamp: { gte: targetDateStart, lt: targetDateEnd },
+            userId: { not: null },
+          },
+          select: { userId: true },
+        });
+        stagingPunches.forEach((s) => {
+          if (s.userId) markedIds.add(s.userId);
+        });
+
+        const appLeaves = await prisma.leaveRequest.findMany({
+          where: {
+            status: "APPROVED",
+            startDate: { lte: targetDateEnd },
+            endDate: { gte: targetDateStart },
+          },
+          select: { employeeId: true },
+        });
+        appLeaves.forEach((l) => {
+          if (l.employeeId) markedIds.add(l.employeeId);
+        });
+
         targets = await prisma.user.findMany({
           where: {
             isActive: true,
             employeeId: { not: null },
             id: { notIn: Array.from(markedIds) },
           },
-          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true },
+          select: { id: true, firstName: true, lastName: true, email: true, employeeId: true, role: true, userRank: true, status: true },
         });
       }
 
-      let sentCount = 0;
-      for (const emp of targets) {
-        if (!emp.email) continue;
-        const subject = `[REMINDER] Attendance Not Marked for ${targetDateStr}`;
-        const html = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
-            <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 20px; text-align: left;">
-              <h2 style="margin: 0; font-size: 18px;">⚠️ Attendance Reminder</h2>
-              <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Iris HRMS Automated Notification</p>
-            </div>
-            <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
-              <p style="font-size: 14px; margin-top: 0;">Dear <strong>${emp.firstName} ${emp.lastName}</strong>,</p>
-              <p>According to HR system records, you have not marked your attendance for today (<strong>${targetDateStr}</strong>).</p>
-              <p>If you are present at work, please check in using the biometric machine or submit your check-in reason in Iris HRMS.</p>
-              <p>If you are on leave or working remotely, please ensure your leave request is submitted.</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-              <p style="font-size: 12px; color: #64748b;">Iris HRMS Management System</p>
-            </div>
-          </div>
-        `;
+      targets = targets.filter((emp: any) => {
+        if ((emp as any).role === "SUPER_ADMIN" || (emp as any).userRank === "SUPER_ADMIN") return false;
+        if ((emp as any).status === "INACTIVE" || (emp as any).isActive === false) return false;
+        const empId = String(emp.employeeId || "").trim();
+        if (!empId || empId === "—" || empId === "null" || empId === "undefined" || empId.startsWith("-")) return false;
+        return true;
+      });
 
-        try {
-          await EmailService.sendEmail(emp.email, subject, html);
-          sentCount++;
-        } catch (err) {
-          console.error(`Failed to send unmarked reminder to ${emp.email}:`, err);
-        }
+      const eligibleEmployees = targets.filter((emp: any) => Boolean(emp.email));
+
+      if (eligibleEmployees.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No unmarked employees with valid email addresses found to send reminders.",
+          sentCount: 0,
+        });
       }
 
-      return res.status(200).json({
+      // ⚡ Respond immediately to prevent Axios 10000ms timeout in frontend
+      res.status(200).json({
         success: true,
-        message: `Attendance reminders dispatched to ${sentCount} employee(s).`,
-        sentCount,
+        message: `Attendance reminder dispatch initiated for ${eligibleEmployees.length} employee(s). Emails are being queued in the background.`,
+        sentCount: eligibleEmployees.length,
+      });
+
+      // Execute email queueing / direct sending in background non-blocking task
+      setImmediate(async () => {
+        let sentCount = 0;
+        for (const emp of eligibleEmployees) {
+          const subject = `[REMINDER] Attendance Not Marked for ${targetDateStr}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+              <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 20px; text-align: left;">
+                <h2 style="margin: 0; font-size: 18px;">⚠️ Attendance Reminder</h2>
+                <p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 13px;">Iris HRMS Automated Notification</p>
+              </div>
+              <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+                <p style="font-size: 14px; margin-top: 0;">Dear <strong>${emp.firstName} ${emp.lastName}</strong>,</p>
+                <p>According to HR system records, you have not marked your attendance for today (<strong>${targetDateStr}</strong>).</p>
+                <p>If you are present at work, please check in using the biometric machine or submit your check-in reason in Iris HRMS.</p>
+                <p>If you are on leave or working remotely, please ensure your leave request is submitted.</p>
+                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #64748b;">Iris HRMS Management System</p>
+              </div>
+            </div>
+          `;
+
+          try {
+            await EmailQueueService.enqueue("UNMARKED_ATTENDANCE_REMINDER", {
+              to: emp.email,
+              subject,
+              html,
+            });
+            sentCount++;
+          } catch (err: any) {
+            console.error(`Failed to queue unmarked reminder to ${emp.email}, fallback to direct email:`, err);
+            try {
+              await EmailService.sendEmail(emp.email, subject, html);
+              sentCount++;
+            } catch (directErr: any) {
+              console.error(`Failed to send direct email to ${emp.email}:`, directErr);
+            }
+          }
+        }
+        console.log(`✅ Background email reminders completed: ${sentCount}/${eligibleEmployees.length} queued/sent.`);
       });
     } catch (error: any) {
       console.error("Error sending unmarked attendance reminders:", error);
