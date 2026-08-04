@@ -114,26 +114,91 @@ function pdrLink(pdrId: number): string {
 function employeeDetailsBlock(pdr: PdrWithRelations): string {
   const u = pdr.user;
   return `
-    <ul style="margin:12px 0;padding-left:20px;">
-      <li><strong>Employee:</strong> ${fullName(u)}</li>
-      <li><strong>Employee ID:</strong> ${u.employeeId || "—"}</li>
-      <li><strong>Cycle:</strong> ${pdr.pdr_cycle || "—"}</li>
-      <li><strong>Department:</strong> ${u.departmentEntity?.name || u.department || "—"}</li>
-      <li><strong>Designation:</strong> ${u.designation?.title || "—"}</li>
-      <li><strong>PDR #:</strong> ${pdr.id}</li>
-    </ul>
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin: 16px 0; border-collapse: separate; overflow: hidden;">
+      <tr>
+        <td style="padding: 16px; font-size: 13px; color: #334155;">
+          <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="padding: 4px 0; width: 35%; color: #64748b; font-weight: 500;">Employee Name:</td>
+              <td style="padding: 4px 0; font-weight: 600; color: #0f172a;">${fullName(u)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Employee ID:</td>
+              <td style="padding: 4px 0; color: #334155;">${u.employeeId || "—"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b; font-weight: 500;">PDR Cycle:</td>
+              <td style="padding: 4px 0; color: #334155;">${pdr.pdr_cycle || "—"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Department:</td>
+              <td style="padding: 4px 0; color: #334155;">${u.departmentEntity?.name || u.department || "—"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b; font-weight: 500;">Designation:</td>
+              <td style="padding: 4px 0; color: #334155;">${u.designation?.title || "—"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #64748b; font-weight: 500;">PDR Reference:</td>
+              <td style="padding: 4px 0; color: #4f46e5; font-weight: 600;">#${pdr.id}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function emailActionButton(label: string, url: string): string {
+  return `
+    <table border="0" cellpadding="0" cellspacing="0" style="margin: 20px 0;">
+      <tr>
+        <td align="center" style="border-radius: 6px; background-color: #4f46e5;">
+          <a href="${url}" target="_blank" style="font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; padding: 10px 22px; border-radius: 6px; display: inline-block;">
+            ${label}
+          </a>
+        </td>
+      </tr>
+    </table>
   `;
 }
 
 function emailLayout(title: string, bodyHtml: string): string {
+  const companyName = config.COMPANY_NAME || "HRMS";
   return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;">
-      <h2 style="color:#4F46E5;">${title}</h2>
-      ${bodyHtml}
-      <p style="margin-top:24px;color:#666;font-size:12px;">
-        ${config.COMPANY_NAME} — automated PDR notification
-      </p>
-    </div>
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${title}</title>
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 24px 12px;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <!-- Header -->
+        <tr>
+          <td style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 26px 28px;">
+            <span style="color: #6366f1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;">${companyName} PDR System</span>
+            <h2 style="color: #ffffff; font-size: 20px; font-weight: 700; margin: 6px 0 0 0;">${title}</h2>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding: 24px 28px; color: #334155; font-size: 14px; line-height: 1.6;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background-color: #f8fafc; padding: 16px 28px; border-top: 1px solid #e2e8f0; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+              This is an automated notification from ${companyName} HRMS. Please do not reply directly to this email.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
   `;
 }
 
@@ -196,7 +261,7 @@ export class PdrEmailNotificationService {
   ): Promise<{ to: string; subject: string; html: string }[]> {
     const { targetStatus, fromStatus, revertMessage } = data;
     const employeeName = fullName(pdr.user);
-    const cycle = pdr.pdr_cycle || "PDR";
+    const cycle = pdr.pdr_cycle || "PDR Cycle";
     const link = pdrLink(pdr.id);
     const out: { to: string; subject: string; html: string }[] = [];
 
@@ -209,23 +274,25 @@ export class PdrEmailNotificationService {
       case PdrOverallStatus.CREATED_BY_HR:
         push(
           resolveNotifyEmail(pdr.user),
-          `${cycle} — PDR created for you`,
-          `<p>Hello ${pdr.user.firstName},</p>
-           <p>HR has created your Performance Development Review for <strong>${cycle}</strong>.</p>
-           <p>Please log in and complete your section when ready.</p>
-          <!-- <p><a href="${link}">Open your PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+          `${cycle} — PDR Created`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+           <p>HR has initiated your Performance Development Review (PDR) for <strong>${cycle}</strong>.</p>
+           ${employeeDetailsBlock(pdr)}
+           <p>Please log in to your HRMS portal to complete your self-assessment section.</p>
+          `,
         );
         break;
 
       case PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR: {
         const hrEmails = await getHrOfficialEmails();
-        const body = `<p>An employee has submitted their PDR section for HR review.</p>
+        const body = `<p style="margin-top:0;">Hello HR Team,</p>
+          <p><strong>${employeeName}</strong> has completed and submitted their employee PDR section for review.</p>
           ${employeeDetailsBlock(pdr)}
-          <p><a href="${link}">Review PDR</a></p>`;
+          ${emailActionButton("Review PDR Submission", link)}`;
         for (const to of hrEmails) {
           push(
             to,
-            `${cycle} — ${employeeName} submitted PDR (employee section)`,
+            `${cycle} — Employee Section Submitted (${employeeName})`,
             body,
           );
         }
@@ -235,23 +302,31 @@ export class PdrEmailNotificationService {
       case PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE:
         push(
           resolveNotifyEmail(pdr.user),
-          `${cycle} — PDR returned for revision`,
-          `<p>Hello ${pdr.user.firstName},</p>
-           <p>HR has returned your PDR for revision.</p>
-           ${revertMessage ? `<p><strong>Message from HR:</strong></p><blockquote>${revertMessage}</blockquote>` : ""}
-           <!-- <p><a href="${link}">Update your PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+          `${cycle} — Action Required: PDR Revision Requested`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+           <p>HR has reviewed your PDR and requested revisions on your self-assessment section.</p>
+           ${revertMessage
+            ? `<div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 4px; margin: 16px 0; color: #991b1b;">
+                    <strong>Message from HR:</strong>
+                    <p style="margin: 4px 0 0 0; font-style: italic;">"${revertMessage}"</p>
+                  </div>`
+            : ""
+          }
+           ${employeeDetailsBlock(pdr)}
+           <p>Please update your PDR entries and resubmit when complete.</p>
+           ${emailActionButton("Update Your PDR", link)}`,
         );
         break;
 
       case PdrOverallStatus.HR_APPROVED_EMPLOYEE:
         push(
           resolveNotifyEmail(pdr.linemanager),
-          `${cycle} — Manager section required (${employeeName})`,
-          `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
-           <p>HR has approved the employee section for <strong>${employeeName}</strong>.</p>
+          `${cycle} — Manager Review Required (${employeeName})`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.linemanager?.firstName || "Manager"}</strong>,</p>
+           <p>HR has approved the employee self-assessment section for <strong>${employeeName}</strong>.</p>
            ${employeeDetailsBlock(pdr)}
-           <p>Please complete the line manager section.</p>
-           <!-- <p><a href="${link}">Open PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+           <p>Please complete your line manager assessment section.</p>
+           ${emailActionButton("Fill Manager Section", link)}`,
         );
         break;
 
@@ -262,27 +337,26 @@ export class PdrEmailNotificationService {
         ) {
           push(
             resolveNotifyEmail(pdr.linemanager),
-            `${cycle} — Your turn: line manager section (${employeeName})`,
-            `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
-             <p>You may now fill the line manager section for <strong>${employeeName}</strong>.</p>
+            `${cycle} — Manager Action Pending (${employeeName})`,
+            `<p style="margin-top:0;">Hello <strong>${pdr.linemanager?.firstName || "Manager"}</strong>,</p>
+             <p>The PDR line manager section is now open for <strong>${employeeName}</strong>.</p>
              ${employeeDetailsBlock(pdr)}
-             <!-- <p><a href="${link}">Open PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+             <p>Please log in to complete your evaluation.</p>
+             `,
           );
         }
         break;
 
       case PdrOverallStatus.MANAGER_SUBMITTED_TO_HR: {
         const hrEmails = await getHrOfficialEmails();
-        const body = `<p>Line manager has submitted the manager section for HR review.</p>
+        const body = `<p style="margin-top:0;">Hello HR Team,</p>
+          <p>The line manager (<strong>${pdr.linemanager ? fullName(pdr.linemanager) : "Line Manager"}</strong>) has submitted the manager section for <strong>${employeeName}</strong>.</p>
           ${employeeDetailsBlock(pdr)}
-          <p><strong>Line manager:</strong> ${
-            pdr.linemanager ? fullName(pdr.linemanager) : "—"
-          }</p>
-          <p><a href="${link}">Review PDR</a></p>`;
+          ${emailActionButton("Review Manager Section", link)}`;
         for (const to of hrEmails) {
           push(
             to,
-            `${cycle} — ${employeeName} PDR submitted (manager section)`,
+            `${cycle} — Manager Section Submitted (${employeeName})`,
             body,
           );
         }
@@ -292,53 +366,63 @@ export class PdrEmailNotificationService {
       case PdrOverallStatus.HR_REVERTED_TO_MANAGER:
         push(
           resolveNotifyEmail(pdr.linemanager),
-          `${cycle} — Manager section returned (${employeeName})`,
-          `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
-           <p>HR has returned the manager section for <strong>${employeeName}</strong>.</p>
-           ${revertMessage ? `<p><strong>Message from HR:</strong></p><blockquote>${revertMessage}</blockquote>` : ""}
+          `${cycle} — Action Required: Manager Section Revision`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.linemanager?.firstName || "Manager"}</strong>,</p>
+           <p>HR has reviewed the manager evaluation for <strong>${employeeName}</strong> and requested revisions.</p>
+           ${revertMessage
+            ? `<div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 4px; margin: 16px 0; color: #991b1b;">
+                    <strong>Message from HR:</strong>
+                    <p style="margin: 4px 0 0 0; font-style: italic;">"${revertMessage}"</p>
+                  </div>`
+            : ""
+          }
            ${employeeDetailsBlock(pdr)}
-           <!-- <p><a href="${link}">Update PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+           <p>Please update your assessment and resubmit.</p>
+           ${emailActionButton("Revise Manager Section", link)}`,
         );
         break;
 
       case PdrOverallStatus.HR_APPROVED_MANAGER:
         push(
           resolveNotifyEmail(pdr.director),
-          `${cycle} — Director review required (${employeeName})`,
-          `<p>Hello ${pdr.director?.firstName || "Director"},</p>
-           <p>HR has approved the manager section. The PDR is ready for director review.</p>
+          `${cycle} — Director Review Required (${employeeName})`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.director?.firstName || "Director"}</strong>,</p>
+           <p>HR has approved the manager section for <strong>${employeeName}</strong>. The PDR is now ready for your director review and final comments.</p>
            ${employeeDetailsBlock(pdr)}
-           <!-- <p><a href="${link}">Review PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+           ${emailActionButton("Review PDR", link)}`,
         );
         break;
 
       case PdrOverallStatus.DIRECTOR_REVIEWED:
         push(
           resolveNotifyEmail(pdr.user),
-          `${cycle} — Please acknowledge your PDR`,
-          `<p>Hello ${pdr.user.firstName},</p>
-           <p>Director review is complete. Please review and acknowledge your PDR.</p>
-           <!-- <p><a href="${link}">Acknowledge PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+          `${cycle} — Action Required: Acknowledge Your PDR`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+           <p>Director review has been completed for your <strong>${cycle}</strong> PDR. Please review the final ratings and submit your acknowledgement.</p>
+           ${employeeDetailsBlock(pdr)}
+           ${emailActionButton("Acknowledge PDR", link)}`,
         );
         break;
 
       case PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING:
         push(
           resolveNotifyEmail(pdr.user),
-          `${cycle} — Please acknowledge your PDR`,
-          `<p>Hello ${pdr.user.firstName},</p>
-           <p>Your line manager has updated the PDR. Please review and acknowledge.</p>
-           <!-- <p><a href="${link}">Acknowledge PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+          `${cycle} — Action Required: Acknowledge Updated PDR`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+           <p>Your line manager has updated your PDR. Please review the changes and record your acknowledgement.</p>
+           ${employeeDetailsBlock(pdr)}
+           ${emailActionButton("Review & Acknowledge PDR", link)}`,
         );
         break;
 
       case PdrOverallStatus.EMPLOYEE_DISAGREED: {
         const hrEmails = await getHrOfficialEmails();
-        const body = `<p>The employee has disagreed with the PDR and requires HR attention.</p>
+        const body = `<p style="margin-top:0;">Hello HR Team,</p>
+          <p>Attention: <strong>${employeeName}</strong> has indicated disagreement with their PDR assessment upon acknowledgement.</p>
           ${employeeDetailsBlock(pdr)}
-          <p><a href="${link}">View PDR</a></p>`;
+          ${emailActionButton("View Disagreed PDR", link)}`;
         for (const to of hrEmails) {
-          push(to, `${cycle} — ${employeeName} disagreed with PDR`, body);
+          push(to, `${cycle} — Employee Disagreed with PDR (${employeeName})`, body);
         }
         break;
       }
@@ -346,37 +430,41 @@ export class PdrEmailNotificationService {
       case PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER:
         push(
           resolveNotifyEmail(pdr.linemanager),
-          `${cycle} — Revisions required (${employeeName})`,
-          `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
+          `${cycle} — Revision Requested by HR (${employeeName})`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.linemanager?.firstName || "Manager"}</strong>,</p>
            <p>HR has requested manager revisions for <strong>${employeeName}</strong>'s PDR.</p>
            ${employeeDetailsBlock(pdr)}
-           <!-- <p><a href="${link}">Open PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+           ${emailActionButton("Revise PDR", link)}`,
         );
         break;
 
       case PdrOverallStatus.MANAGER_REVISING:
         push(
           resolveNotifyEmail(pdr.linemanager),
-          `${cycle} — Please revise manager section (${employeeName})`,
-          `<p>Hello ${pdr.linemanager?.firstName || "Manager"},</p>
-           <p>Please revise the manager section for <strong>${employeeName}</strong>.</p>
+          `${cycle} — Manager Section Revision Pending (${employeeName})`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.linemanager?.firstName || "Manager"}</strong>,</p>
+           <p>Please revise the manager section for <strong>${employeeName}</strong>'s PDR.</p>
            ${employeeDetailsBlock(pdr)}
-           <!-- <p><a href="${link}">Open PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+           ${emailActionButton("Revise Manager Section", link)}`,
         );
         break;
 
       case PdrOverallStatus.COMPLETED: {
         push(
           resolveNotifyEmail(pdr.user),
-          `${cycle} — Your PDR is completed`,
-          `<p>Hello ${pdr.user.firstName},</p>
-           <p>Your Performance Development Review for <strong>${cycle}</strong> is now complete.</p>
-           <!-- <p><a href="${link}">View PDR</a></p>-->`, // TODO: Uncomment this when the link is ready
+          `${cycle} — PDR Complete`,
+          `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+           <p>Your Performance Development Review for <strong>${cycle}</strong> is now finalized and marked complete.</p>
+           ${employeeDetailsBlock(pdr)}
+           ${emailActionButton("View Completed PDR", link)}`,
         );
         const hrEmails = await getHrOfficialEmails();
-        const hrBody = `<p>PDR workflow is complete.</p>${employeeDetailsBlock(pdr)}`;
+        const hrBody = `<p style="margin-top:0;">Hello HR Team,</p>
+          <p>The PDR workflow for <strong>${employeeName}</strong> has been successfully completed.</p>
+          ${employeeDetailsBlock(pdr)}
+          ${emailActionButton("View Completed PDR", link)}`;
         for (const to of hrEmails) {
-          push(to, `${cycle} — PDR completed (${employeeName})`, hrBody);
+          push(to, `${cycle} — PDR Completed (${employeeName})`, hrBody);
         }
         break;
       }

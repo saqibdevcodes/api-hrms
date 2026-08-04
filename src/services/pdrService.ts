@@ -12,6 +12,10 @@ import {
   queuePdrStatusEmail,
 } from "../queues/email.jobs";
 
+import { getSocketManager } from "../index";
+
+import { NotificationService } from "../services/notificationService";
+
 type TeamHierarchyNode = {
   pdr: Prisma.PdrGetPayload<{
     include: {
@@ -72,7 +76,31 @@ export interface PdrCreationData {
   linemanager_id?: string;
   directorId?: string;
   pdrCycle: string;
+  pdrCycleId?: number;
+  phaseDeadlines?: PdrPhaseDeadlinesInput;
 }
+
+export interface PdrPhaseDeadlineInput {
+  noRestriction?: boolean;
+  deadline?: string | Date | null;
+}
+
+export interface PdrPhaseDeadlinesInput {
+  employeeAccess?: PdrPhaseDeadlineInput;
+  hrEmployeeApproval?: PdrPhaseDeadlineInput;
+  managerAccess?: PdrPhaseDeadlineInput;
+  hrManagerApproval?: PdrPhaseDeadlineInput;
+  directorReview?: PdrPhaseDeadlineInput;
+  employeeAcknowledgement?: PdrPhaseDeadlineInput;
+}
+
+export type PdrPhaseKey =
+  | "employeeAccess"
+  | "hrEmployeeApproval"
+  | "managerAccess"
+  | "hrManagerApproval"
+  | "directorReview"
+  | "employeeAcknowledgement";
 
 export interface PdrTransitionData {
   pdrId: number;
@@ -92,6 +120,191 @@ export interface PdrOverallSummary {
 }
 
 export class PdrService {
+  private static toDateOrNull(value?: string | Date | null): Date | null {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Invalid PDR deadline date");
+    }
+    return date;
+  }
+
+  private static mapPhaseDeadlines(deadlines?: PdrPhaseDeadlinesInput) {
+    const stage = (key: keyof PdrPhaseDeadlinesInput) => {
+      const value = deadlines?.[key];
+      const noRestriction = value?.noRestriction !== false;
+      return {
+        noRestriction,
+        deadline: noRestriction ? null : this.toDateOrNull(value?.deadline),
+      };
+    };
+
+    const employeeAccess = stage("employeeAccess");
+    const hrEmployeeApproval = stage("hrEmployeeApproval");
+    const managerAccess = stage("managerAccess");
+    const hrManagerApproval = stage("hrManagerApproval");
+    const directorReview = stage("directorReview");
+    const employeeAcknowledgement = stage("employeeAcknowledgement");
+
+    return {
+      employeeAccessNoRestriction: employeeAccess.noRestriction,
+      employeeAccessDeadline: employeeAccess.deadline,
+      hrEmployeeApprovalNoRestriction: hrEmployeeApproval.noRestriction,
+      hrEmployeeApprovalDeadline: hrEmployeeApproval.deadline,
+      managerAccessNoRestriction: managerAccess.noRestriction,
+      managerAccessDeadline: managerAccess.deadline,
+      hrManagerApprovalNoRestriction: hrManagerApproval.noRestriction,
+      hrManagerApprovalDeadline: hrManagerApproval.deadline,
+      directorReviewNoRestriction: directorReview.noRestriction,
+      directorReviewDeadline: directorReview.deadline,
+      employeeAcknowledgementNoRestriction: employeeAcknowledgement.noRestriction,
+      employeeAcknowledgementDeadline: employeeAcknowledgement.deadline,
+    };
+  }
+
+  static assertPhaseOpen(pdr: any, phase: PdrPhaseKey) {
+    const config: Record<PdrPhaseKey, { noRestriction: string; deadline: string; label: string }> = {
+      employeeAccess: {
+        noRestriction: "employeeAccessNoRestriction",
+        deadline: "employeeAccessDeadline",
+        label: "Employee filling",
+      },
+      hrEmployeeApproval: {
+        noRestriction: "hrEmployeeApprovalNoRestriction",
+        deadline: "hrEmployeeApprovalDeadline",
+        label: "HR employee approval",
+      },
+      managerAccess: {
+        noRestriction: "managerAccessNoRestriction",
+        deadline: "managerAccessDeadline",
+        label: "Manager filling",
+      },
+      hrManagerApproval: {
+        noRestriction: "hrManagerApprovalNoRestriction",
+        deadline: "hrManagerApprovalDeadline",
+        label: "HR manager approval",
+      },
+      directorReview: {
+        noRestriction: "directorReviewNoRestriction",
+        deadline: "directorReviewDeadline",
+        label: "Director review",
+      },
+      employeeAcknowledgement: {
+        noRestriction: "employeeAcknowledgementNoRestriction",
+        deadline: "employeeAcknowledgementDeadline",
+        label: "Employee acknowledgement",
+      },
+    };
+
+    const phaseConfig = config[phase];
+    if (pdr[phaseConfig.noRestriction]) return;
+
+    const deadline = pdr[phaseConfig.deadline] ? new Date(pdr[phaseConfig.deadline]) : null;
+    if (!deadline) return;
+
+    if (new Date() > deadline) {
+      throw new Error(`${phaseConfig.label} deadline has passed`);
+    }
+  }
+
+  static getPhaseForStatus(status: PdrOverallStatus): PdrPhaseKey | null {
+    if (
+      ([
+        PdrOverallStatus.CREATED_BY_HR,
+        PdrOverallStatus.EMPLOYEE_PENDING,
+        PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE,
+      ] as PdrOverallStatus[]).includes(status)
+    ) {
+      return "employeeAccess";
+    }
+
+    if (
+      ([
+        PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR,
+        PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
+      ] as PdrOverallStatus[]).includes(status)
+    ) {
+      return "hrEmployeeApproval";
+    }
+
+    if (
+      ([
+        PdrOverallStatus.HR_APPROVED_EMPLOYEE,
+        PdrOverallStatus.MANAGER_PENDING,
+        PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+        PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER,
+        PdrOverallStatus.MANAGER_REVISING,
+      ] as PdrOverallStatus[]).includes(status)
+    ) {
+      return "managerAccess";
+    }
+
+    if (
+      ([
+        PdrOverallStatus.MANAGER_SUBMITTED_TO_HR,
+        PdrOverallStatus.HR_REVIEWING_MANAGER,
+      ] as PdrOverallStatus[]).includes(status)
+    ) {
+      return "hrManagerApproval";
+    }
+
+    if (
+      ([PdrOverallStatus.HR_APPROVED_MANAGER, PdrOverallStatus.DIRECTOR_REVIEWING] as PdrOverallStatus[]).includes(
+        status,
+      )
+    ) {
+      return "directorReview";
+    }
+
+    if (
+      ([
+        PdrOverallStatus.DIRECTOR_REVIEWED,
+        PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING,
+        PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED,
+      ] as PdrOverallStatus[]).includes(status)
+    ) {
+      return "employeeAcknowledgement";
+    }
+
+    return null;
+  }
+
+  static async getCycles() {
+    return prisma.pdrCycle.findMany({
+      orderBy: [{ isActive: "desc" }, { startDate: "desc" }, { name: "asc" }],
+    });
+  }
+
+  static async createCycle(data: {
+    name: string;
+    description?: string;
+    startDate?: string | Date | null;
+    endDate?: string | Date | null;
+    createdBy?: string;
+  }) {
+    const name = data.name.trim();
+    if (!name) {
+      throw new Error("Cycle name is required");
+    }
+
+    const startDate = this.toDateOrNull(data.startDate);
+    const endDate = this.toDateOrNull(data.endDate);
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new Error("Cycle start date must be before end date");
+    }
+
+    return prisma.pdrCycle.create({
+      data: {
+        name,
+        description: data.description?.trim() || null,
+        startDate,
+        endDate,
+        createdBy: data.createdBy,
+      },
+    });
+  }
+
   /**
    * Split `users.manager` into candidates (single email or comma/semicolon-separated).
    */
@@ -397,14 +610,36 @@ export class PdrService {
       directorId = director?.id;
     }
 
+    let cycleId = data.pdrCycleId;
+    if (cycleId) {
+      const cycle = await prisma.pdrCycle.findUnique({
+        where: { id: cycleId },
+        select: { id: true, name: true },
+      });
+      if (!cycle) {
+        throw new Error("Selected PDR cycle was not found");
+      }
+      if (!data.pdrCycle) {
+        data.pdrCycle = cycle.name;
+      }
+    } else {
+      const cycle = await prisma.pdrCycle.findUnique({
+        where: { name: data.pdrCycle },
+        select: { id: true },
+      });
+      cycleId = cycle?.id;
+    }
+
     const pdr = await prisma.pdr.create({
       data: {
         userId: data.userId,
         pdr_cycle: data.pdrCycle,
+        pdrCycleId: cycleId,
         linemanager_id: linemanagerId,
         director_id: directorId,
         overallStatus: PdrOverallStatus.CREATED_BY_HR,
         lastModifiedBy: createdBy,
+        ...this.mapPhaseDeadlines(data.phaseDeadlines),
       },
       include: {
         user: {
@@ -437,6 +672,21 @@ export class PdrService {
 
     await queuePdrCreatedEmail(pdr.id.toString());
 
+    // In-app notification: employee + line manager
+    try {
+      const socketManager = getSocketManager();
+      const notificationService = new NotificationService(socketManager);
+      const employeeName = `${pdr.user.firstName} ${pdr.user.lastName}`;
+      await notificationService.sendPdrCreatedNotification(
+        pdr.user.id,
+        employeeName,
+        pdr.pdr_cycle ?? "",
+        pdr.linemanager?.id,
+      );
+    } catch (notificationError) {
+      console.error("Error sending PDR created notification:", notificationError);
+    }
+
     return pdr;
   }
 
@@ -447,12 +697,19 @@ export class PdrService {
     pdrCycle: string,
     createdBy: string,
     departmentId?: string,
+    userIds?: string[],
+    pdrCycleId?: number,
+    phaseDeadlines?: PdrPhaseDeadlinesInput,
   ) {
     const whereClause: any = {
       role: Role.EMPLOYEE,
       isActive: true,
       hasSystemAccess: true,
     };
+
+    if (userIds?.length) {
+      whereClause.id = { in: [...new Set(userIds)] };
+    }
 
     if (departmentId) {
       whereClause.departmentId = departmentId;
@@ -469,6 +726,8 @@ export class PdrService {
       errors: [] as any[],
     };
 
+    const users = [] as string[];
+
     for (const employee of employees) {
       try {
         // `linemanager_id` FK → `users.id`; resolved from `users.manager` in `createPdr`.
@@ -476,10 +735,14 @@ export class PdrService {
           {
             userId: employee.id,
             pdrCycle,
+            pdrCycleId,
+            phaseDeadlines,
           },
           createdBy,
         );
         results.created.push(pdr);
+        users.push(employee.id);
+
       } catch (error: any) {
         if (error.message.includes("already exists")) {
           results.skipped.push({ userId: employee.id, reason: error.message });
@@ -488,6 +751,10 @@ export class PdrService {
         }
       }
     }
+
+      // Individual per-employee notifications are already sent inside createPdr above.
+
+
 
     return results;
   }
@@ -633,6 +900,133 @@ export class PdrService {
       revertMessage: data.revertMessage,
     });
 
+    // In-app notifications per target status
+    try {
+      const socketManager = getSocketManager();
+      const notificationService = new NotificationService(socketManager);
+      const employeeName = `${updatedPdr.user.firstName} ${updatedPdr.user.lastName}`;
+      const cycle = updatedPdr.pdr_cycle;
+      const employeeUserId = updatedPdr.user.id;
+      const lineManagerUserId = updatedPdr.linemanager?.id;
+      const directorUserId = updatedPdr.director?.id;
+
+      switch (targetStatus) {
+        case PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR:
+          await notificationService.sendPdrSubmittedToHRNotification(
+            employeeName,
+            "EMPLOYEE",
+            cycle,
+          );
+          break;
+
+        case PdrOverallStatus.MANAGER_SUBMITTED_TO_HR:
+          await notificationService.sendPdrSubmittedToHRNotification(
+            employeeName,
+            "MANAGER",
+            cycle,
+          );
+          break;
+
+        case PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING:
+          await notificationService.sendPdrAcknowledgementRequiredNotification(
+            employeeUserId,
+            cycle,
+          );
+          break;
+
+        case PdrOverallStatus.HR_APPROVED_EMPLOYEE:
+          if (lineManagerUserId) {
+            await notificationService.sendPdrEmployeeSectionApprovedNotification(
+              lineManagerUserId,
+              employeeName,
+              cycle,
+            );
+          }
+          break;
+
+        case PdrOverallStatus.HR_APPROVED_MANAGER:
+          if (directorUserId) {
+            await notificationService.sendPdrManagerSectionApprovedNotification(
+              directorUserId,
+              employeeName,
+              cycle,
+            );
+          }
+          break;
+
+        case PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE:
+          await notificationService.sendPdrRevertedToEmployeeNotification(
+            employeeUserId,
+            cycle,
+            data.revertMessage,
+          );
+          break;
+
+        case PdrOverallStatus.HR_REVERTED_TO_MANAGER:
+          if (lineManagerUserId) {
+            await notificationService.sendPdrRevertedToManagerNotification(
+              lineManagerUserId,
+              employeeName,
+              cycle,
+              data.revertMessage,
+            );
+          }
+          break;
+
+        case PdrOverallStatus.MANAGER_PENDING:
+          if (lineManagerUserId) {
+            await notificationService.sendPdrManagerPendingNotification(
+              lineManagerUserId,
+              employeeName,
+              cycle,
+              false,
+            );
+          }
+          break;
+
+        case PdrOverallStatus.MANAGER_REVISING:
+          if (lineManagerUserId) {
+            await notificationService.sendPdrManagerPendingNotification(
+              lineManagerUserId,
+              employeeName,
+              cycle,
+              true,
+            );
+          }
+          break;
+
+        case PdrOverallStatus.DIRECTOR_REVIEWED:
+          await notificationService.sendPdrDirectorReviewedNotification(
+            employeeUserId,
+            cycle,
+          );
+          break;
+
+        case PdrOverallStatus.COMPLETED:
+          await notificationService.sendPdrCompletedNotification(
+            employeeUserId,
+            employeeName,
+            cycle,
+          );
+          break;
+
+        case PdrOverallStatus.EMPLOYEE_DISAGREED:
+          await notificationService.sendPdrDisagreedNotification(
+            employeeName,
+            cycle,
+          );
+          break;
+
+        default:
+          break;
+      }
+    } catch (notificationError) {
+      console.error(
+        "Error sending PDR transition notification:",
+        notificationError,
+      );
+    }
+
     return updatedPdr;
   }
 
@@ -680,14 +1074,18 @@ export class PdrService {
         where: {
           ...scopeWhere,
           isCompleted: false,
-          overallStatus: PdrOverallStatus.CREATED_BY_HR,
+          overallStatus: {
+            in: [PdrOverallStatus.CREATED_BY_HR, PdrOverallStatus.EMPLOYEE_PENDING],
+          },
         },
       }),
       prisma.pdr.count({
         where: {
           ...scopeWhere,
           isCompleted: false,
-          overallStatus: { not: PdrOverallStatus.CREATED_BY_HR },
+          overallStatus: {
+            notIn: [PdrOverallStatus.CREATED_BY_HR, PdrOverallStatus.EMPLOYEE_PENDING],
+          },
         },
       }),
     ]);
@@ -1213,6 +1611,7 @@ const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
     return { success: true, message: "PDR deleted successfully" };
   }
 
+
   /**
    * Get PDR statistics for dashboard
    */
@@ -1619,4 +2018,81 @@ const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
 
     return results;
   }
+
+
+  static async updatePdrDeadlines(
+    pdrId: number,
+    phaseDeadlines?: PdrPhaseDeadlinesInput,
+    pdr_timeline?: string,
+  ) {
+    const pdr = await prisma.pdr.findUnique({
+      where: { id: pdrId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            officialEmail: true,
+            department: true,
+          },
+        },
+        linemanager: { select: { id: true } },
+        director: { select: { id: true } },
+      },
+    });
+    if (!pdr) {
+      throw new Error("PDR not found");
+    }
+    if (pdr.isCompleted) {
+      throw new Error("Cannot modify deadlines on a completed PDR");
+    }
+    const deadlineData = this.mapPhaseDeadlines(phaseDeadlines);
+    const updatedPdr = await prisma.pdr.update({
+      where: { id: pdrId },
+      data: {
+        ...deadlineData,
+        ...(pdr_timeline !== undefined && { pdr_timeline }),
+        lastModifiedAt: new Date(),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            officialEmail: true,
+            department: true,
+          },
+        },
+      },
+    });
+
+    // Notify all parties whose deadline may have changed
+    try {
+      const socketManager = getSocketManager();
+      const notificationService = new NotificationService(socketManager);
+      const employeeName = `${pdr.user.firstName} ${pdr.user.lastName}`;
+      const recipientIds = [
+        pdr.user.id,
+        pdr.linemanager?.id,
+        pdr.director?.id,
+      ].filter((id): id is string => Boolean(id));
+
+      await notificationService.sendPdrDeadlinesUpdatedNotification(
+        recipientIds,
+        employeeName,
+        pdr.pdr_cycle ?? "",
+      );
+    } catch (notificationError) {
+      console.error(
+        "Error sending PDR deadlines updated notification:",
+        notificationError,
+      );
+    }
+
+    return updatedPdr;
+  }
+
+
 }

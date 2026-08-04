@@ -1,5 +1,6 @@
 import { SocketManager } from "../socket/socketManager";
 import { prisma } from "../lib/prisma";
+import { NotificationType } from "@prisma/client";
 
 export interface CreateNotificationData {
   title: string;
@@ -16,7 +17,12 @@ export interface CreateNotificationData {
     | "WORK_ANNIVERSARY"
     | "DOCUMENT_EXPIRY"
     | "TASK_ASSIGNED"
-    | "MEETING_SCHEDULED";
+    | "MEETING_SCHEDULED"
+    | "PDR_CREATION"
+    | "PDR_SUBMISSION"
+    | "PDR_REVIEW"
+    | "PDR_APPROVAL"
+    | "PDR_REJECTED";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   data?: any;
 }
@@ -34,24 +40,25 @@ export class NotificationService {
     notificationData: CreateNotificationData,
   ) {
     try {
+      // socketManager handles both DB save and real-time push in one call
+      if (this.socketManager) {
+        return await this.socketManager.sendNotificationToUser(
+          userId,
+          notificationData,
+        );
+      }
+
+      // Fallback: save to DB only (no socket available)
       const notification = await prisma.notification.create({
         data: {
           userId,
           title: notificationData.title,
           message: notificationData.message,
-          type: notificationData.type,
+          type: notificationData.type as NotificationType,
           priority: notificationData.priority || "MEDIUM",
           data: notificationData.data || null,
         },
       });
-
-      // Send real-time notification if socket manager is available
-      if (this.socketManager) {
-        await this.socketManager.sendNotificationToUser(
-          userId,
-          notificationData,
-        );
-      }
 
       return notification;
     } catch (error) {
@@ -91,7 +98,7 @@ export class NotificationService {
               userId: user.id,
               title: notificationData.title,
               message: notificationData.message,
-              type: notificationData.type,
+              type: notificationData.type as NotificationType,
               priority: notificationData.priority || "MEDIUM",
               data: notificationData.data || null,
             },
@@ -106,17 +113,37 @@ export class NotificationService {
     }
   }
 
-  // Create and send notification to all users
-  async createNotificationForAll(notificationData: CreateNotificationData) {
+  // Create and send notification to all users (or a filtered list of user IDs)
+  async createNotificationForAll(
+    notificationData: CreateNotificationData,
+    employees?: string[] | undefined,
+  ) {
     try {
+      // When an employee filter is provided, send individually to each user
+      // so the list is respected regardless of socket availability.
+      if (employees?.length) {
+        await Promise.all(
+          employees.map((uid) =>
+            this.createNotificationForUser(uid, notificationData),
+          ),
+        );
+        return;
+      }
+
       if (this.socketManager) {
         return await this.socketManager.sendNotificationToAll(notificationData);
       }
 
-      // Fallback: create notifications without real-time sending
       const users = await prisma.user.findMany({
         where: {
           isActive: true,
+          ...(employees?.length
+            ? {
+                id: {
+                  in: employees,
+                },
+              }
+            : {}),
         },
         select: {
           id: true,
@@ -130,7 +157,7 @@ export class NotificationService {
               userId: user.id,
               title: notificationData.title,
               message: notificationData.message,
-              type: notificationData.type,
+              type: notificationData.type as NotificationType,
               priority: notificationData.priority || "MEDIUM",
               data: notificationData.data || null,
             },
@@ -183,9 +210,18 @@ export class NotificationService {
         });
 
         if (systemUser) {
-          where.NOT = {
-            fromUserId: systemUser.id,
-          };
+          // Must use OR to avoid the SQL NULL trap:
+          // `NOT (fromUserId = 'id')` in MySQL silently excludes rows where
+          // fromUserId IS NULL, which would hide all system-generated notifications.
+          where.AND = [
+            ...(Array.isArray(where.AND) ? where.AND : []),
+            {
+              OR: [
+                { fromUserId: null },
+                { fromUserId: { not: systemUser.id } },
+              ],
+            },
+          ];
         }
       }
 
@@ -438,5 +474,234 @@ export class NotificationService {
         priority: "MEDIUM",
       });
     }
+  }
+
+  // ─── PDR Notifications ────────────────────────────────────────────────────
+
+  /** Bulk create: notify each affected employee. */
+  async sendPDRCreationNotification(employees?: string[] | undefined) {
+    await this.createNotificationForAll(
+      {
+        title: "Performance Review Created",
+        message:
+          "A new Performance Development Review has been created for you. Please complete your section within the deadline.",
+        type: "PDR_CREATION",
+        priority: "HIGH",
+      },
+      employees,
+    );
+  }
+
+  /** Single PDR created — notify employee and optionally line manager. */
+  async sendPdrCreatedNotification(
+    employeeUserId: string,
+    employeeName: string,
+    cycle: string,
+    lineManagerUserId?: string,
+  ) {
+    await this.createNotificationForUser(employeeUserId, {
+      title: "Performance Review Created",
+      message: `Your Performance Development Review for cycle "${cycle}" has been created. Please fill your section within the given deadline.`,
+      type: "PDR_CREATION",
+      priority: "HIGH",
+      data: { cycle },
+    });
+
+    if (lineManagerUserId) {
+      await this.createNotificationForUser(lineManagerUserId, {
+        title: "New PDR Assigned",
+        message: `A PDR for cycle "${cycle}" has been created and assigned to you as Line Manager for ${employeeName}.`,
+        type: "PDR_CREATION",
+        priority: "MEDIUM",
+        data: { cycle, employeeName },
+      });
+    }
+  }
+
+  /** Employee or Manager submitted their section — notify all HR / ADMIN. */
+  async sendPdrSubmittedToHRNotification(
+    submitterName: string,
+    role: "EMPLOYEE" | "MANAGER",
+    cycle: string,
+  ) {
+    const roleLabel = role === "EMPLOYEE" ? "employee" : "manager";
+    const payload = {
+      title: "PDR Section Submitted",
+      message: `${submitterName} submitted the ${roleLabel} section for PDR cycle "${cycle}". HR review required.`,
+      type: "PDR_SUBMISSION" as const,
+      priority: "HIGH" as const,
+      data: { cycle, submitterName, role },
+    };
+    await Promise.all([
+      this.createNotificationForRole("HR", payload),
+      this.createNotificationForRole("ADMIN", payload),
+    ]);
+  }
+
+  /** HR approved employee section — notify line manager to fill their section. */
+  async sendPdrEmployeeSectionApprovedNotification(
+    lineManagerUserId: string,
+    employeeName: string,
+    cycle: string,
+  ) {
+    await this.createNotificationForUser(lineManagerUserId, {
+      title: "PDR: Manager Section Required",
+      message: `The employee section for ${employeeName}'s PDR (cycle "${cycle}") has been approved by HR. Please complete the Line Manager section.`,
+      type: "PDR_APPROVAL",
+      priority: "HIGH",
+      data: { cycle, employeeName },
+    });
+  }
+
+  /** HR approved manager section — notify Director to review. */
+  async sendPdrManagerSectionApprovedNotification(
+    directorUserId: string,
+    employeeName: string,
+    cycle: string,
+  ) {
+    await this.createNotificationForUser(directorUserId, {
+      title: "PDR: Director Review Required",
+      message: `The manager section for ${employeeName}'s PDR (cycle "${cycle}") has been approved by HR. Please complete the Director review.`,
+      type: "PDR_APPROVAL",
+      priority: "HIGH",
+      data: { cycle, employeeName },
+    });
+  }
+
+  /** Manager submitted and employee needs to acknowledge. */
+  async sendPdrAcknowledgementRequiredNotification(
+    employeeUserId: string,
+    cycle: string,
+  ) {
+    await this.createNotificationForUser(employeeUserId, {
+      title: "PDR: Your Acknowledgement Required",
+      message: `Your manager has reviewed your PDR for cycle "${cycle}". Please review and acknowledge (or raise a disagreement).`,
+      type: "PDR_REVIEW",
+      priority: "HIGH",
+      data: { cycle },
+    });
+  }
+
+  /** HR reverted PDR back to employee — notify employee. */
+  async sendPdrRevertedToEmployeeNotification(
+    employeeUserId: string,
+    cycle: string,
+    revertMessage?: string,
+  ) {
+    await this.createNotificationForUser(employeeUserId, {
+      title: "PDR Returned for Revision",
+      message: `Your PDR for cycle "${cycle}" has been returned by HR for revision.${revertMessage ? ` Reason: ${revertMessage}` : ""}`,
+      type: "PDR_REJECTED",
+      priority: "HIGH",
+      data: { cycle, revertMessage },
+    });
+  }
+
+  /** HR reverted manager section — notify line manager. */
+  async sendPdrRevertedToManagerNotification(
+    lineManagerUserId: string,
+    employeeName: string,
+    cycle: string,
+    revertMessage?: string,
+  ) {
+    await this.createNotificationForUser(lineManagerUserId, {
+      title: "PDR Manager Section Returned",
+      message: `The manager section of ${employeeName}'s PDR (cycle "${cycle}") has been returned by HR for revision.${revertMessage ? ` Reason: ${revertMessage}` : ""}`,
+      type: "PDR_REJECTED",
+      priority: "HIGH",
+      data: { cycle, employeeName, revertMessage },
+    });
+  }
+
+  /** Director completed review — notify employee to acknowledge. */
+  async sendPdrDirectorReviewedNotification(
+    employeeUserId: string,
+    cycle: string,
+  ) {
+    await this.createNotificationForUser(employeeUserId, {
+      title: "PDR: Director Review Complete",
+      message: `The Director has completed the review of your PDR for cycle "${cycle}". Please review and acknowledge.`,
+      type: "PDR_REVIEW",
+      priority: "HIGH",
+      data: { cycle },
+    });
+  }
+
+  /** PDR marked as COMPLETED — notify employee and HR. */
+  async sendPdrCompletedNotification(
+    employeeUserId: string,
+    employeeName: string,
+    cycle: string,
+  ) {
+    await Promise.all([
+      this.createNotificationForUser(employeeUserId, {
+        title: "PDR Completed",
+        message: `Your Performance Development Review for cycle "${cycle}" has been completed. Well done!`,
+        type: "PDR_APPROVAL",
+        priority: "MEDIUM",
+        data: { cycle },
+      }),
+      this.createNotificationForRole("HR", {
+        title: "PDR Completed",
+        message: `PDR for ${employeeName} (cycle "${cycle}") has been completed.`,
+        type: "PDR_APPROVAL",
+        priority: "LOW",
+        data: { cycle, employeeName },
+      }),
+    ]);
+  }
+
+  /** Employee disagreed — notify HR and Admin for follow-up. */
+  async sendPdrDisagreedNotification(employeeName: string, cycle: string) {
+    const payload = {
+      title: "PDR Disagreement",
+      message: `${employeeName} has disagreed with their PDR for cycle "${cycle}". HR intervention required.`,
+      type: "PDR_REJECTED" as const,
+      priority: "URGENT" as const,
+      data: { cycle, employeeName },
+    };
+    await Promise.all([
+      this.createNotificationForRole("HR", payload),
+      this.createNotificationForRole("ADMIN", payload),
+    ]);
+  }
+
+  /** Manager Pending / Revising — remind line manager to fill their section. */
+  async sendPdrManagerPendingNotification(
+    lineManagerUserId: string,
+    employeeName: string,
+    cycle: string,
+    isRevising = false,
+  ) {
+    await this.createNotificationForUser(lineManagerUserId, {
+      title: isRevising
+        ? "PDR: Manager Section Revision"
+        : "PDR: Manager Section Required",
+      message: isRevising
+        ? `Please revise the manager section of ${employeeName}'s PDR for cycle "${cycle}" as requested by HR.`
+        : `Please complete the manager section of ${employeeName}'s PDR for cycle "${cycle}".`,
+      type: "PDR_REVIEW",
+      priority: "HIGH",
+      data: { cycle, employeeName },
+    });
+  }
+
+  /** HR updated phase deadlines — notify current phase owner(s). */
+  async sendPdrDeadlinesUpdatedNotification(
+    recipientUserIds: string[],
+    employeeName: string,
+    cycle: string,
+  ) {
+    await Promise.all(
+      recipientUserIds.map((uid) =>
+        this.createNotificationForUser(uid, {
+          title: "PDR Deadlines Updated",
+          message: `The phase deadlines for ${employeeName}'s PDR (cycle "${cycle}") have been updated by HR.`,
+          type: "PDR_REVIEW",
+          priority: "MEDIUM",
+          data: { cycle, employeeName },
+        }),
+      ),
+    );
   }
 }

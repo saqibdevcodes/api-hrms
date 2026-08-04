@@ -4,7 +4,91 @@ import { PdrOverallStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../types/auth";
 import { PdrService } from "../services/pdrService";
 import { prisma } from "../lib/prisma";
+import { NotificationService } from "../services/notificationService";
 export class PdrController {
+  private static isHrLike(req: AuthenticatedRequest) {
+    return ["HR", "ADMIN", "SUPERADMIN"].includes(req.user?.role || "");
+  }
+
+  private static assertCanAccessPhase(
+    pdr: any,
+    req: AuthenticatedRequest,
+    phase: "employeeAccess" | "hrEmployeeApproval" | "managerAccess" | "hrManagerApproval" | "directorReview" | "employeeAcknowledgement",
+  ) {
+    if (!req.user) {
+      throw new Error("Unauthorized");
+    }
+
+    const isHrLike = PdrController.isHrLike(req);
+    const isOwner = pdr.userId === req.user.id;
+    const isLineManager = pdr.linemanager_id === req.user.id;
+    const isDirector = pdr.director_id === req.user.id || req.user.userRank === "DIRECTOR";
+
+    if (phase === "employeeAccess" && !isOwner) {
+      throw new Error("Only the assigned employee can perform this PDR action");
+    }
+
+    if ((phase === "hrEmployeeApproval" || phase === "hrManagerApproval") && !isHrLike) {
+      throw new Error("Only HR can perform this PDR action");
+    }
+
+    if (phase === "managerAccess" && !isLineManager) {
+      throw new Error("Only the assigned line manager can perform this PDR action");
+    }
+
+    if (phase === "directorReview" && !isDirector && !isHrLike) {
+      throw new Error("Only the assigned director or HR can perform this PDR action");
+    }
+
+    if (phase === "employeeAcknowledgement" && !isOwner) {
+      throw new Error("Only the assigned employee can acknowledge this PDR");
+    }
+
+    PdrService.assertPhaseOpen(pdr, phase);
+  }
+
+  /**
+   * Get selectable PDR cycles.
+   */
+  static async getCycles(req: AuthenticatedRequest, res: Response) {
+    try {
+      const cycles = await PdrService.getCycles();
+      res.status(200).json({ success: true, data: cycles });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch PDR cycles",
+      });
+    }
+  }
+
+  /**
+   * Create a new PDR cycle.
+   */
+  static async createCycle(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const cycle = await PdrService.createCycle({
+        ...req.body,
+        createdBy: req.user.id,
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "PDR cycle created successfully",
+        data: cycle,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to create PDR cycle",
+      });
+    }
+  }
+
   /**
    * Get all PDRs (filtered by user role)
    */
@@ -78,7 +162,7 @@ export class PdrController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { userId, linemanagerId, directorId, pdrCycle } = req.body;
+      const { userId, linemanagerId, directorId, pdrCycle, pdrCycleId, phaseDeadlines } = req.body;
 
       if (!linemanagerId) {
         return res.status(400).json({
@@ -100,6 +184,8 @@ export class PdrController {
           linemanager_id: linemanagerId,
           directorId,
           pdrCycle,
+          pdrCycleId,
+          phaseDeadlines,
         },
         req.user.id,
       );
@@ -127,7 +213,7 @@ export class PdrController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { pdrCycle, departmentId } = req.body;
+      const { pdrCycle, pdrCycleId, departmentId, userIds, phaseDeadlines } = req.body;
 
       if (!pdrCycle) {
         return res.status(400).json({
@@ -136,10 +222,14 @@ export class PdrController {
         });
       }
 
+
       const results = await PdrService.createBulkPdrs(
         pdrCycle,
         req.user.id,
         departmentId,
+        Array.isArray(userIds) ? userIds : undefined,
+        pdrCycleId,
+        phaseDeadlines,
       );
 
       res.status(201).json({
@@ -185,15 +275,18 @@ export class PdrController {
         pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE
       ) {
         targetStatus = PdrOverallStatus.EMPLOYEE_PENDING;
+        PdrController.assertCanAccessPhase(pdr, req, "employeeAccess");
       } else if (
         pdr.overallStatus === PdrOverallStatus.HR_APPROVED_EMPLOYEE ||
         pdr.overallStatus === PdrOverallStatus.HR_REVERTED_TO_MANAGER
       ) {
         targetStatus = PdrOverallStatus.MANAGER_PENDING;
+        PdrController.assertCanAccessPhase(pdr, req, "managerAccess");
       } else if (
         pdr.overallStatus === PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER
       ) {
         targetStatus = PdrOverallStatus.MANAGER_REVISING;
+        PdrController.assertCanAccessPhase(pdr, req, "managerAccess");
       } else {
         return res.status(400).json({
           success: false,
@@ -209,10 +302,7 @@ export class PdrController {
         // User is filling their own PDR - they are the EMPLOYEE
         effectiveRole = "EMPLOYEE";
       } else if (
-        pdr.linemanager_id === req.user.id ||
-        (req.user.role === "HR" &&
-          req.user.userRank === "LINE_MANAGER" &&
-          targetStatus === PdrOverallStatus.MANAGER_PENDING)
+        pdr.linemanager_id === req.user.id
       ) {
         // User is the line manager OR HR with LINE_MANAGER rank filling manager section
         // Use LINE_MANAGER for filling manager sections
@@ -273,11 +363,14 @@ export class PdrController {
 
       if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_PENDING) {
         targetStatus = PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR;
+        PdrController.assertCanAccessPhase(pdr, req, "employeeAccess");
       } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_PENDING) {
         targetStatus = PdrOverallStatus.MANAGER_SUBMITTED_TO_HR;
+        PdrController.assertCanAccessPhase(pdr, req, "managerAccess");
       } else if (pdr.overallStatus === PdrOverallStatus.MANAGER_REVISING) {
         // After revising (triggered by employee disagreement), manager sends back to employee for acknowledgment
         targetStatus = PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING;
+        PdrController.assertCanAccessPhase(pdr, req, "managerAccess");
       } else {
         return res.status(400).json({
           success: false,
@@ -291,10 +384,7 @@ export class PdrController {
       if (pdr.userId === req.user.id) {
         effectiveRole = "EMPLOYEE";
       } else if (
-        pdr.linemanager_id === req.user.id ||
-        (req.user.role === "HR" &&
-          req.user.userRank === "LINE_MANAGER" &&
-          targetStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR)
+        pdr.linemanager_id === req.user.id
       ) {
         // User is the line manager OR HR with LINE_MANAGER rank submitting manager section
         effectiveRole = "LINE_MANAGER";
@@ -352,6 +442,7 @@ export class PdrController {
       let targetStatus: PdrOverallStatus;
 
       if (pdr.overallStatus === PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrEmployeeApproval");
         // First transition to reviewing
         await PdrService.transitionStatus(
           {
@@ -365,10 +456,12 @@ export class PdrController {
         );
         targetStatus = PdrOverallStatus.HR_APPROVED_EMPLOYEE;
       } else if (pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_EMPLOYEE) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrEmployeeApproval");
         targetStatus = PdrOverallStatus.HR_APPROVED_EMPLOYEE;
       } else if (
         pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR
       ) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrManagerApproval");
         await PdrService.transitionStatus(
           {
             pdrId,
@@ -381,8 +474,10 @@ export class PdrController {
         );
         targetStatus = PdrOverallStatus.HR_APPROVED_MANAGER;
       } else if (pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_MANAGER) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrManagerApproval");
         targetStatus = PdrOverallStatus.HR_APPROVED_MANAGER;
       } else if (pdr.overallStatus === PdrOverallStatus.DIRECTOR_REVIEWED) {
+        PdrController.assertCanAccessPhase(pdr, req, "employeeAcknowledgement");
         targetStatus = PdrOverallStatus.COMPLETED;
       } else {
         return res.status(400).json({
@@ -453,12 +548,14 @@ export class PdrController {
         pdr.overallStatus === PdrOverallStatus.EMPLOYEE_SUBMITTED_TO_HR ||
         pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_EMPLOYEE
       ) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrEmployeeApproval");
         targetStatus = PdrOverallStatus.HR_REVERTED_TO_EMPLOYEE;
         sentTo = "EMPLOYEE";
       } else if (
         pdr.overallStatus === PdrOverallStatus.MANAGER_SUBMITTED_TO_HR ||
         pdr.overallStatus === PdrOverallStatus.HR_REVIEWING_MANAGER
       ) {
+        PdrController.assertCanAccessPhase(pdr, req, "hrManagerApproval");
         targetStatus = PdrOverallStatus.HR_REVERTED_TO_MANAGER;
         sentTo = "LINE_MANAGER";
       } else {
@@ -535,6 +632,7 @@ export class PdrController {
         pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGING ||
         pdr.overallStatus === PdrOverallStatus.EMPLOYEE_ACKNOWLEDGED
       ) {
+        PdrController.assertCanAccessPhase(pdr, req, "employeeAcknowledgement");
         targetStatus = disagree
           ? PdrOverallStatus.EMPLOYEE_DISAGREED
           : PdrOverallStatus.COMPLETED;
@@ -609,8 +707,10 @@ export class PdrController {
       let targetStatus: PdrOverallStatus;
 
       if (pdr.overallStatus === PdrOverallStatus.HR_APPROVED_MANAGER) {
+        PdrController.assertCanAccessPhase(pdr, req, "directorReview");
         targetStatus = PdrOverallStatus.DIRECTOR_REVIEWING;
       } else if (pdr.overallStatus === PdrOverallStatus.DIRECTOR_REVIEWING) {
+        PdrController.assertCanAccessPhase(pdr, req, "directorReview");
         targetStatus = PdrOverallStatus.DIRECTOR_REVIEWED;
       } else {
         return res.status(400).json({
@@ -732,6 +832,10 @@ export class PdrController {
       }
 
       const results: any = {};
+      const phase = PdrService.getPhaseForStatus(pdr.overallStatus);
+      if (phase) {
+        PdrController.assertCanAccessPhase(pdr, req, phase);
+      }
 
       if (personalQualities) {
         results.personalQualities = await PdrService.savePersonalQualities({
@@ -825,6 +929,28 @@ export class PdrController {
         }
       }
 
+      if (!actualEmployeeType) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not assigned to edit this PDR",
+        });
+      }
+
+      if (pdr.isCompleted) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot modify completed PDR",
+        });
+      }
+
+      const phase =
+        actualEmployeeType === "EMPLOYEE"
+          ? "employeeAccess"
+          : actualEmployeeType === "MANAGER"
+            ? "managerAccess"
+            : "directorReview";
+      PdrController.assertCanAccessPhase(pdr, req, phase);
+
       // Save form data
       const result = await PdrService.savePdrFormData({
         pdrId,
@@ -863,6 +989,32 @@ export class PdrController {
 
       const commentId = parseInt(req.params.commentId, 10);
 
+      const existing = await prisma.pdrComment.findUnique({
+        where: { id: commentId },
+        include: { pdr: true },
+      });
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          message: "Comment not found",
+        });
+      }
+
+      const pdr = existing.pdr;
+      const canResolve =
+        PdrController.isHrLike(req) ||
+        pdr.userId === req.user.id ||
+        pdr.linemanager_id === req.user.id ||
+        pdr.director_id === req.user.id;
+
+      if (!canResolve) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied to this PDR comment",
+        });
+      }
+
       const comment = await prisma.pdrComment.update({
         where: { id: commentId },
         data: {
@@ -884,4 +1036,37 @@ export class PdrController {
       });
     }
   }
+
+
+
+  static async updatePdrDeadlines(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const pdrId = parseInt(req.params.id, 10);
+      const { phaseDeadlines, pdr_timeline } = req.body;
+      const updatedPdr = await PdrService.updatePdrDeadlines(
+        pdrId,
+        phaseDeadlines,
+        pdr_timeline,
+      );
+      res.status(200).json({
+        success: true,
+        message: "PDR deadlines updated successfully",
+        data: updatedPdr,
+      });
+    } catch (error: any) {
+      console.error("❌ Error updating PDR deadlines:", error);
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to update PDR deadlines",
+      });
+    }
+  }
+
+ 
+
+
+
 }

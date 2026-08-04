@@ -19,6 +19,14 @@ export const createPdrValidator = [
     .optional()
     .isString()
     .withMessage("Director ID must be a string"),
+  body("pdrCycleId")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("PDR cycle ID must be a positive integer"),
+  body("phaseDeadlines")
+    .optional()
+    .isObject()
+    .withMessage("Phase deadlines must be an object"),
 ];
 
 export const createBulkPdrValidator = [
@@ -31,6 +39,44 @@ export const createBulkPdrValidator = [
     .optional()
     .isString()
     .withMessage("Department ID must be a string"),
+  body("pdrCycleId")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("PDR cycle ID must be a positive integer"),
+  body("userIds")
+    .optional()
+    .isArray()
+    .withMessage("Selected employees must be an array"),
+  body("userIds.*")
+    .optional()
+    .isString()
+    .withMessage("Employee IDs must be strings"),
+  body("phaseDeadlines")
+    .optional()
+    .isObject()
+    .withMessage("Phase deadlines must be an object"),
+];
+
+export const createPdrCycleValidator = [
+  body("name")
+    .notEmpty()
+    .withMessage("Cycle name is required")
+    .isString()
+    .withMessage("Cycle name must be a string")
+    .isLength({ max: 100 })
+    .withMessage("Cycle name must be 100 characters or fewer"),
+  body("description")
+    .optional()
+    .isString()
+    .withMessage("Description must be a string"),
+  body("startDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Start date must be a valid date"),
+  body("endDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("End date must be a valid date"),
 ];
 
 export const pdrIdValidator = [
@@ -129,3 +175,24 @@ export const updatePdrContentValidator = [
     .withMessage("Overall comments must be a string"),
 ];
 
+
+export const updatePdrDeadlinesValidator = [
+  ...pdrIdValidator,
+  body("phaseDeadlines")
+    .optional()
+    .isObject()
+    .withMessage("Phase deadlines must be an object"),
+  body("phaseDeadlines.employeeAccess.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.employeeAccess.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("phaseDeadlines.hrEmployeeApproval.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.hrEmployeeApproval.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("phaseDeadlines.managerAccess.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.managerAccess.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("phaseDeadlines.hrManagerApproval.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.hrManagerApproval.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("phaseDeadlines.directorReview.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.directorReview.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("phaseDeadlines.employeeAcknowledgement.noRestriction").optional().isBoolean(),
+  body("phaseDeadlines.employeeAcknowledgement.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
+  body("pdr_timeline").optional({ nullable: true }).isString().withMessage("Timeline must be a string"),
+];

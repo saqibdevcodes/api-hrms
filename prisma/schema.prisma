@@ -727,6 +727,11 @@ enum NotificationType {
   DOCUMENT_EXPIRY
   TASK_ASSIGNED
   MEETING_SCHEDULED
+  PDR_CREATION
+  PDR_SUBMISSION
+  PDR_REVIEW
+  PDR_APPROVAL
+  PDR_REJECTED
 }
 
 enum NotificationPriority {
@@ -791,6 +796,8 @@ model Pdr {
   userId        String
   creation_date DateTime @default(now())
   pdr_cycle     String?  @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
+  pdrCycle      PdrCycle? @relation(fields: [pdrCycleId], references: [id])
+  pdrCycleId    Int?
   pdr_timeline  String?
 
   // Relations to other users
@@ -823,6 +830,20 @@ model Pdr {
   // Director's overall PDR comment
   director_overall_comment String? @db.Text
 
+  // Phase restrictions. Null deadline or noRestriction=true means unrestricted.
+  employeeAccessDeadline                DateTime?
+  employeeAccessNoRestriction           Boolean   @default(true)
+  hrEmployeeApprovalDeadline            DateTime?
+  hrEmployeeApprovalNoRestriction       Boolean   @default(true)
+  managerAccessDeadline                 DateTime?
+  managerAccessNoRestriction            Boolean   @default(true)
+  hrManagerApprovalDeadline             DateTime?
+  hrManagerApprovalNoRestriction        Boolean   @default(true)
+  directorReviewDeadline                DateTime?
+  directorReviewNoRestriction           Boolean   @default(true)
+  employeeAcknowledgementDeadline       DateTime?
+  employeeAcknowledgementNoRestriction  Boolean   @default(true)
+
   // Metadata
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -836,6 +857,22 @@ model Pdr {
 
   @@unique([userId, pdr_cycle]) // Prevent duplicate PDRs per cycle
   @@map("pdr")
+}
+
+model PdrCycle {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(100)
+  description String?   @db.Text
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  pdrs Pdr[]
+
+  @@map("pdr_cycles")
 }
 
 // Track status transitions for audit trail
@@ -979,7 +1016,7 @@ enum EventStatus {
 // Master Table: Predefined Event Types (SUPERADMIN)
 model EventTypeMaster {
   id          String   @id @default(cuid())
-  name        String   @unique
+  name        String   @unique @db.VarChar(191)
   description String?  @db.Text
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -993,7 +1030,7 @@ model EventTypeMaster {
 // Master Table: Predefined Venues (SUPERADMIN)
 model VenueMaster {
   id            String   @id @default(cuid())
-  name          String   @unique
+  name          String   @unique @db.VarChar(191)
   address       String?  @db.Text
   capacity      Int?
   contactPerson String?
@@ -1092,9 +1129,9 @@ model Event {
 // Many-to-many join table for Event -> EventTypeMaster
 model EventEventType {
   id          String          @id @default(cuid())
-  eventId     String
+  eventId     String          @db.VarChar(100)
   event       Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventTypeId String
+  eventTypeId String          @db.VarChar(100)
   eventType   EventTypeMaster @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, eventTypeId])

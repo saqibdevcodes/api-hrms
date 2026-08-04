@@ -9,7 +9,12 @@ export class DepartmentController {
       const { page = 1, limit = 10, search = "", isActive } = req.query;
       const pageNum = parseInt(page as string);
       const limitNum = parseInt(limit as string);
-      const skip = (pageNum - 1) * limitNum;
+
+
+      const rawLimit = parseInt(limit as string) || 10;
+const isUnlimited = rawLimit === -1;
+const take = isUnlimited ? undefined : rawLimit;
+const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
 
       const where: any = {};
 
@@ -29,8 +34,8 @@ export class DepartmentController {
       const [departments, total] = await Promise.all([
         prisma.department.findMany({
           where,
-          skip,
-          take: limitNum,
+          ...(skip !== undefined && { skip }),
+          ...(take !== undefined && { take }),
           orderBy: { createdAt: "desc" },
           include: {
             _count: {
@@ -47,11 +52,11 @@ export class DepartmentController {
         data: {
           departments,
           pagination: {
-            currentPage: pageNum,
-            totalPages: Math.ceil(total / limitNum),
+            currentPage: isUnlimited ? 1 : pageNum,
+            totalPages: isUnlimited ? 1 : Math.ceil(total / rawLimit),
             totalRecords: total,
-            limit: limitNum,
-          },
+            limit: isUnlimited ? total : rawLimit,
+          }
         },
       });
     } catch (error) {

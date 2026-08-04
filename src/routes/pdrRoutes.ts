@@ -12,6 +12,8 @@ import {
   directorReviewValidator,
   getPdrsQueryValidator,
   updatePdrContentValidator,
+  createPdrCycleValidator,
+  updatePdrDeadlinesValidator,
 } from "../validators/pdrValidator";
 
 const router = Router();
@@ -27,6 +29,25 @@ router.get(
 
 // Get PDR statistics (for dashboard)
 router.get("/statistics", authenticate, PdrController.getPdrStatistics);
+
+// Get/create PDR cycles
+router.get("/cycles", authenticate, PdrController.getCycles);
+router.post(
+  "/cycles",
+  authenticate,
+  hrAndAdmin,
+  createPdrCycleValidator,
+  validateRequest,
+  PdrController.createCycle
+);
+
+router.patch("/:id/deadlines",
+  authenticate, 
+  hrAndAdmin, 
+  updatePdrDeadlinesValidator,
+  validateRequest, 
+  PdrController.updatePdrDeadlines,
+);
 
 // Get single PDR by ID
 router.get(
@@ -126,6 +147,8 @@ router.put(
 router.post(
   "/:id/save-form",
   authenticate,
+  pdrIdValidator,
+  validateRequest,
   PdrController.savePdrFormData
 );
 
