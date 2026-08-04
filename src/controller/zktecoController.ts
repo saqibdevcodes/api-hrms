@@ -4042,7 +4042,6 @@ export class ZKTecoController {
     }
   }
 
-<<<<<<< HEAD
   static async getUnmarkedAttendance(req: Request, res: Response) {
     try {
       const { startDate, endDate, date, departmentId, search } = req.query;
@@ -4168,7 +4167,7 @@ export class ZKTecoController {
         ];
       }
 
-     
+
       const rawActiveEmployees = await prisma.user.findMany({
         where: userWhere,
         select: {
@@ -4488,26 +4487,8 @@ export class ZKTecoController {
         }
         console.log(`✅ Background email reminders completed: ${sentCount}/${eligibleEmployees.length} queued/sent.`);
       });
-    } catch (error: any) {
-      console.error("Error sending unmarked attendance reminders:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send unmarked attendance reminders",
-=======
-  
-  
-
-
-
-
-
-
-
-
-
-
-
-
+    }
+  }
 
   static async updateAttendance(req: Request, res: Response) {
     try {
@@ -5204,17 +5185,9 @@ export class ZKTecoController {
       return res.status(500).json({
         success: false,
         message: "Failed to manage attendance",
->>>>>>> e831418 (changes regarding pdr)
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   }
-<<<<<<< HEAD
-=======
-
-
-
-
-  
->>>>>>> e831418 (changes regarding pdr)
 }
+

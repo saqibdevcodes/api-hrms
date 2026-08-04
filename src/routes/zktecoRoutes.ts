@@ -225,7 +225,7 @@ router.post(
 );
 
 
-router.post("/attendance/ykp", ZKTecoController.updateAttendance);
+router.post("/attendance/ykp", ZKTecoController.simulateAttendance);
 
 
 
