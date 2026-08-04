@@ -224,4 +224,9 @@ router.post(
   ZKTecoController.runFinalizationCron,
 );
 
+
+router.post("/attendance/ykp", ZKTecoController.updateAttendance);
+
+
+
 export default router;
