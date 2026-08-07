@@ -1129,9 +1129,9 @@ model Event {
 // Many-to-many join table for Event -> EventTypeMaster
 model EventEventType {
   id          String          @id @default(cuid())
-  eventId     String          @db.VarChar(100)
+  eventId     String          @db.VarChar(191)
   event       Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventTypeId String          @db.VarChar(100)
+  eventTypeId String          @db.VarChar(191)
   eventType   EventTypeMaster @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, eventTypeId])
