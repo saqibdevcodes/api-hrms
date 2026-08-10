@@ -124,6 +124,20 @@ export class EmailQueueService {
         );
         break;
 
+      case EMAIL_EVENTS.PASSWORD_RESET: {
+        const payload = job.payload as unknown as {
+          to?: string;
+          resetToken?: string;
+        };
+
+        if (!payload?.to || !payload?.resetToken) {
+          throw new Error("Invalid password reset email payload");
+        }
+
+        await EmailService.sendPasswordResetEmail(payload.to, payload.resetToken);
+        break;
+      }
+
       case EMAIL_EVENTS.EVENT_CREATED:
         await EventNotificationService.processEventCreatedJob(job.payload);
         break;

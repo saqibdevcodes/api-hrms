@@ -2,6 +2,8 @@ import { prisma } from "../lib/prisma";
 import { JwtUtils } from "../utils/jwt";
 import { PasswordUtils } from "../utils/password";
 import { EmailService } from "../utils/emailService";
+import { EmailQueueService } from "./emailQueueService";
+import { EMAIL_EVENTS } from "../constants/email.events";
 import crypto from "crypto";
 import {
   LoginRequest,
@@ -156,10 +158,12 @@ export class AuthService {
         },
       });
 
-      console.log(`Sending reset email to ${user.email}...`);
-      // Send email
-      await EmailService.sendPasswordResetEmail(user.email, resetToken);
-      console.log("Reset email sent successfully.");
+      console.log(`Queueing reset email for ${user.email}...`);
+      await EmailQueueService.enqueue(EMAIL_EVENTS.PASSWORD_RESET, {
+        to: user.email,
+        resetToken,
+      });
+      console.log("Reset email queued successfully.");
 
       return true;
     } catch (error) {
