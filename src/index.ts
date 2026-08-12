@@ -50,8 +50,8 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:3000",
-      "https://iriscommunications.com",
-      "https://www.iriscommunications.com",
+      "https://iriscommunications.com.pk",
+      "https://www.iriscommunications.com.pk",
       "https://hr.iriscommunications.cloud",
     ],
     credentials: true,
