@@ -1224,15 +1224,10 @@ export class PdrService {
 
 
     // When unlimited, don't pass skip/take to Prisma
-const take = isUnlimited ? undefined : rawLimit;
-const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
+    const take = isUnlimited ? undefined : rawLimit;
+    const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
 
-
-
-    // const limit = filters?.limit || 10;
-
-
-    
+    // const limit = filters?.limit || 10;    
 
     let baseWhereClause: any = {};
     const isHR = userRole === Role.HR; // HR role only
@@ -1359,9 +1354,19 @@ const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
         // Separate lists are also returned below as `directorPdrLists`.
         if (userRole === Role.EMPLOYEE) {
           baseWhereClause.OR = [
-            { userId: userId }, // Their own PDRs
-            { director_id: userId }, // PDRs where they are the director
-            { linemanager_id: userId }, // PDRs where they are the line manager
+            { userId: userId },
+          
+            // Director action required
+            {
+              director_id: userId,
+              overallStatus: PdrOverallStatus.DIRECTOR_REVIEWING,
+            },
+          
+            // Line Manager action required
+            {
+              linemanager_id: userId,
+              overallStatus: PdrOverallStatus.MANAGER_PENDING,
+            },
           ];
         } else if (isHR) {
           // HR with DIRECTOR rank: by default show all
@@ -1422,6 +1427,7 @@ const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
             where: applyCommonFilters({
               director_id: userId,
               userId: { not: userId },
+              overallStatus: {in: [PdrOverallStatus.DIRECTOR_REVIEWING, PdrOverallStatus.HR_APPROVED_MANAGER]},
             }),
             orderBy: {
               user: {
@@ -1434,6 +1440,15 @@ const skip = isUnlimited ? undefined : (page - 1) * rawLimit;
             where: applyCommonFilters({
               linemanager_id: userId,
               userId: { not: userId },
+            
+              overallStatus: {
+                in: [
+                  PdrOverallStatus.HR_APPROVED_EMPLOYEE,
+                  PdrOverallStatus.MANAGER_PENDING,
+                  PdrOverallStatus.HR_REVERTED_TO_MANAGER,
+                  PdrOverallStatus.MANAGER_REVISING,
+                ],
+              },
             }),
             orderBy: {
               user: {
