@@ -210,6 +210,7 @@ router.post("/fdata", ZKTecoController.handleIClockFData); // Add face data hand
 router.get("/iclock/getrequest", ZKTecoController.handleIClockGetRequest);
 router.post("/iclock/ping", ZKTecoController.handleIClockPing);
 router.post("/iclock/cdata", ZKTecoController.handleIClockCData);
+router.get("/iclock/cdata", ZKTecoController.handleIClockCData);
 router.post("/iclock/fdata", ZKTecoController.handleIClockFData); // Add face data handler
 
 // Finalization Routes (SuperAdmin only)
