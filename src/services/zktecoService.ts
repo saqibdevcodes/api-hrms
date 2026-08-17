@@ -3,6 +3,11 @@ import dgram from "dgram";
 import { prisma } from "../lib/prisma";
 import cron from "node-cron";
 import { getSocketManager } from "../index";
+import { config } from "../config/env";
+import {
+  buildZKTecoOptionsResponse,
+  formatZKTecoDeviceTime,
+} from "../utils/zktecoClock";
 
 export interface ZKTecoDevice {
   id: string;
@@ -670,9 +675,42 @@ export class ZKTecoService {
   }
 
   /**
+   * Return the PUSH initialization settings. TimeZone is essential because
+   * terminals combine it with the HTTP Date header to set their own clock.
+   */
+  async handleIClockOptionsRequest(sn: string): Promise<string> {
+    await this.autoSyncDeviceDetails(sn);
+
+    const response = buildZKTecoOptionsResponse(
+      sn,
+      config.ZKTECO_TIMEZONE_OFFSET_MINUTES,
+    );
+
+    console.log(
+      `Device ${sn} initialized with timezone offset ${config.ZKTECO_TIMEZONE_OFFSET_MINUTES} minutes`,
+    );
+
+    return response;
+  }
+
+  /**
+   * Older attendance PUSH terminals request their current time through
+   * /iclock/cdata?type=time.
+   */
+  handleIClockTimeRequest(now: Date = new Date()): string {
+    return `Time=${formatZKTecoDeviceTime(
+      now,
+      config.ZKTECO_TIMEZONE_OFFSET_MINUTES,
+    )}`;
+  }
+
+  /**
    * Auto-sync device details when device connects
    */
-  private async autoSyncDeviceDetails(sn: string): Promise<void> {
+  private async autoSyncDeviceDetails(
+    sn: string,
+    includeDeviceInfo = false,
+  ): Promise<void> {
     try {
       console.log(`🔄 Auto-syncing device details for ${sn}...`);
 
@@ -704,6 +742,12 @@ export class ZKTecoService {
       }
 
       // Try to fetch additional device info if possible
+      // PUSH requests are time-sensitive and the hosted server normally cannot
+      // reach a terminal's private LAN address. Only opt in from a non-hot path.
+      if (!includeDeviceInfo) {
+        return;
+      }
+
       try {
         const deviceInfo = await this.getDeviceInfo(sn);
         if (deviceInfo && existingDevice) {

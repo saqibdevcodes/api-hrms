@@ -2386,6 +2386,25 @@ export class ZKTecoController {
     try {
       const sn = req.query.SN as string;
       const table = req.query.table as string;
+      const options = String(req.query.options || "").toLowerCase();
+      const requestType = String(req.query.type || "").toLowerCase();
+
+      // The terminal combines this GMT header with TimeZone from the PUSH
+      // initialization response when setting its physical clock.
+      res.setHeader("Date", new Date().toUTCString());
+      res.setHeader("Cache-Control", "no-store");
+      res.type("text/plain");
+
+      if (req.method === "GET" && options === "all") {
+        const result = await zktecoService.handleIClockOptionsRequest(sn);
+        res.status(200).send(result);
+        return;
+      }
+
+      if (req.method === "GET" && requestType === "time") {
+        res.status(200).send(zktecoService.handleIClockTimeRequest());
+        return;
+      }
 
       console.log(`🔄 iClock cdata from device: ${sn}, table: ${table}`);
       console.log(`📊 Query params:`, req.query);

@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { validateZKTecoTimezoneOffset } from "../utils/zktecoClock";
 
 // Load environment variables
 dotenv.config();
@@ -8,6 +9,9 @@ interface EnvConfig {
   PORT: number;
   NODE_ENV: string;
   API_PREFIX: string;
+
+  // ZKTeco Configuration
+  ZKTECO_TIMEZONE_OFFSET_MINUTES: number;
 
   // Database Configuration
   DATABASE_URL: string;
@@ -75,6 +79,12 @@ export const config: EnvConfig = {
   NODE_ENV: getEnvVar("NODE_ENV", "development"),
   API_PREFIX: getEnvVar("API_PREFIX", "/api/v1"),
 
+  // ZKTeco Configuration (Pakistan Standard Time, UTC+5)
+  ZKTECO_TIMEZONE_OFFSET_MINUTES: getEnvNumber(
+    "ZKTECO_TIMEZONE_OFFSET_MINUTES",
+    300,
+  ),
+
   // Database Configuration
   DATABASE_URL: getEnvVar("DATABASE_URL"),
 
@@ -128,6 +138,8 @@ export const validateConfig = (): void => {
       `Missing required environment variables: ${missingVars.join(", ")}`
     );
   }
+
+  validateZKTecoTimezoneOffset(config.ZKTECO_TIMEZONE_OFFSET_MINUTES);
 
   console.log("✅ Environment configuration validated successfully");
 };
