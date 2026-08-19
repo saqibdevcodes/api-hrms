@@ -20,7 +20,7 @@ router.get("/masters/event-types", authenticate, EventMasterController.getEventT
 router.post(
   "/masters/event-types",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   masterNameValidation,
   validateRequest,
   EventMasterController.createEventType,
@@ -28,13 +28,13 @@ router.post(
 router.put(
   "/masters/event-types/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.updateEventType,
 );
 router.delete(
   "/masters/event-types/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.deleteEventType,
 );
 
@@ -43,7 +43,7 @@ router.get("/masters/venues", authenticate, EventMasterController.getVenues);
 router.post(
   "/masters/venues",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   masterNameValidation,
   validateRequest,
   EventMasterController.createVenue,
@@ -51,13 +51,13 @@ router.post(
 router.put(
   "/masters/venues/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.updateVenue,
 );
 router.delete(
   "/masters/venues/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.deleteVenue,
 );
 
@@ -66,7 +66,7 @@ router.get("/masters/requirements", authenticate, EventMasterController.getRequi
 router.post(
   "/masters/requirements",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   masterNameValidation,
   validateRequest,
   EventMasterController.createRequirement,
@@ -74,13 +74,13 @@ router.post(
 router.put(
   "/masters/requirements/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.updateRequirement,
 );
 router.delete(
   "/masters/requirements/:id",
   authenticate,
-  SuperAdmin,
+  hrAndAdmin,
   EventMasterController.deleteRequirement,
 );
 
