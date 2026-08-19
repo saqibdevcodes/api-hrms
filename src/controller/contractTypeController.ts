@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import { prisma } from "../lib/prisma";
+import {
+  companyAssignmentInclude,
+  resolveActiveCompanyIds,
+  respondToCompanyScopeError,
+} from "../utils/companyScope";
 
 export class ContractTypeController {
   // Get all contract types
   static async getAllContractTypes(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = "", isActive } = req.query;
+      const { page = 1, limit = 10, search = "", isActive, companyId } = req.query;
 
       const pageNum = Number(page);
       const limitNum = Number(limit);
@@ -25,6 +30,9 @@ export class ContractTypeController {
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
       }
+      if (companyId) {
+        where.companyAssignments = { some: { companyId: companyId as string } };
+      }
 
       const [contractTypes, total] = await Promise.all([
         prisma.contractType.findMany({
@@ -33,6 +41,7 @@ export class ContractTypeController {
           take: limitNum,
           orderBy: { createdAt: "desc" },
           include: {
+            companyAssignments: { include: companyAssignmentInclude },
             _count: {
               select: { users: true },
             },
@@ -72,6 +81,7 @@ export class ContractTypeController {
       const contractType = await prisma.contractType.findUnique({
         where: { id },
         include: {
+          companyAssignments: { include: companyAssignmentInclude },
           _count: {
             select: { users: true },
           },
@@ -122,7 +132,10 @@ export class ContractTypeController {
         });
       }
 
-      const { name, description, duration, isActive = true } = req.body;
+      const { name, description, duration, isActive = true, companyIds } = req.body;
+      const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
+        defaultWhenMissing: true,
+      });
 
       const contractType = await prisma.contractType.create({
         data: {
@@ -130,7 +143,11 @@ export class ContractTypeController {
           description,
           duration: duration ? parseInt(duration) : null,
           isActive,
+          companyAssignments: {
+            create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+          },
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.status(201).json({
@@ -139,6 +156,7 @@ export class ContractTypeController {
         data: contractType,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error creating contract type:", error);
 
       if (error.code === "P2002") {
@@ -170,7 +188,9 @@ export class ContractTypeController {
         });
       }
 
-      const { name, description, duration, isActive } = req.body;
+      const { name, description, duration, isActive, companyIds } = req.body;
+      const resolvedCompanyIds =
+        companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
       const contractType = await prisma.contractType.findUnique({
         where: { id },
@@ -190,7 +210,14 @@ export class ContractTypeController {
           description,
           duration: duration ? parseInt(duration) : null,
           isActive,
+          ...(resolvedCompanyIds && {
+            companyAssignments: {
+              deleteMany: {},
+              create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+            },
+          }),
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.json({
@@ -199,6 +226,7 @@ export class ContractTypeController {
         data: updatedContractType,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error updating contract type:", error);
 
       if (error.code === "P2002") {

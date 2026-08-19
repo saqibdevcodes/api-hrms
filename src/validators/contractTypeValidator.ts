@@ -1,6 +1,10 @@
 import { body } from "express-validator";
 
 export const createContractTypeValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .notEmpty()
     .withMessage("Contract type name is required")
@@ -26,6 +30,10 @@ export const createContractTypeValidation = [
 ];
 
 export const updateContractTypeValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .optional()
     .isLength({ min: 2, max: 100 })

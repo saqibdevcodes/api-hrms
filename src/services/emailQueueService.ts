@@ -8,6 +8,7 @@ import {
 import {
   PdrEmailJobData,
   PdrEmailNotificationService,
+  PdrPortalClosureEmailJobData,
 } from "./pdrEmailNotificationService";
 import { EventNotificationService } from "./eventNotificationService";
 import { EmailService } from "../utils/emailService";
@@ -115,6 +116,12 @@ export class EmailQueueService {
       case EMAIL_EVENTS.PDR_STATUS_NOTIFY:
         await PdrEmailNotificationService.processJob(
           job.payload as unknown as PdrEmailJobData,
+        );
+        break;
+
+      case EMAIL_EVENTS.PDR_EMPLOYEE_PORTAL_CLOSE:
+        await PdrEmailNotificationService.processPortalClosureJob(
+          job.payload as unknown as PdrPortalClosureEmailJobData,
         );
         break;
 

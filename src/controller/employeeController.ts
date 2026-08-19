@@ -5,8 +5,76 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
+import { companyAssignmentInclude } from "../utils/companyScope";
 
 type UserRank = "EMPLOYEE" | "LINE_MANAGER" | "DIRECTOR";
+
+const parseIdArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map(String).map((id) => id.trim()).filter(Boolean)));
+  }
+  if (typeof value !== "string" || !value.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parseIdArray(parsed);
+  } catch {
+    // Multipart forms may send comma-separated values instead of JSON.
+  }
+
+  return Array.from(new Set(value.split(",").map((id) => id.trim()).filter(Boolean)));
+};
+
+const assertEmploymentResourcesInCompanies = async (
+  db: any,
+  companyIds: string[],
+  resources: {
+    departmentId?: string | null;
+    contractTypeId?: string | null;
+    shiftId?: string | null;
+    leaveId?: string | null;
+    employmentTypeId?: string | null;
+  },
+) => {
+  const checks = [
+    resources.departmentId && {
+      label: "Department",
+      count: db.companyDepartment.count({
+        where: { departmentId: resources.departmentId, companyId: { in: companyIds } },
+      }),
+    },
+    resources.contractTypeId && {
+      label: "Contract type",
+      count: db.companyContractType.count({
+        where: { contractTypeId: resources.contractTypeId, companyId: { in: companyIds } },
+      }),
+    },
+    resources.shiftId && {
+      label: "Shift",
+      count: db.companyShift.count({
+        where: { shiftId: resources.shiftId, companyId: { in: companyIds } },
+      }),
+    },
+    resources.leaveId && {
+      label: "Leave policy",
+      count: db.companyLeavePolicy.count({
+        where: { leavePolicyId: resources.leaveId, companyId: { in: companyIds } },
+      }),
+    },
+    resources.employmentTypeId && {
+      label: "Employment type",
+      count: db.companyEmploymentType.count({
+        where: { employmentTypeId: resources.employmentTypeId, companyId: { in: companyIds } },
+      }),
+    },
+  ].filter(Boolean) as Array<{ label: string; count: Promise<number> }>;
+
+  for (const check of checks) {
+    if ((await check.count) !== companyIds.length) {
+      throw new Error(`${check.label} is not assigned to every selected company`);
+    }
+  }
+};
 
 export class EmployeeController {
   // Get form dropdown data
@@ -19,10 +87,12 @@ export class EmployeeController {
         shifts,
         leavePolicies,
         employmentTypes,
+        companies,
       ] = await Promise.all([
         prisma.department.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
+          include: { companyAssignments: { include: companyAssignmentInclude } },
         }),
         prisma.designation.findMany({
           where: { isActive: true },
@@ -31,18 +101,26 @@ export class EmployeeController {
         prisma.contractType.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
+          include: { companyAssignments: { include: companyAssignmentInclude } },
         }),
         prisma.shift.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
+          include: { companyAssignments: { include: companyAssignmentInclude } },
         }),
         prisma.leavePolicy.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
+          include: { companyAssignments: { include: companyAssignmentInclude } },
         }),
         prisma.employmentType.findMany({
           where: { isActive: true },
           orderBy: { name: "asc" },
+          include: { companyAssignments: { include: companyAssignmentInclude } },
+        }),
+        prisma.company.findMany({
+          where: { isActive: true },
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
         }),
       ]);
 
@@ -56,6 +134,7 @@ export class EmployeeController {
           shifts,
           leavePolicies,
           employmentTypes,
+          companies,
         },
       });
     } catch (error) {
@@ -77,6 +156,7 @@ export class EmployeeController {
         search = "",
         department = "",
         status = "",
+        companyId = "",
         sortBy = "createdAt",
         sortOrder = "desc",
       } = req.query;
@@ -88,7 +168,6 @@ export class EmployeeController {
       const where: any = {
         employeeId: { not: null }, // Only get users with employeeId (employees)
       };
-
       // Add search filter (name, employeeId, department, position)
       if (search) {
         const searchStr = String(search).trim();
@@ -112,6 +191,12 @@ export class EmployeeController {
         where.status = status as string;
       }
 
+      if (companyId) {
+        where.companyMemberships = {
+          some: { companyId: companyId as string },
+        };
+      }
+
       // Get employees with proper filtering BEFORE pagination
       const [employees, total] = await Promise.all([
         prisma.user.findMany({
@@ -123,6 +208,9 @@ export class EmployeeController {
             designation: true,
             employmentType: true,
             emergencyDetail: true,
+            companyMemberships: {
+              include: { company: true },
+            },
           },
           orderBy: {
             [sortBy as string]: sortOrder,
@@ -165,6 +253,7 @@ export class EmployeeController {
         limit = 100, // Increased default limit
         sortBy = "createdAt",
         sortOrder = "desc",
+        companyId,
       } = req.query;
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -175,6 +264,9 @@ export class EmployeeController {
         employeeId: { not: null }, // Only get users with employeeId (employees)
         hasSystemAccess: true,
       };
+      if (companyId) {
+        where.companyMemberships = { some: { companyId: companyId as string } };
+      }
 
       // Get employees with proper filtering BEFORE pagination
       const [employees, total] = await Promise.all([
@@ -187,6 +279,7 @@ export class EmployeeController {
             designation: true,
             employmentType: true,
             emergencyDetail: true,
+            companyMemberships: { include: { company: true } },
           },
           orderBy: {
             [sortBy as string]: sortOrder,
@@ -221,10 +314,6 @@ export class EmployeeController {
   // Create new employee
   static async createEmployee(req: AuthenticatedRequest, res: Response) {
     try {
-      // Log the received data for debugging
-      console.log("Received body:", req.body);
-      console.log("Received files:", req.files);
-
       // Check validation errors
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -275,6 +364,7 @@ export class EmployeeController {
         leaveId,
         employmentTypeId,
         employeeId, // New field for employee ID
+        companyIds,
 
         // Employee specific fields
         position,
@@ -358,7 +448,35 @@ export class EmployeeController {
       // Ensure uniqueness with timestamp if collision occurs
 
       // Create user in a transaction
+      const requestedCompanyIds = parseIdArray(companyIds);
       const result = await prisma.$transaction(async (tx: any) => {
+        let assignedCompanyIds = requestedCompanyIds;
+        if (assignedCompanyIds.length === 0) {
+          const defaultCompany = await tx.company.findFirst({
+            where: { isDefault: true, isActive: true },
+            select: { id: true },
+          });
+          assignedCompanyIds = defaultCompany ? [defaultCompany.id] : [];
+        } else {
+          const validCompanyCount = await tx.company.count({
+            where: { id: { in: assignedCompanyIds }, isActive: true },
+          });
+          if (validCompanyCount !== assignedCompanyIds.length) {
+            throw new Error("One or more selected companies are invalid or inactive");
+          }
+        }
+        if (assignedCompanyIds.length === 0) {
+          throw new Error("At least one active company is required");
+        }
+
+        await assertEmploymentResourcesInCompanies(tx, assignedCompanyIds, {
+          departmentId,
+          contractTypeId,
+          shiftId,
+          leaveId,
+          employmentTypeId,
+        });
+
         // Create user with all employee data
         const user = await tx.user.create({
           data: {
@@ -512,7 +630,16 @@ export class EmployeeController {
           }
         }
 
-        return { user, employeeLeave };
+        if (assignedCompanyIds.length > 0) {
+          await tx.companyEmployee.createMany({
+            data: assignedCompanyIds.map((companyId: string) => ({
+              companyId,
+              userId: user.id,
+            })),
+          });
+        }
+
+        return { user, employeeLeave, assignedCompanyIds };
       });
 
       // Return success with created data (excluding password)
@@ -653,6 +780,9 @@ export class EmployeeController {
           leavePolicy: true,
           employmentType: true,
           emergencyDetail: true,
+          companyMemberships: {
+            include: { company: true },
+          },
         },
       });
 
@@ -729,6 +859,7 @@ export class EmployeeController {
       // Check if user exists and is an employee
       const existingUser = await prisma.user.findUnique({
         where: { id },
+        include: { companyMemberships: { select: { companyId: true } } },
       });
 
       if (!existingUser || !existingUser.employeeId) {
@@ -769,6 +900,7 @@ export class EmployeeController {
         cnicBackFile: _cnicBackFile,
         documentFile: _documentFile,
         insuranceCardFile: _insuranceCardFile,
+        companyIds,
         ...restData
       } = req.body;
 
@@ -951,18 +1083,55 @@ export class EmployeeController {
 
       updateData.updatedBy = req.user?.id;
 
-      const updatedUser = await prisma.user.update({
-        where: { id },
-        data: updateData,
-        include: {
-          departmentEntity: true,
-          designation: true,
-          contractType: true,
-          shift: true,
-          leavePolicy: true,
-          employmentType: true,
-          emergencyDetail: true,
-        },
+      const requestedCompanyIds =
+        companyIds === undefined
+          ? existingUser.companyMemberships.map((membership) => membership.companyId)
+          : parseIdArray(companyIds);
+      if (requestedCompanyIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one active company is required",
+        });
+      }
+      const validCompanyCount = await prisma.company.count({
+        where: { id: { in: requestedCompanyIds }, isActive: true },
+      });
+      if (validCompanyCount !== requestedCompanyIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more selected companies are invalid or inactive",
+        });
+      }
+
+      await assertEmploymentResourcesInCompanies(prisma, requestedCompanyIds, {
+        departmentId: departmentId || existingUser.departmentId,
+        contractTypeId: contractTypeId || existingUser.contractTypeId,
+        shiftId: shiftId || existingUser.shiftId,
+        leaveId: leaveId || existingUser.leaveId,
+        employmentTypeId: employmentTypeId || existingUser.employmentTypeId,
+      });
+
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        await tx.user.update({ where: { id }, data: updateData });
+        if (companyIds !== undefined) {
+          await tx.companyEmployee.deleteMany({ where: { userId: id } });
+          await tx.companyEmployee.createMany({
+            data: requestedCompanyIds.map((companyId) => ({ companyId, userId: id })),
+          });
+        }
+        return tx.user.findUniqueOrThrow({
+          where: { id },
+          include: {
+            departmentEntity: true,
+            designation: true,
+            contractType: true,
+            shift: true,
+            leavePolicy: true,
+            employmentType: true,
+            emergencyDetail: true,
+            companyMemberships: { include: { company: true } },
+          },
+        });
       });
 
       // Exclude password from response

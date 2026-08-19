@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import { prisma } from "../lib/prisma";
+import {
+  companyAssignmentInclude,
+  resolveActiveCompanyIds,
+  respondToCompanyScopeError,
+} from "../utils/companyScope";
 
 export class LeavePolicyController {
   // Get all leave policies
   static async getAllLeavePolicies(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = "", isActive } = req.query;
+      const { page = 1, limit = 10, search = "", isActive, companyId } = req.query;
 
       const pageNum = Number(page);
       const limitNum = Number(limit);
@@ -22,6 +27,9 @@ export class LeavePolicyController {
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
       }
+      if (companyId) {
+        where.companyAssignments = { some: { companyId: companyId as string } };
+      }
 
       const [leavePolicies, total] = await Promise.all([
         prisma.leavePolicy.findMany({
@@ -30,6 +38,7 @@ export class LeavePolicyController {
           take: limitNum,
           orderBy: { createdAt: "desc" },
           include: {
+            companyAssignments: { include: companyAssignmentInclude },
             _count: {
               select: { users: true },
             },
@@ -69,6 +78,7 @@ export class LeavePolicyController {
       const leavePolicy = await prisma.leavePolicy.findUnique({
         where: { id },
         include: {
+          companyAssignments: { include: companyAssignmentInclude },
           _count: {
             select: { users: true },
           },
@@ -125,7 +135,11 @@ export class LeavePolicyController {
         sickLeaves,
         casualLeaves,
         isActive = true,
+        companyIds,
       } = req.body;
+      const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
+        defaultWhenMissing: true,
+      });
 
       const leavePolicy = await prisma.leavePolicy.create({
         data: {
@@ -134,7 +148,11 @@ export class LeavePolicyController {
           sickLeaves: parseInt(sickLeaves),
           casualLeaves: parseInt(casualLeaves),
           isActive,
+          companyAssignments: {
+            create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+          },
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.status(201).json({
@@ -143,6 +161,7 @@ export class LeavePolicyController {
         data: leavePolicy,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error creating leave policy:", error);
 
       if (error.code === "P2002") {
@@ -174,8 +193,10 @@ export class LeavePolicyController {
         });
       }
 
-      const { name, annualLeaves, sickLeaves, casualLeaves, isActive } =
+      const { name, annualLeaves, sickLeaves, casualLeaves, isActive, companyIds } =
         req.body;
+      const resolvedCompanyIds =
+        companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
       const leavePolicy = await prisma.leavePolicy.findUnique({
         where: { id },
@@ -196,7 +217,14 @@ export class LeavePolicyController {
           sickLeaves: parseInt(sickLeaves),
           casualLeaves: parseInt(casualLeaves),
           isActive,
+          ...(resolvedCompanyIds && {
+            companyAssignments: {
+              deleteMany: {},
+              create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+            },
+          }),
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.json({
@@ -205,6 +233,7 @@ export class LeavePolicyController {
         data: updatedLeavePolicy,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error updating leave policy:", error);
 
       if (error.code === "P2002") {

@@ -106,12 +106,6 @@ router.get(
   authenticate,
   ZKTecoController.getAllZKTecoRecords,
 );
-router.get(
-  "/attendance/export",
-  authenticate,
-  ZKTecoController.exportAttendanceData,
-);
-
 router.post(
   "/attendance/late-reason",
   authenticate,

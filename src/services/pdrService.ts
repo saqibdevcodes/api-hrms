@@ -9,6 +9,7 @@ import {
 import { prisma } from "../lib/prisma";
 import {
   queuePdrCreatedEmail,
+  queuePdrPortalClosureEmail,
   queuePdrStatusEmail,
 } from "../queues/email.jobs";
 
@@ -34,6 +35,13 @@ type TeamHierarchyNode = {
 };
 
 const pdrInclude = {
+  company: {
+    select: {
+      id: true,
+      name: true,
+      isDefault: true,
+    },
+  },
   user: {
     select: {
       id: true,
@@ -72,6 +80,7 @@ const pdrInclude = {
 
 export interface PdrCreationData {
   userId: string;
+  companyId: string;
   /** Stored on `pdr.linemanager_id`. */
   linemanager_id?: string;
   directorId?: string;
@@ -205,6 +214,110 @@ export class PdrService {
     if (new Date() > deadline) {
       throw new Error(`${phaseConfig.label} deadline has passed`);
     }
+  }
+
+  static assertEmployeePortalOpen(pdr: {
+    employeePortalClosesAt?: Date | string | null;
+  }) {
+    if (!pdr.employeePortalClosesAt) return;
+
+    const closesAt = new Date(pdr.employeePortalClosesAt);
+    if (!Number.isNaN(closesAt.getTime()) && Date.now() >= closesAt.getTime()) {
+      throw new Error(
+        `Employee PDR access was closed by HR on ${closesAt.toLocaleString("en-PK", {
+          timeZone: "Asia/Karachi",
+        })}`,
+      );
+    }
+  }
+
+  static async bulkCloseEmployeePortal(data: {
+    pdrIds: number[];
+    closesAt: Date;
+    closeMode: "NOW" | "SCHEDULED";
+    closedBy: string;
+  }) {
+    const pdrIds = [...new Set(data.pdrIds)];
+    const existingPdrs = await prisma.pdr.findMany({
+      where: { id: { in: pdrIds } },
+      select: {
+        id: true,
+        userId: true,
+        pdr_cycle: true,
+        isCompleted: true,
+      },
+    });
+
+    const closablePdrs = existingPdrs.filter((pdr) => !pdr.isCompleted);
+    if (closablePdrs.length === 0) {
+      throw new Error("No selected PDRs are available for employee portal closing");
+    }
+
+    const closableIds = closablePdrs.map((pdr) => pdr.id);
+    await prisma.pdr.updateMany({
+      where: { id: { in: closableIds } },
+      data: {
+        employeePortalClosesAt: data.closesAt,
+        employeePortalClosedBy: data.closedBy,
+        lastModifiedBy: data.closedBy,
+        lastModifiedAt: new Date(),
+      },
+    });
+
+    const emailResults = await Promise.allSettled(
+      closablePdrs.map((pdr) =>
+        queuePdrPortalClosureEmail({
+          pdrId: pdr.id,
+          closesAt: data.closesAt.toISOString(),
+          closeMode: data.closeMode,
+        }),
+      ),
+    );
+
+    const closesAtLabel = data.closesAt.toLocaleString("en-PK", {
+      timeZone: "Asia/Karachi",
+    });
+    const notificationService = new NotificationService(getSocketManager());
+    await Promise.allSettled(
+      closablePdrs.map((pdr) =>
+        notificationService.createNotificationForUser(pdr.userId, {
+          title:
+            data.closeMode === "NOW"
+              ? "Employee PDR access closed"
+              : "Employee PDR closing scheduled",
+          message:
+            data.closeMode === "NOW"
+              ? `${pdr.pdr_cycle || "Your PDR"} is now read-only for you.`
+              : `${pdr.pdr_cycle || "Your PDR"} becomes read-only on ${closesAtLabel}.`,
+          type: "SYSTEM_ANNOUNCEMENT",
+          priority: "HIGH",
+          data: {
+            pdrId: pdr.id,
+            employeePortalClosesAt: data.closesAt.toISOString(),
+          },
+        }),
+      ),
+    );
+
+    const updatedPdrs = await prisma.pdr.findMany({
+      where: { id: { in: closableIds } },
+      include: pdrInclude,
+    });
+    const foundIds = new Set(existingPdrs.map((pdr) => pdr.id));
+    const skippedIds = pdrIds.filter(
+      (id) => !foundIds.has(id) || !closableIds.includes(id),
+    );
+
+    return {
+      updated: updatedPdrs,
+      updatedCount: updatedPdrs.length,
+      skippedIds,
+      emailQueuedCount: emailResults.filter(
+        (result) => result.status === "fulfilled",
+      ).length,
+      closesAt: data.closesAt,
+      closeMode: data.closeMode,
+    };
   }
 
   static getPhaseForStatus(status: PdrOverallStatus): PdrPhaseKey | null {
@@ -559,27 +672,35 @@ export class PdrService {
     // Check for duplicate PDR in the same cycle
     const existingPdr = await prisma.pdr.findUnique({
       where: {
-        userId_pdr_cycle: {
+        userId_pdr_cycle_companyId: {
           userId: data.userId,
           pdr_cycle: data.pdrCycle,
+          companyId: data.companyId,
         },
       },
     });
 
     if (existingPdr) {
       throw new Error(
-        `PDR already exists for user ${data.userId} in cycle ${data.pdrCycle}`,
+        `PDR already exists for this employee, company, and cycle`,
       );
     }
 
     // Get user details to find line manager and director
     const user = await prisma.user.findUnique({
       where: { id: data.userId },
-      select: { id: true, manager: true },
+      select: {
+        id: true,
+        manager: true,
+        companyMemberships: { where: { companyId: data.companyId }, select: { companyId: true } },
+      },
     });
 
     if (!user) {
       throw new Error("User not found");
+    }
+    if (user.companyMemberships.length === 0) {
+      throw new Error("Employee is not assigned to the selected company");
     }
 
     // Line manager: explicit `linemanager_id` (HR) when it is a real `users.id`;
@@ -600,14 +721,39 @@ export class PdrService {
         user.manager,
       );
     }
+    if (linemanagerId) {
+      const managerMembership = await prisma.companyEmployee.findUnique({
+        where: {
+          companyId_userId: { companyId: data.companyId, userId: linemanagerId },
+        },
+        select: { userId: true },
+      });
+      if (!managerMembership) {
+        throw new Error("Selected line manager is not assigned to the selected company");
+      }
+    }
 
     // Find director if not provided
     let directorId = data.directorId;
     if (!directorId) {
       const director = await prisma.user.findFirst({
-        where: { userRank: UserRank.DIRECTOR },
+        where: {
+          userRank: UserRank.DIRECTOR,
+          companyMemberships: { some: { companyId: data.companyId } },
+        },
       });
       directorId = director?.id;
+    }
+    if (directorId) {
+      const directorMembership = await prisma.companyEmployee.findUnique({
+        where: {
+          companyId_userId: { companyId: data.companyId, userId: directorId },
+        },
+        select: { userId: true },
+      });
+      if (!directorMembership) {
+        throw new Error("Selected director is not assigned to the selected company");
+      }
     }
 
     let cycleId = data.pdrCycleId;
@@ -633,6 +779,7 @@ export class PdrService {
     const pdr = await prisma.pdr.create({
       data: {
         userId: data.userId,
+        companyId: data.companyId,
         pdr_cycle: data.pdrCycle,
         pdrCycleId: cycleId,
         linemanager_id: linemanagerId,
@@ -700,11 +847,14 @@ export class PdrService {
     userIds?: string[],
     pdrCycleId?: number,
     phaseDeadlines?: PdrPhaseDeadlinesInput,
+    companyId?: string,
   ) {
+    if (!companyId) throw new Error("Company is required");
     const whereClause: any = {
       role: Role.EMPLOYEE,
       isActive: true,
       hasSystemAccess: true,
+      companyMemberships: { some: { companyId } },
     };
 
     if (userIds?.length) {
@@ -734,6 +884,7 @@ export class PdrService {
         const pdr = await this.createPdr(
           {
             userId: employee.id,
+            companyId,
             pdrCycle,
             pdrCycleId,
             phaseDeadlines,
@@ -1213,6 +1364,7 @@ export class PdrService {
       cycle?: string;
       section?: "mine" | "team" | "all"; // Section filter for HR users
       department?: string; // New department filter
+      companyId?: string;
       includeSummary?: boolean;
       search?: string;
     },
@@ -1242,6 +1394,10 @@ export class PdrService {
 
       if (filters?.cycle) {
         AND.push({ pdr_cycle: filters.cycle });
+      }
+
+      if (filters?.companyId) {
+        AND.push({ companyId: filters.companyId });
       }
 
       if (filters?.department) {
@@ -1633,10 +1789,17 @@ export class PdrService {
   static async getPdrStatistics(filters?: {
     cycle?: string;
     departmentId?: string;
+    companyId?: string;
   }) {
     const whereClause: any = {};
     if (filters?.cycle) {
       whereClause.pdr_cycle = filters.cycle;
+    }
+    if (filters?.companyId) {
+      whereClause.companyId = filters.companyId;
+    }
+    if (filters?.departmentId) {
+      whereClause.user = { departmentId: filters.departmentId };
     }
 
     const [

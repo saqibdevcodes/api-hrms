@@ -1,6 +1,10 @@
 import { body } from "express-validator";
 
 export const createLeavePolicyValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .notEmpty()
     .withMessage("Leave policy name is required")
@@ -32,6 +36,10 @@ export const createLeavePolicyValidation = [
 ];
 
 export const updateLeavePolicyValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .optional()
     .isLength({ min: 2, max: 100 })

@@ -1,6 +1,11 @@
 import { body, param, query } from "express-validator";
 
 export const createPdrValidator = [
+  body("companyId")
+    .notEmpty()
+    .withMessage("Company ID is required")
+    .isString()
+    .withMessage("Company ID must be a string"),
   body("userId")
     .notEmpty()
     .withMessage("User ID is required")
@@ -30,6 +35,11 @@ export const createPdrValidator = [
 ];
 
 export const createBulkPdrValidator = [
+  body("companyId")
+    .notEmpty()
+    .withMessage("Company ID is required")
+    .isString()
+    .withMessage("Company ID must be a string"),
   body("pdrCycle")
     .notEmpty()
     .withMessage("PDR cycle is required")
@@ -153,6 +163,35 @@ export const getPdrsQueryValidator = [
     .optional()
     .isString()
     .withMessage("Cycle must be a string"),
+  query("companyId")
+    .optional()
+    .isString()
+    .withMessage("Company ID must be a string"),
+];
+
+export const bulkClosePdrEmployeePortalValidator = [
+  body("pdrIds")
+    .isArray({ min: 1, max: 200 })
+    .withMessage("Select between 1 and 200 PDRs"),
+  body("pdrIds.*")
+    .isInt({ min: 1 })
+    .withMessage("Every PDR ID must be a positive integer"),
+  body("closeMode")
+    .isIn(["NOW", "SCHEDULED"])
+    .withMessage("Close mode must be NOW or SCHEDULED"),
+  body("closesAt").custom((value, { req }) => {
+    if (req.body.closeMode === "NOW") return true;
+    if (!value) throw new Error("Closing time is required for scheduled closing");
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Closing time must be a valid date");
+    }
+    if (date.getTime() <= Date.now()) {
+      throw new Error("Scheduled closing time must be in the future");
+    }
+    return true;
+  }),
 ];
 
 export const updatePdrContentValidator = [

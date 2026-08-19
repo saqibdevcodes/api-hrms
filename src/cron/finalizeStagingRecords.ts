@@ -1,8 +1,8 @@
 /**
  * Cron Job: Finalize Staging Records
  * 
- * This script should be run daily (or hourly) to finalize staging records
- * that are 1+ day old and move them to the final tables.
+ * Valid device punches are finalized immediately. This script is a retry
+ * safety net for any staging records left pending by a transient failure.
  * 
  * Setup with cron:
  * 0 2 * * * cd /home/saqib/public_html/test.iriscommunications.cloud && node dist/cron/finalizeStagingRecords.js

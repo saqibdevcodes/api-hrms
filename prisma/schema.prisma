@@ -139,9 +139,11 @@ model User {
 
   hasSystemAccess Boolean @default(true)
 
-  eventAssigneeRecords EventAssignee[] @relation("EventAssigneeUser")
+  eventAssigneeRecords       EventAssignee[]    @relation("EventAssigneeUser")
   requirementAssignedRecords EventRequirement[] @relation("RequirementAssignedEmployee")
-  hostedEvents Event[] @relation("EventHostUser")
+  hostedEvents               Event[]            @relation("EventHostUser")
+
+  companyMemberships CompanyEmployee[]
 
   @@map("users")
 }
@@ -176,7 +178,8 @@ model ContractType {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  users User[]
+  users              User[]
+  companyAssignments CompanyContractType[]
 
   @@map("contract_types")
 }
@@ -213,7 +216,8 @@ model Shift {
   updatedAt    DateTime  @updatedAt
 
   // Relations
-  users User[]
+  users              User[]
+  companyAssignments CompanyShift[]
 
   @@map("shifts")
 }
@@ -241,8 +245,9 @@ model LeavePolicy {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  users         User[]
-  EmployeeLeave EmployeeLeave[]
+  users              User[]
+  EmployeeLeave      EmployeeLeave[]
+  companyAssignments CompanyLeavePolicy[]
 
   @@map("leave_policies")
 }
@@ -273,7 +278,8 @@ model EmploymentType {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  users User[]
+  users              User[]
+  companyAssignments CompanyEmploymentType[]
 
   @@map("employment_types")
 }
@@ -301,9 +307,113 @@ model Department {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  users User[]
+  users              User[]
+  companyAssignments CompanyDepartment[]
 
   @@map("departments")
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  email       String?
+  phone       String?
+  website     String?
+  address     String?  @db.Text
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees       CompanyEmployee[]
+  departments     CompanyDepartment[]
+  contractTypes   CompanyContractType[]
+  shifts          CompanyShift[]
+  leavePolicies   CompanyLeavePolicy[]
+  employmentTypes CompanyEmploymentType[]
+  pdrs            Pdr[]
+
+  @@index([isActive])
+  @@map("companies")
+}
+
+model CompanyEmployee {
+  companyId  String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, userId])
+  @@index([userId])
+  @@map("company_employees")
+}
+
+model CompanyDepartment {
+  companyId    String
+  departmentId String
+  assignedAt   DateTime @default(now())
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, departmentId])
+  @@index([departmentId])
+  @@map("company_departments")
+}
+
+model CompanyContractType {
+  companyId      String
+  contractTypeId String
+  assignedAt     DateTime @default(now())
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contractType ContractType @relation(fields: [contractTypeId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, contractTypeId])
+  @@index([contractTypeId])
+  @@map("company_contract_types")
+}
+
+model CompanyShift {
+  companyId  String
+  shiftId    String
+  assignedAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift   Shift   @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, shiftId])
+  @@index([shiftId])
+  @@map("company_shifts")
+}
+
+model CompanyLeavePolicy {
+  companyId     String
+  leavePolicyId String
+  assignedAt    DateTime @default(now())
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leavePolicy LeavePolicy @relation(fields: [leavePolicyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, leavePolicyId])
+  @@index([leavePolicyId])
+  @@map("company_leave_policies")
+}
+
+model CompanyEmploymentType {
+  companyId        String
+  employmentTypeId String
+  assignedAt       DateTime @default(now())
+
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employmentType EmploymentType @relation(fields: [employmentTypeId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, employmentTypeId])
+  @@index([employmentTypeId])
+  @@map("company_employment_types")
 }
 
 // Attendance Management
@@ -344,8 +454,8 @@ model Attendance {
   @@map("attendances")
 }
 
-// STAGING TABLE: Raw ZKTeco device records (real-time data from devices)
-// This table holds unverified attendance data for 3 days before finalization
+// STAGING TABLE: Raw ZKTeco device records retained for audit/retry purposes.
+// Valid punches are finalized into live attendance immediately.
 model ZKTecoAttendanceStaging {
   id String @id @default(cuid())
 
@@ -380,12 +490,11 @@ model ZKTecoAttendanceStaging {
   @@index([deviceId])
   @@index([timestamp])
   @@index([isFinalized])
-  @@index([createdAt]) // For 3-day filter
+  @@index([createdAt])
   @@map("zkteco_attendance_staging")
 }
 
-// FINAL TABLE: Verified ZKTeco attendance records (finalized after 3 days)
-// This table holds verified attendance data that HR/Admin can see
+// FINAL TABLE: Verified ZKTeco attendance records shown immediately to HR/Admin.
 model ZKTecoAttendanceRecord {
   id String @id @default(cuid())
 
@@ -791,14 +900,16 @@ enum PdrOverallStatus {
 //PDR Management
 
 model Pdr {
-  id            Int      @id @default(autoincrement())
-  user          User     @relation("PdrEmployee", fields: [userId], references: [id])
+  id            Int       @id @default(autoincrement())
+  user          User      @relation("PdrEmployee", fields: [userId], references: [id])
   userId        String
-  creation_date DateTime @default(now())
-  pdr_cycle     String?  @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
+  creation_date DateTime  @default(now())
+  pdr_cycle     String?   @db.VarChar(50) // "Q1 2024", "2024 Annual", etc.
   pdrCycle      PdrCycle? @relation(fields: [pdrCycleId], references: [id])
   pdrCycleId    Int?
   pdr_timeline  String?
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String    @default("company_iriscommunications")
 
   // Relations to other users
   linemanager    User?   @relation("PdrLineManager", fields: [linemanager_id], references: [id])
@@ -821,6 +932,11 @@ model Pdr {
   lastModifiedBy String? // User ID who last modified
   lastModifiedAt DateTime  @default(now()) @updatedAt
 
+  // HR can close employee portal access immediately or at a scheduled time.
+  // A future value is also used by the employee UI as a live countdown.
+  employeePortalClosesAt DateTime?
+  employeePortalClosedBy String?
+
   // Manager recommendations (visible to HR and Manager only, NOT to employee)
   training_required     Boolean? @default(false)
   training_description  String?  @db.Text
@@ -831,18 +947,18 @@ model Pdr {
   director_overall_comment String? @db.Text
 
   // Phase restrictions. Null deadline or noRestriction=true means unrestricted.
-  employeeAccessDeadline                DateTime?
-  employeeAccessNoRestriction           Boolean   @default(true)
-  hrEmployeeApprovalDeadline            DateTime?
-  hrEmployeeApprovalNoRestriction       Boolean   @default(true)
-  managerAccessDeadline                 DateTime?
-  managerAccessNoRestriction            Boolean   @default(true)
-  hrManagerApprovalDeadline             DateTime?
-  hrManagerApprovalNoRestriction        Boolean   @default(true)
-  directorReviewDeadline                DateTime?
-  directorReviewNoRestriction           Boolean   @default(true)
-  employeeAcknowledgementDeadline       DateTime?
-  employeeAcknowledgementNoRestriction  Boolean   @default(true)
+  employeeAccessDeadline               DateTime?
+  employeeAccessNoRestriction          Boolean   @default(true)
+  hrEmployeeApprovalDeadline           DateTime?
+  hrEmployeeApprovalNoRestriction      Boolean   @default(true)
+  managerAccessDeadline                DateTime?
+  managerAccessNoRestriction           Boolean   @default(true)
+  hrManagerApprovalDeadline            DateTime?
+  hrManagerApprovalNoRestriction       Boolean   @default(true)
+  directorReviewDeadline               DateTime?
+  directorReviewNoRestriction          Boolean   @default(true)
+  employeeAcknowledgementDeadline      DateTime?
+  employeeAcknowledgementNoRestriction Boolean   @default(true)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -855,7 +971,9 @@ model Pdr {
   overallComments   PdrOverallComment[]
   transitions       PdrStatusTransition[]
 
-  @@unique([userId, pdr_cycle]) // Prevent duplicate PDRs per cycle
+  @@unique([userId, pdr_cycle, companyId]) // One PDR per employee, cycle, and company
+  @@index([companyId])
+  @@index([employeePortalClosesAt])
   @@map("pdr")
 }
 
@@ -1065,16 +1183,16 @@ model RequirementMaster {
 
 // Core Event Model
 model Event {
-  id          String        @id @default(cuid())
-  title       String
-  description String?       @db.Text
-  eventDate   DateTime      @db.Date
-  eventEndDate DateTime?    @db.Date
-  startTime   DateTime
-  endTime     DateTime?
-  priority    EventPriority @default(NORMAL)
-  mode        EventMode     @default(OFFLINE)
-  status      EventStatus   @default(SCHEDULED)
+  id           String        @id @default(cuid())
+  title        String
+  description  String?       @db.Text
+  eventDate    DateTime      @db.Date
+  eventEndDate DateTime?     @db.Date
+  startTime    DateTime
+  endTime      DateTime?
+  priority     EventPriority @default(NORMAL)
+  mode         EventMode     @default(OFFLINE)
+  status       EventStatus   @default(SCHEDULED)
 
   cancellationReason String? @db.Text
 
@@ -1105,7 +1223,7 @@ model Event {
 
   // Event Host
   eventHostId         String?
-  eventHostUser       User?    @relation("EventHostUser", fields: [eventHostId], references: [id], onDelete: SetNull)
+  eventHostUser       User?   @relation("EventHostUser", fields: [eventHostId], references: [id], onDelete: SetNull)
   customEventHostName String?
 
   // Internal Notes & Audit
@@ -1153,21 +1271,21 @@ model EventRequirement {
   // Department & Assigned Responsible Employee for this Requirement
   departmentName     String?
   assignedEmployeeId String?
-  assignedEmployee   User?              @relation("RequirementAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  assignedEmployee   User?   @relation("RequirementAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
 
   @@map("event_requirements")
 }
 
 // Event Team / Assignees
 model EventAssignee {
-  id                    String    @id @default(cuid())
-  eventId               String
-  event                 Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  employeeId            String?
-  employee              User?     @relation("EventAssigneeUser", fields: [employeeId], references: [id], onDelete: SetNull)
-  externalName          String?
-  responsibilityType    String    // Event Manager, Responsible Person, Management, Coordinator, Support Staff, Technical Support, Other
-  notes                 String?   @db.Text
+  id                 String  @id @default(cuid())
+  eventId            String
+  event              Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  employeeId         String?
+  employee           User?   @relation("EventAssigneeUser", fields: [employeeId], references: [id], onDelete: SetNull)
+  externalName       String?
+  responsibilityType String // Event Manager, Responsible Person, Management, Coordinator, Support Staff, Technical Support, Other
+  notes              String? @db.Text
 
   acknowledgementStatus String    @default("PENDING") // PENDING, ACCEPTED, DECLINED
   acknowledgedAt        DateTime?

@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import { prisma } from "../lib/prisma";
+import {
+  companyAssignmentInclude,
+  resolveActiveCompanyIds,
+  respondToCompanyScopeError,
+} from "../utils/companyScope";
 
 export class ShiftController {
   // Get all shifts
   static async getAllShifts(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = "", isActive } = req.query;
+      const { page = 1, limit = 10, search = "", isActive, companyId } = req.query;
 
       const pageNum = Number(page);
       const limitNum = Number(limit);
@@ -22,6 +27,9 @@ export class ShiftController {
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
       }
+      if (companyId) {
+        where.companyAssignments = { some: { companyId: companyId as string } };
+      }
 
       const [shifts, total] = await Promise.all([
         prisma.shift.findMany({
@@ -30,6 +38,7 @@ export class ShiftController {
           take: limitNum,
           orderBy: { createdAt: "desc" },
           include: {
+            companyAssignments: { include: companyAssignmentInclude },
             _count: {
               select: { users: true },
             },
@@ -69,6 +78,7 @@ export class ShiftController {
       const shift = await prisma.shift.findUnique({
         where: { id },
         include: {
+          companyAssignments: { include: companyAssignmentInclude },
           _count: {
             select: { users: true },
           },
@@ -128,7 +138,11 @@ export class ShiftController {
         fullDayStart,
         breakTime,
         isActive = true,
+        companyIds,
       } = req.body;
+      const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
+        defaultWhenMissing: true,
+      });
 
       const shift = await prisma.shift.create({
         data: {
@@ -140,7 +154,11 @@ export class ShiftController {
           fullDayStart: new Date(fullDayStart),
           breakTime: breakTime ? parseInt(breakTime) : null,
           isActive,
+          companyAssignments: {
+            create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+          },
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.status(201).json({
@@ -149,6 +167,7 @@ export class ShiftController {
         data: shift,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error creating shift:", error);
 
       if (error.code === "P2002") {
@@ -189,7 +208,10 @@ export class ShiftController {
         fullDayStart,
         breakTime,
         isActive,
+        companyIds,
       } = req.body;
+      const resolvedCompanyIds =
+        companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
       const shift = await prisma.shift.findUnique({
         where: { id },
@@ -213,7 +235,14 @@ export class ShiftController {
           fullDayStart: new Date(fullDayStart),
           breakTime: breakTime ? parseInt(breakTime) : null,
           isActive,
+          ...(resolvedCompanyIds && {
+            companyAssignments: {
+              deleteMany: {},
+              create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+            },
+          }),
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.json({
@@ -222,6 +251,7 @@ export class ShiftController {
         data: updatedShift,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error updating shift:", error);
 
       if (error.code === "P2002") {

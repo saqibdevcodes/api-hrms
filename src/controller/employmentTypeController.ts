@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import { prisma } from "../lib/prisma";
+import {
+  companyAssignmentInclude,
+  resolveActiveCompanyIds,
+  respondToCompanyScopeError,
+} from "../utils/companyScope";
 
 export class EmploymentTypeController {
   // Get all employment types
   static async getAllEmploymentTypes(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = "", isActive } = req.query;
+      const { page = 1, limit = 10, search = "", isActive, companyId } = req.query;
 
       const pageNum = Number(page);
       const limitNum = Number(limit);
@@ -25,6 +30,9 @@ export class EmploymentTypeController {
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
       }
+      if (companyId) {
+        where.companyAssignments = { some: { companyId: companyId as string } };
+      }
 
       const [employmentTypes, total] = await Promise.all([
         prisma.employmentType.findMany({
@@ -33,6 +41,7 @@ export class EmploymentTypeController {
           take: limitNum,
           orderBy: { createdAt: "desc" },
           include: {
+            companyAssignments: { include: companyAssignmentInclude },
             _count: {
               select: { users: true },
             },
@@ -72,6 +81,7 @@ export class EmploymentTypeController {
       const employmentType = await prisma.employmentType.findUnique({
         where: { id },
         include: {
+          companyAssignments: { include: companyAssignmentInclude },
           _count: {
             select: { users: true },
           },
@@ -122,14 +132,21 @@ export class EmploymentTypeController {
         });
       }
 
-      const { name, description, isActive = true } = req.body;
+      const { name, description, isActive = true, companyIds } = req.body;
+      const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
+        defaultWhenMissing: true,
+      });
 
       const employmentType = await prisma.employmentType.create({
         data: {
           name,
           description,
           isActive,
+          companyAssignments: {
+            create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+          },
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.status(201).json({
@@ -138,6 +155,7 @@ export class EmploymentTypeController {
         data: employmentType,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error creating employment type:", error);
 
       if (error.code === "P2002") {
@@ -169,7 +187,9 @@ export class EmploymentTypeController {
         });
       }
 
-      const { name, description, isActive } = req.body;
+      const { name, description, isActive, companyIds } = req.body;
+      const resolvedCompanyIds =
+        companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
       const employmentType = await prisma.employmentType.findUnique({
         where: { id },
@@ -188,7 +208,14 @@ export class EmploymentTypeController {
           name,
           description,
           isActive,
+          ...(resolvedCompanyIds && {
+            companyAssignments: {
+              deleteMany: {},
+              create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+            },
+          }),
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.json({
@@ -197,6 +224,7 @@ export class EmploymentTypeController {
         data: updatedEmploymentType,
       });
     } catch (error: any) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error updating employment type:", error);
 
       if (error.code === "P2002") {

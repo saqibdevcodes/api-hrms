@@ -14,6 +14,18 @@ import { prisma } from "../src/lib/prisma";
 async function main() {
   console.log("🌱 Starting database seeding...");
 
+  const defaultCompany = await prisma.company.upsert({
+    where: { name: "iriscommunications" },
+    update: { isDefault: true, isActive: true },
+    create: {
+      id: "company_iriscommunications",
+      name: "iriscommunications",
+      description: "Default HRMS company",
+      isDefault: true,
+      isActive: true,
+    },
+  });
+
   // Create employment types first
   console.log("Creating employment types...");
   const fullTimeType = await prisma.employmentType.upsert({
@@ -290,6 +302,58 @@ async function main() {
       department: "Human Resources",
       manager: "Admin",
       status: UserStatus.ACTIVE, // Added this assuming you want an active status
+    },
+  });
+
+  await Promise.all([
+    prisma.companyEmploymentType.createMany({
+      data: [
+        fullTimeType,
+        partTimeType,
+        contractEmploymentType,
+        internshipType,
+        consultantType,
+      ].map((employmentType) => ({
+        companyId: defaultCompany.id,
+        employmentTypeId: employmentType.id,
+      })),
+      skipDuplicates: true,
+    }),
+    prisma.companyDepartment.createMany({
+      data: [engineeringDept, hrDept, superAdminDept, testEmployeeDept].map((department) => ({
+        companyId: defaultCompany.id,
+        departmentId: department.id,
+      })),
+      skipDuplicates: true,
+    }),
+    prisma.companyContractType.createMany({
+      data: [permanentContract, temporaryContract].map((contractType) => ({
+        companyId: defaultCompany.id,
+        contractTypeId: contractType.id,
+      })),
+      skipDuplicates: true,
+    }),
+    prisma.companyShift.createMany({
+      data: [{ companyId: defaultCompany.id, shiftId: morningShift.id }],
+      skipDuplicates: true,
+    }),
+    prisma.companyLeavePolicy.createMany({
+      data: [{ companyId: defaultCompany.id, leavePolicyId: standardLeavePolicy.id }],
+      skipDuplicates: true,
+    }),
+  ]);
+
+  await prisma.companyEmployee.upsert({
+    where: {
+      companyId_userId: {
+        companyId: defaultCompany.id,
+        userId: hrUser.id,
+      },
+    },
+    update: {},
+    create: {
+      companyId: defaultCompany.id,
+      userId: hrUser.id,
     },
   });
 

@@ -20,6 +20,7 @@ import ASRoutes from "./advanceSalaryRoutes";
 import pdrRoutes from "./pdrRoutes";
 import documnetRoutes from "./documentRoutes";
 import eventRoutes from "./eventRoutes";
+import companyRoutes from "./companyRoutes";
 
 const router = Router();
 
@@ -35,6 +36,9 @@ router.use("/employees", employeeRoutes);
 
 // Department management routes (protected)
 router.use("/departments", departmentRoutes);
+
+// Multi-company management routes (protected HR/Admin/SuperAdmin)
+router.use("/companies", companyRoutes);
 
 // Designation management routes (protected)
 router.use("/designations", designationRoutes);

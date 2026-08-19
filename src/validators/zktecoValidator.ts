@@ -101,6 +101,11 @@ export const getAttendanceDataValidator = [
     .isLength({ min: 1, max: 50 })
     .withMessage("Department ID must be between 1 and 50 characters"),
 
+  query("companyId")
+    .optional()
+    .isLength({ min: 1, max: 191 })
+    .withMessage("Company ID must be between 1 and 191 characters"),
+
   query("page")
     .optional()
     .isInt({ min: 1 })
@@ -134,6 +139,11 @@ export const getAttendanceStatsValidator = [
     .optional()
     .isLength({ min: 1, max: 50 })
     .withMessage("Department ID must be between 1 and 50 characters"),
+
+  query("companyId")
+    .optional()
+    .isLength({ min: 1, max: 191 })
+    .withMessage("Company ID must be between 1 and 191 characters"),
 ];
 
 export const clearDeviceAttendanceValidator = [

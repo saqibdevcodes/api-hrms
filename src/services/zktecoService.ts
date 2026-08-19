@@ -8,6 +8,7 @@ import {
   buildZKTecoOptionsResponse,
   formatZKTecoDeviceTime,
 } from "../utils/zktecoClock";
+import { finalizationService } from "./finalizationService";
 
 export interface ZKTecoDevice {
   id: string;
@@ -44,6 +45,12 @@ export class ZKTecoService {
   private admsServer: dgram.Socket | null = null;
   private httpClient: AxiosInstance;
 
+  private logVerbose(...args: unknown[]): void {
+    if (process.env.ZKTECO_VERBOSE_LOGS === "true") {
+      console.log(...args);
+    }
+  }
+
   constructor() {
     this.httpClient = axios.create({
       timeout: 5000,
@@ -75,7 +82,7 @@ export class ZKTecoService {
     };
 
     this.devices.set(device.id, device);
-    console.log(
+    this.logVerbose(
       `ZKTeco device initialized: ${device.name} (${device.ip}:${device.port})`,
     );
   }
@@ -86,8 +93,8 @@ export class ZKTecoService {
   private startADMSServer() {
     try {
       // Note: iClock protocol uses HTTP, not UDP
-      console.log("iClock HTTP server will be started via Express routes");
-      console.log(
+      this.logVerbose("iClock HTTP server will be started via Express routes");
+      this.logVerbose(
         "Device should be configured to push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/",
       );
     } catch (error) {
@@ -143,7 +150,7 @@ export class ZKTecoService {
           replyId,
         };
       default:
-        console.log(`Unknown command: ${command}`);
+        this.logVerbose(`Unknown command: ${command}`);
         return { type: "unknown", command };
     }
   }
@@ -175,7 +182,7 @@ export class ZKTecoService {
     deviceIp: string,
   ) {
     try {
-      console.log("Processing attendance data:", attendanceData);
+      this.logVerbose("Processing attendance data:", attendanceData);
 
       // Find employee by employeeId (ZKTeco internal ID)
       const employee = await prisma.user.findFirst({
@@ -184,6 +191,12 @@ export class ZKTecoService {
             { employeeId: attendanceData.employeeId },
             { id: attendanceData.employeeId }, // fallback to user ID
           ],
+        },
+        include: {
+          departmentEntity: true,
+          companyMemberships: {
+            include: { company: true },
+          },
         },
       });
 
@@ -244,7 +257,7 @@ export class ZKTecoService {
         });
       }
 
-      console.log(
+      this.logVerbose(
         `Attendance recorded for employee ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp}`,
       );
 
@@ -279,16 +292,32 @@ export class ZKTecoService {
             timestamp: attendanceData.timestamp,
             deviceIp: deviceIp,
             isNew: !attendance.checkIn || !attendance.checkOut, // Indicates if this is a new record or update
+            employee: {
+              id: employee.id,
+              employeeId: employee.employeeId,
+              firstName: employee.firstName,
+              lastName: employee.lastName,
+              department: employee.department,
+              departmentEntity: employee.departmentEntity,
+              companies: employee.companyMemberships.map(
+                (membership) => membership.company,
+              ),
+            },
           };
 
           // Emit to all admin and HR users for live monitoring
           socketManager.emitToRole(
-            "admin",
+            "ADMIN",
             "attendance:live_update",
             attendanceUpdate,
           );
           socketManager.emitToRole(
-            "hr",
+            "HR",
+            "attendance:live_update",
+            attendanceUpdate,
+          );
+          socketManager.emitToRole(
+            "SUPERADMIN",
             "attendance:live_update",
             attendanceUpdate,
           );
@@ -300,7 +329,7 @@ export class ZKTecoService {
             status: attendanceUpdate.status,
           });
 
-          console.log(
+          this.logVerbose(
             `Live attendance update emitted for ${employee.employeeId}`,
           );
         }
@@ -346,7 +375,7 @@ export class ZKTecoService {
       (d) => d.ip === deviceIp,
     );
     if (device) {
-      console.log(
+      this.logVerbose(
         `Heartbeat received from device: ${device.name} (${deviceIp})`,
       );
       // You can update device status, last seen time, etc.
@@ -432,7 +461,7 @@ export class ZKTecoService {
    * Sync attendance data from all devices (Manual sync only - ADMS handles real-time)
    */
   async syncAttendanceData(startDate?: Date, endDate?: Date): Promise<void> {
-    console.log("Starting manual attendance data sync...");
+    this.logVerbose("Starting manual attendance data sync...");
 
     for (const device of this.devices.values()) {
       if (!device.isActive) continue;
@@ -448,7 +477,7 @@ export class ZKTecoService {
           await this.processAttendanceData(attendance, device.ip);
         }
 
-        console.log(
+        this.logVerbose(
           `Synced ${attendanceData.length} records from device ${device.name}`,
         );
       } catch (error) {
@@ -456,7 +485,7 @@ export class ZKTecoService {
       }
     }
 
-    console.log("Attendance data sync completed");
+    this.logVerbose("Attendance data sync completed");
   }
 
   /**
@@ -528,7 +557,7 @@ export class ZKTecoService {
 
       return null;
     } catch (error) {
-      console.log(
+      this.logVerbose(
         `Could not fetch device info for ${deviceId}:`,
         (error as Error).message,
       );
@@ -548,7 +577,7 @@ export class ZKTecoService {
    */
   addDevice(device: ZKTecoDevice): void {
     this.devices.set(device.id, device);
-    console.log(`Device added: ${device.name} (${device.ip})`);
+    this.logVerbose(`Device added: ${device.name} (${device.ip})`);
   }
 
   /**
@@ -557,7 +586,7 @@ export class ZKTecoService {
   removeDevice(deviceId: string): boolean {
     const removed = this.devices.delete(deviceId);
     if (removed) {
-      console.log(`Device removed: ${deviceId}`);
+      this.logVerbose(`Device removed: ${deviceId}`);
     }
     return removed;
   }
@@ -568,7 +597,7 @@ export class ZKTecoService {
   private scheduleDataSync(): void {
     // Note: Disabled HTTP polling since ADMS push is the primary method
     // ADMS (real-time push) is preferred over HTTP polling for ZKTeco devices
-    console.log("ADMS real-time push enabled - HTTP polling sync disabled");
+    this.logVerbose("ADMS real-time push enabled - HTTP polling sync disabled");
   }
 
   /**
@@ -599,7 +628,7 @@ export class ZKTecoService {
       };
 
       await this.httpClient.post(url, data);
-      console.log(
+      this.logVerbose(
         `Employee ${employee.name} uploaded to device ${device.name}`,
       );
       return true;
@@ -624,7 +653,7 @@ export class ZKTecoService {
         password: device.password || "",
       };
       await this.httpClient.post(url, data);
-      console.log(`Attendance data cleared from device ${device.name}`);
+      this.logVerbose(`Attendance data cleared from device ${device.name}`);
       return true;
     } catch (error) {
       console.error(
@@ -642,7 +671,7 @@ export class ZKTecoService {
     if (this.admsServer) {
       this.admsServer.close();
       this.admsServer = null;
-      console.log("ADMS Server stopped");
+      this.logVerbose("ADMS Server stopped");
     }
   }
 
@@ -650,19 +679,19 @@ export class ZKTecoService {
    * Handle iClock GET request (device requesting commands)
    */
   async handleIClockGetRequest(sn: string): Promise<string> {
-    console.log(`Device ${sn} requesting commands`);
+    this.logVerbose(`Device ${sn} requesting commands`);
 
     // Update device status and sync details automatically
     if (sn) {
       try {
         await this.autoSyncDeviceDetails(sn);
-        console.log(
+        this.logVerbose(
           `🔍 Device ${sn} is online - waiting for attendance data...`,
         );
-        console.log(
+        this.logVerbose(
           `📡 Device should push to: http://147.79.100.197:30000/api/v1/zkteco/iclock/`,
         );
-        console.log(
+        this.logVerbose(
           `💡 Check device configuration: ADMS Server = 147.79.100.197, Port = 30000`,
         );
       } catch (error) {
@@ -686,7 +715,7 @@ export class ZKTecoService {
       config.ZKTECO_TIMEZONE_OFFSET_MINUTES,
     );
 
-    console.log(
+    this.logVerbose(
       `Device ${sn} initialized with timezone offset ${config.ZKTECO_TIMEZONE_OFFSET_MINUTES} minutes`,
     );
 
@@ -712,7 +741,7 @@ export class ZKTecoService {
     includeDeviceInfo = false,
   ): Promise<void> {
     try {
-      console.log(`🔄 Auto-syncing device details for ${sn}...`);
+      this.logVerbose(`🔄 Auto-syncing device details for ${sn}...`);
 
       // Check if device exists in our in-memory storage
       const existingDevice = this.devices.get(sn);
@@ -722,7 +751,7 @@ export class ZKTecoService {
         existingDevice.status = "online";
         existingDevice.lastSeen = new Date();
         this.devices.set(sn, existingDevice);
-        console.log(`✅ Device ${sn} status updated to online`);
+        this.logVerbose(`✅ Device ${sn} status updated to online`);
       } else {
         // Create new device record if not exists
         const newDevice: ZKTecoDevice = {
@@ -738,7 +767,7 @@ export class ZKTecoService {
           isActive: true,
         };
         this.devices.set(sn, newDevice);
-        console.log(`✅ New device ${sn} created in memory`);
+        console.log(`[ZKTeco] Device connected: ${sn}`);
       }
 
       // Try to fetch additional device info if possible
@@ -754,10 +783,10 @@ export class ZKTecoService {
           existingDevice.model = deviceInfo.model || existingDevice.model;
           existingDevice.info = deviceInfo;
           this.devices.set(sn, existingDevice);
-          console.log(`✅ Device ${sn} info updated`);
+          this.logVerbose(`✅ Device ${sn} info updated`);
         }
       } catch (infoError) {
-        console.log(
+        this.logVerbose(
           `ℹ️ Could not fetch detailed info for device ${sn}:`,
           (infoError as Error).message,
         );
@@ -772,7 +801,7 @@ export class ZKTecoService {
    * Handle iClock ping (device heartbeat)
    */
   async handleIClockPing(sn: string): Promise<string> {
-    console.log(`Device ${sn} ping`);
+    this.logVerbose(`Device ${sn} ping`);
 
     // Update device status
     if (sn) {
@@ -784,7 +813,7 @@ export class ZKTecoService {
           device.lastSeen = new Date();
           device.status = "online";
           this.devices.set(sn, device);
-          console.log(`💓 Device ${sn} heartbeat - status updated`);
+          this.logVerbose(`💓 Device ${sn} heartbeat - status updated`);
         }
       } catch (error) {
         console.error(`Error updating device ${sn} heartbeat:`, error);
@@ -802,7 +831,7 @@ export class ZKTecoService {
     table: string,
     postData: Buffer,
   ): Promise<string> {
-    console.log(`Device ${sn} uploading ${table} data`);
+    this.logVerbose(`Device ${sn} uploading ${table} data`);
 
     try {
       // Auto-sync device status when data is received
@@ -811,13 +840,13 @@ export class ZKTecoService {
       if (table === "ATTLOG") {
         await this.processIClockAttendanceData(sn, postData);
       } else if (table === "USER") {
-        console.log(`Processing user data from ${sn}`);
+        this.logVerbose(`Processing user data from ${sn}`);
         // Handle user data if needed
       } else if (table === "OPERLOG") {
-        console.log(`Processing operation log from ${sn}`);
+        this.logVerbose(`Processing operation log from ${sn}`);
         // Handle operation log if needed
       } else {
-        console.log(`Unknown table type: ${table}`);
+        this.logVerbose(`Unknown table type: ${table}`);
       }
 
       return "OK";
@@ -886,7 +915,7 @@ export class ZKTecoService {
               verifyType: parseInt(verify),
             };
 
-            console.log(`🔄 Processing attendance record:`, {
+            this.logVerbose(`🔄 Processing attendance record:`, {
               employeeId: attendanceData.employeeId,
               timestamp: attendanceData.timestamp.toISOString(),
               checkType: attendanceData.checkType,
@@ -911,9 +940,9 @@ export class ZKTecoService {
       }
 
       console.log(
-        `✅ Processed ${recordsProcessed} attendance records from ${deviceSn}`,
+        `[ZKTeco] ${deviceSn}: ${recordsProcessed} attendance record(s) processed`,
       );
-      console.log(`📊 Processing completed at: ${new Date().toISOString()}`);
+      this.logVerbose(`📊 Processing completed at: ${new Date().toISOString()}`);
     } catch (error) {
       console.error("❌ Error processing iClock attendance data:", error);
       throw error;
@@ -1000,13 +1029,13 @@ export class ZKTecoService {
           orderBy: { timestamp: "asc" },
         });
 
-      console.log(
+      this.logVerbose(
         `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`,
       );
 
       // NEW: Automatic deduction for FULL_DAY_LEAVE status
       if (todayFullDayLeaveRecords.length > 0) {
-        console.log(
+        this.logVerbose(
           `🚫 Processing automatic deduction for ${todayFullDayLeaveRecords.length} FULL_DAY_LEAVE record(s)`,
         );
 
@@ -1031,7 +1060,7 @@ export class ZKTecoService {
             "FULL_DAY_LEAVE_AUTOMATIC",
           );
 
-          console.log(
+          this.logVerbose(
             `⚠️ Applied automatic FULL_DAY_LEAVE deduction for employee ${employeeId}. Record: ${record.id}`,
           );
         }
@@ -1058,7 +1087,7 @@ export class ZKTecoService {
         // Deduct from leave policy
         await this.deductFromLeavePolicy(employeeId, 0.5, "LATE_TO_HALF_DAY");
 
-        console.log(
+        this.logVerbose(
           `⚠️ Applied Half Day deduction for 3 late arrivals to employee ${employeeId}. Records: ${recordIds.join(
             ", ",
           )}`,
@@ -1086,7 +1115,7 @@ export class ZKTecoService {
         // Deduct from leave policy
         await this.deductFromLeavePolicy(employeeId, 1, "HALF_DAY_TO_FULL_DAY");
 
-        console.log(
+        this.logVerbose(
           `⚠️ Applied Full Day deduction and deducted from casual leaves for employee ${employeeId}. Records: ${recordIds.join(
             ", ",
           )}`,
@@ -1181,7 +1210,7 @@ export class ZKTecoService {
       }
 
       const leavePolicy = employeeLeave.user.leavePolicy;
-      console.log(`📋 Leave policy for ${employeeId}: ${leavePolicy.name}`);
+      this.logVerbose(`📋 Leave policy for ${employeeId}: ${leavePolicy.name}`);
 
       // Determine which leave category to deduct from based on violation type
       let leaveCategory: string = "";
@@ -1271,12 +1300,12 @@ export class ZKTecoService {
         }
       }
 
-      console.log(
+      this.logVerbose(
         `📉 Deducted ${daysToDeduct} day(s) from ${leaveCategory}. Old balance: ${currentBalance}, New balance: ${newBalance}`,
       );
 
       // Log the deduction details for audit
-      console.log(
+      this.logVerbose(
         `📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`,
       );
 
@@ -1291,7 +1320,7 @@ export class ZKTecoService {
       });
 
       if (updatedBalance) {
-        console.log(
+        this.logVerbose(
           `📊 Updated leave balance for ${employeeId}: Annual: ${updatedBalance.annualLeaves}, Casual: ${updatedBalance.casualLeaves}, Sick: ${updatedBalance.sickLeaves}`,
         );
       }
@@ -1320,7 +1349,7 @@ export class ZKTecoService {
         ),
       );
 
-      console.log(
+      this.logVerbose(
         `🔍 Debug: Searching for attendance on ${dateOnly.toISOString()}`,
       );
 
@@ -1401,7 +1430,7 @@ export class ZKTecoService {
         ),
       );
 
-      console.log(
+      this.logVerbose(
         `🔧 Fix: Processing attendance for ${employeeId} on ${dateOnly.toISOString()}`,
       );
 
@@ -1420,7 +1449,7 @@ export class ZKTecoService {
         },
       });
 
-      console.log(`🔧 Found ${unprocessedRecords.length} unprocessed records`);
+      this.logVerbose(`🔧 Found ${unprocessedRecords.length} unprocessed records`);
 
       let fixedCount = 0;
       for (const record of unprocessedRecords) {
@@ -1441,7 +1470,7 @@ export class ZKTecoService {
           );
           if (result) {
             fixedCount++;
-            console.log(`✅ Fixed record ${record.id}`);
+            this.logVerbose(`✅ Fixed record ${record.id}`);
           }
         } catch (error) {
           console.error(`❌ Error fixing record ${record.id}:`, error);
@@ -1540,7 +1569,7 @@ export class ZKTecoService {
         datetime: "desc",
       },
     });
-    console.log("deductions", deductions);
+    this.logVerbose("deductions", deductions);
 
     // Enhance with ZKTeco record details
     const enhancedDeductions = await Promise.all(
@@ -1619,28 +1648,28 @@ export class ZKTecoService {
     shift: any,
   ): string | null {
     if (!shift) return null;
-    console.log("Calculating precise attendance status");
+    this.logVerbose("Calculating precise attendance status");
 
     const checkTime = new Date(timestamp);
-    console.log("checkTime", checkTime);
+    this.logVerbose("checkTime", checkTime);
     const attendanceDate = new Date(timestamp);
-    console.log("attendanceDate", attendanceDate);
+    this.logVerbose("attendanceDate", attendanceDate);
 
     // Extract times from shift (these are stored as full DateTime in DB)
     const shiftStart = new Date(shift.startTime); // st (start time)
-    console.log("shiftStart", shiftStart);
+    this.logVerbose("shiftStart", shiftStart);
     const halfDayStart = shift.halfDayStart
       ? new Date(shift.halfDayStart)
       : null; // hfs
-    console.log("halfDayStart", halfDayStart);
+    this.logVerbose("halfDayStart", halfDayStart);
     const fullDayStart = shift.fullDayStart
       ? new Date(shift.fullDayStart)
       : null; // fds
-    console.log("fullDayStart", fullDayStart);
+    this.logVerbose("fullDayStart", fullDayStart);
     const earlyOut = shift.earlyOut ? new Date(shift.earlyOut) : null; // eo
-    console.log("earlyOut", earlyOut);
+    this.logVerbose("earlyOut", earlyOut);
     const shiftEnd = new Date(shift.endTime); // et (end time)
-    console.log("shiftEnd", shiftEnd);
+    this.logVerbose("shiftEnd", shiftEnd);
     // Create today's shift times by copying time from shift to attendance date
     const todayShiftStart = new Date(attendanceDate);
     todayShiftStart.setHours(
@@ -1649,7 +1678,7 @@ export class ZKTecoService {
       0,
       0,
     );
-    console.log("todayShiftStart", todayShiftStart);
+    this.logVerbose("todayShiftStart", todayShiftStart);
     const todayHalfDayStart = halfDayStart ? new Date(attendanceDate) : null;
     if (todayHalfDayStart && halfDayStart) {
       todayHalfDayStart.setHours(
@@ -1659,7 +1688,7 @@ export class ZKTecoService {
         0,
       );
     }
-    console.log("todayHalfDayStart", todayHalfDayStart);
+    this.logVerbose("todayHalfDayStart", todayHalfDayStart);
     const todayFullDayStart = fullDayStart ? new Date(attendanceDate) : null;
     if (todayFullDayStart && fullDayStart) {
       todayFullDayStart.setHours(
@@ -1669,23 +1698,23 @@ export class ZKTecoService {
         0,
       );
     }
-    console.log("todayFullDayStart", todayFullDayStart);
+    this.logVerbose("todayFullDayStart", todayFullDayStart);
     const todayEarlyOut = earlyOut ? new Date(attendanceDate) : null;
     if (todayEarlyOut && earlyOut) {
       todayEarlyOut.setHours(earlyOut.getHours(), earlyOut.getMinutes(), 0, 0);
     }
-    console.log("todayEarlyOut", todayEarlyOut);
+    this.logVerbose("todayEarlyOut", todayEarlyOut);
     const todayShiftEnd = new Date(attendanceDate);
     todayShiftEnd.setHours(shiftEnd.getHours(), shiftEnd.getMinutes(), 0, 0);
-    console.log("todayShiftEnd", todayShiftEnd);
+    this.logVerbose("todayShiftEnd", todayShiftEnd);
     if (checkType === "check_in") {
       const toa = checkTime; // Time of arrival
-      console.log("toa", toa);
+      this.logVerbose("toa", toa);
       // On time arrival = toa < st
       if (toa < todayShiftStart) {
         return "ON_TIME_ARRIVAL"; //ok
       }
-      console.log("toa < todayShiftStart", toa < todayShiftStart);
+      this.logVerbose("toa < todayShiftStart", toa < todayShiftStart);
       // late = toa >= st && < hfs
       if (
         todayHalfDayStart &&
@@ -1766,9 +1795,9 @@ export class ZKTecoService {
     deviceIp: string,
   ): Promise<boolean> {
     try {
-      console.log("🔄 Processing ZKTeco attendance data:", attendanceData);
+      this.logVerbose("🔄 Processing ZKTeco attendance data:", attendanceData);
 
-      // Step 1: Save to STAGING table first (1-day delay before finalization)
+      // Step 1: Keep the raw staging/audit record, then finalize it immediately.
       // Store all timestamps as PKT in the database so DB values match wall-clock time
       const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
       const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
@@ -1789,8 +1818,8 @@ export class ZKTecoService {
         },
       });
 
-      console.log(
-        `📝 Staging record saved with ID: ${stagingRecord.id} (will finalize after 1 day)`,
+      this.logVerbose(
+        `📝 Staging record saved with ID: ${stagingRecord.id}`,
       );
 
       // Step 2: Find employee by employeeId (ZKTeco internal ID) with shift information
@@ -1803,6 +1832,16 @@ export class ZKTecoService {
         },
         include: {
           shift: true, // Include shift data for status calculation
+          departmentEntity: {
+            select: { id: true, name: true },
+          },
+          companyMemberships: {
+            select: {
+              company: {
+                select: { id: true, name: true },
+              },
+            },
+          },
         },
       });
 
@@ -1832,12 +1871,12 @@ export class ZKTecoService {
       if (calculatedStatus === "FULL_DAY_LEAVE_POTENTIAL") {
         // Check if this is a check-in with potential for FULL_DAY_LEAVE
         // We need to see if there's a corresponding check-out that meets the criteria
-        console.log(`🔍 Check-in has FULL_DAY_LEAVE_POTENTIAL status`);
+        this.logVerbose(`🔍 Check-in has FULL_DAY_LEAVE_POTENTIAL status`);
         // Temporarily use FULL_DAY_LEAVE to avoid database error
         calculatedStatus = "FULL_DAY_LEAVE";
       }
 
-      console.log(
+      this.logVerbose(
         `📊 Calculated status for ${employee.firstName} ${employee.lastName}: ${
           calculatedStatus || "No specific status"
         }`,
@@ -1853,6 +1892,22 @@ export class ZKTecoService {
         },
       });
 
+      const finalizeForRealtime = async () => {
+        const result =
+          await finalizationService.finalizeStagingRecordImmediately(
+            stagingRecord.id,
+          );
+
+        if (result.success && result.attendance) {
+          await this.emitAttendanceUpdate(employee, result.attendance, {
+            ...attendanceData,
+            timestamp: pktTimestamp,
+          });
+        }
+
+        return result.success;
+      };
+
       // Step 4.1: Validate FULL_DAY_LEAVE_POTENTIAL with checkout time
       if (
         calculatedStatus === "FULL_DAY_LEAVE_POTENTIAL" &&
@@ -1860,7 +1915,7 @@ export class ZKTecoService {
       ) {
         // This is a check-in with potential for FULL_DAY_LEAVE
         // We need to check if there's a corresponding check-out that meets the criteria
-        console.log(`🔍 Validating FULL_DAY_LEAVE_POTENTIAL for check-in`);
+        this.logVerbose(`🔍 Validating FULL_DAY_LEAVE_POTENTIAL for check-in`);
 
         // The final status will be determined when the check-out record is processed
         // For now, mark it as potential
@@ -1898,7 +1953,7 @@ export class ZKTecoService {
           todayCheckIn?.overallStatus === "FULL_DAY_LEAVE_POTENTIAL" ||
           todayCheckIn?.overallStatus === "FULL_DAY_LEAVE"
         ) {
-          console.log(`🔍 Validating complete FULL_DAY_LEAVE condition`);
+          this.logVerbose(`🔍 Validating complete FULL_DAY_LEAVE condition`);
 
           // Get shift times for validation
           const shift = employee.shift;
@@ -1934,7 +1989,7 @@ export class ZKTecoService {
               checkOutTime > todayShiftStart;
 
             if (toaValid && tolValid) {
-              console.log(
+              this.logVerbose(
                 `✅ FULL_DAY_LEAVE condition validated: toa >= fds AND tol < fds && > st`,
               );
 
@@ -1958,7 +2013,7 @@ export class ZKTecoService {
 
               calculatedStatus = "FULL_DAY_LEAVE";
             } else {
-              console.log(`❌ FULL_DAY_LEAVE condition not met:`, {
+              this.logVerbose(`❌ FULL_DAY_LEAVE condition not met:`, {
                 toaValid,
                 tolValid,
                 checkInTime: checkInTime.toISOString(),
@@ -1978,7 +2033,7 @@ export class ZKTecoService {
           calculatedStatus === "FULL_DAY_LEAVE" &&
           attendanceData.checkType === "check_out"
         ) {
-          console.log(
+          this.logVerbose(
             `🚫 Check-out has FULL_DAY_LEAVE status: Marking both records for deduction`,
           );
 
@@ -2000,14 +2055,14 @@ export class ZKTecoService {
                 updatedAt: pktNow(),
               },
             });
-            console.log(
+            this.logVerbose(
               `✅ Marked check-in record ${todayCheckIn.id} as used for deduction`,
             );
           } else {
-            console.log(`⚠️ No check-in record found to mark for deduction`);
+            this.logVerbose(`⚠️ No check-in record found to mark for deduction`);
           }
 
-          console.log(
+          this.logVerbose(
             `✅ Both check-in and check-out records marked as used for deduction`,
           );
         }
@@ -2017,7 +2072,7 @@ export class ZKTecoService {
           todayCheckIn.overallStatus === "FULL_DAY_LEAVE" &&
           calculatedStatus !== "FULL_DAY_LEAVE"
         ) {
-          console.log(
+          this.logVerbose(
             `🚫 Checkout blocked for ${employee.firstName} ${employee.lastName} - Check-in was FULL_DAY_LEAVE`,
           );
 
@@ -2042,10 +2097,11 @@ export class ZKTecoService {
             },
           });
 
-          console.log(
+          this.logVerbose(
             `🔒 Marked check-in record ${todayCheckIn.id} as used for deduction`,
           );
 
+          await finalizeForRealtime();
           return true; // Still return success but don't process further
         }
       } else if (attendanceData.checkType === "check_in") {
@@ -2063,10 +2119,10 @@ export class ZKTecoService {
         });
 
         if (todayCheckOut) {
-          console.log(
+          this.logVerbose(
             `🚫 Check-in blocked for ${employee.firstName} ${employee.lastName} - Check-out was FULL_DAY_LEAVE`,
           );
-          console.log(
+          this.logVerbose(
             "todayCheckOut.overallStatus",
             todayCheckOut.overallStatus,
           );
@@ -2091,16 +2147,16 @@ export class ZKTecoService {
             },
           });
 
-          console.log(
+          this.logVerbose(
             `🔒 Marked checkout record ${todayCheckOut.id} as used for deduction`,
           );
 
+          await finalizeForRealtime();
           return true; // Still return success but don't process further
         }
       }
 
-      // Step 5: Mark staging record as processed
-      // NO ATTENDANCE RECORD CREATED YET - Will be created after 1 day by finalization cron
+      // Step 5: Mark staging record as processed and publish it immediately.
       await prisma.zKTecoAttendanceStaging.update({
         where: { id: stagingRecord.id },
         data: {
@@ -2110,12 +2166,16 @@ export class ZKTecoService {
         },
       });
 
-      console.log(
+      this.logVerbose(
         `✅ Staging record processed for ${employee.employeeId}: ${attendanceData.checkType} at ${attendanceData.timestamp.toLocaleString("en-PK", { timeZone: "Asia/Karachi" })} PKT (DB stores UTC: ${attendanceData.timestamp.toISOString()})`,
       );
-      console.log(
-        `⏳ Record will be finalized and moved to attendance after 1 day`,
-      );
+
+      const finalizedImmediately = await finalizeForRealtime();
+      if (!finalizedImmediately) {
+        console.error(
+          `Attendance punch ${stagingRecord.id} was staged but could not be finalized immediately`,
+        );
+      }
 
       return true;
     } catch (error) {
@@ -2138,7 +2198,7 @@ export class ZKTecoService {
 
       const attendanceUpdate = {
         id: attendance.id,
-        employeeId: employee.id,
+        employeeId: employee.employeeId || employee.id,
         employeeName: `${employee.firstName} ${employee.lastName}`,
         date: attendance.date.toISOString().split("T")[0],
         checkIn:
@@ -2162,19 +2222,31 @@ export class ZKTecoService {
         verifyType: attendanceData.verifyType,
         totalHours: attendance.totalHours,
         employee: {
+          id: employee.id,
+          employeeId: employee.employeeId,
           firstName: employee.firstName,
           lastName: employee.lastName,
+          department: employee.department,
+          departmentEntity: employee.departmentEntity,
+          companies: (employee.companyMemberships || []).map(
+            (membership: any) => membership.company,
+          ),
         },
       };
 
       // Emit to admins and HR
       socketManager.emitToRole(
-        "admin",
+        "ADMIN",
         "attendance:live_update",
         attendanceUpdate,
       );
       socketManager.emitToRole(
-        "hr",
+        "HR",
+        "attendance:live_update",
+        attendanceUpdate,
+      );
+      socketManager.emitToRole(
+        "SUPERADMIN",
         "attendance:live_update",
         attendanceUpdate,
       );
@@ -2189,7 +2261,7 @@ export class ZKTecoService {
         totalHours: attendance.totalHours,
       });
 
-      console.log(
+      this.logVerbose(
         `📡 Live attendance update emitted for employee ${employee.employeeId}`,
       );
     } catch (error) {

@@ -157,9 +157,14 @@ app.use(cookieParser(config.COOKIE_SECRET));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(
-    `${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`,
-  );
+  const isDeviceTraffic =
+    req.path.startsWith("/iclock") || req.path.includes("/zkteco/iclock");
+
+  if (!isDeviceTraffic) {
+    console.log(
+      `${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`,
+    );
+  }
   next();
 });
 
@@ -345,7 +350,7 @@ const startServer = async () => {
       console.log("");
 
       // Schedule automatic attendance finalization (runs daily at 2 AM)
-      // This automatically finalizes staging records that are 1+ day old
+      // Safety-net retry for any record that could not finalize in real time.
       cron.schedule(
         "0 2 * * *",
         async () => {

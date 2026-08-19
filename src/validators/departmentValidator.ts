@@ -1,6 +1,10 @@
 import { body } from "express-validator";
 
 export const createDepartmentValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .trim()
     .notEmpty()
@@ -37,6 +41,10 @@ export const createDepartmentValidation = [
 ];
 
 export const updateDepartmentValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .optional()
     .trim()

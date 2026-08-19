@@ -5,6 +5,7 @@ export interface AttendanceReminderQuery {
   sendAll: boolean;
   fromDate?: string;
   toDate?: string;
+  companyId?: string;
 }
 
 export interface AttendanceReminderJobData {
@@ -111,6 +112,17 @@ export class AttendanceReminderService {
         AND: [
           { OR: [{ reason: null }, { reason: "" }] },
           { OR: [{ checkIn: { not: null } }, { checkOut: { not: null } }] },
+          ...(query.companyId
+            ? [
+                {
+                  employee: {
+                    companyMemberships: {
+                      some: { companyId: query.companyId },
+                    },
+                  },
+                },
+              ]
+            : []),
           dateFilter,
         ],
       },

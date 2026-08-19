@@ -12,6 +12,13 @@ import { AttendanceReminderService } from "../services/attendanceReminderService
 import { queueAttendanceReminderEmail } from "../queues/email.jobs";
 import { EmailQueueService } from "../services/emailQueueService";
 import ExcelJS from 'exceljs'
+
+const zktecoDebug = (...args: unknown[]): void => {
+  if (process.env.ZKTECO_VERBOSE_LOGS === "true") {
+    console.log(...args);
+  }
+};
+
 const getDesignationName = (target: any) => {
   const emp = target?.employee || target;
   if (!emp) return "N/A";
@@ -162,6 +169,7 @@ export class ZKTecoController {
         startDate,
         endDate,
         employeeId,
+        companyId,
         departmentId,
         search,
         arrivalStatus,
@@ -199,6 +207,12 @@ export class ZKTecoController {
           where.employee.id = employeeId as string;
         }
 
+        if (companyId) {
+          where.employee.companyMemberships = {
+            some: { companyId: companyId as string },
+          };
+        }
+
         if (departmentId) {
           where.employee.departmentId = departmentId as string;
         }
@@ -216,13 +230,21 @@ export class ZKTecoController {
           ];
         }
 
-        console.log(
+        zktecoDebug(
           `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`,
         );
       } else {
         where.employeeId = currentUser.id;
 
-        console.log(
+        if (companyId) {
+          where.employee = {
+            companyMemberships: {
+              some: { companyId: companyId as string },
+            },
+          };
+        }
+
+        zktecoDebug(
           `👤 User ${currentUser.email} (${currentUser.role}) viewing their own attendance`,
         );
       }
@@ -324,11 +346,12 @@ export class ZKTecoController {
         }
       }
 
-      console.log("📊 Fetching attendance records (all finalized data)");
-      console.log(`   User: ${currentUser.email} (${currentUser.role})`);
-      console.log(`   Department Filter: ${departmentId || "none"}`);
-      console.log(`   Employee Filter: ${employeeId || "none"}`);
-      console.log(`   Where Clause:`, JSON.stringify(where, null, 2));
+      zktecoDebug("📊 Fetching attendance records (all finalized data)");
+      zktecoDebug(`   User: ${currentUser.email} (${currentUser.role})`);
+      zktecoDebug(`   Department Filter: ${departmentId || "none"}`);
+      zktecoDebug(`   Company Filter: ${companyId || "none"}`);
+      zktecoDebug(`   Employee Filter: ${employeeId || "none"}`);
+      zktecoDebug(`   Where Clause:`, JSON.stringify(where, null, 2));
 
       const attendanceRecords = await prisma.attendance.findMany({
         where,
@@ -351,6 +374,17 @@ export class ZKTecoController {
               lastName: true,
               email: true,
               department: true,
+              companyMemberships: {
+                select: {
+                  companyId: true,
+                  company: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
               shift: {
                 select: {
                   id: true,
@@ -400,7 +434,7 @@ export class ZKTecoController {
         checkInStatus?: string;
         checkOutStatus?: string;
       } => {
-        console.log("record", record);
+        zktecoDebug("record", record);
 
         // Handle case where there's no check-in
         if (!record.checkIn) {
@@ -440,7 +474,7 @@ export class ZKTecoController {
           }
           return { status: "ABSENT" };
         }
-        console.log("shift", shift);
+        zktecoDebug("shift", shift);
 
         if (!shift) {
           return { status: "PRESENT" }; // Default status if no shift assigned
@@ -466,7 +500,7 @@ export class ZKTecoController {
           0,
           0,
         );
-        console.log("todayShiftStart", todayShiftStart);
+        zktecoDebug("todayShiftStart", todayShiftStart);
 
         const todayShiftEnd = new Date(attendanceDate);
         todayShiftEnd.setHours(
@@ -475,7 +509,7 @@ export class ZKTecoController {
           0,
           0,
         );
-        console.log("todayShiftEnd", todayShiftEnd);
+        zktecoDebug("todayShiftEnd", todayShiftEnd);
 
         // Calculate late arrival
         const lateMinutes =
@@ -485,10 +519,10 @@ export class ZKTecoController {
               (1000 * 60),
             )
             : 0;
-        console.log("checkInTime", new Date(checkInTime).toLocaleTimeString());
-        console.log("checkOutTime", checkOutTime);
+        zktecoDebug("checkInTime", new Date(checkInTime).toLocaleTimeString());
+        zktecoDebug("checkOutTime", checkOutTime);
 
-        console.log("lateMinutes", lateMinutes);
+        zktecoDebug("lateMinutes", lateMinutes);
         // Calculate early departure
         let earlyOutMinutes = 0;
         let workingHours = "";
@@ -500,7 +534,7 @@ export class ZKTecoController {
                 (1000 * 60),
               )
               : 0;
-          console.log("earlyOutMinutes", earlyOutMinutes);
+          zktecoDebug("earlyOutMinutes", earlyOutMinutes);
 
           let workingSeconds =
             (checkOutTime.getTime() - checkInTime.getTime()) / 1000;
@@ -511,7 +545,7 @@ export class ZKTecoController {
           const seconds = Math.floor(workingSeconds % 60);
 
           workingHours = `${hours}h ${minutes}m ${seconds}s`;
-          console.log("workingHours", workingHours);
+          zktecoDebug("workingHours", workingHours);
         }
 
         // Determine status based on timing
@@ -570,19 +604,19 @@ export class ZKTecoController {
           record,
           record.employee.shift,
         );
-        console.log("record", record);
-        console.log("record.zktecoRecords", record.zktecoRecords);
+        zktecoDebug("record", record);
+        zktecoDebug("record.zktecoRecords", record.zktecoRecords);
 
         // Get the most relevant precise status from ZKTeco records
         const checkInRecord = record.zktecoRecords.find(
           (r: any) => r.checkType === "check_in",
         );
         const checkOutRecord = record.zktecoRecords.find((r: any) => {
-          console.log("rur", r);
+          zktecoDebug("rur", r);
           return r.checkType === "check_out";
         });
-        console.log("checkInRecord", checkInRecord);
-        console.log("checkOutRecord", checkOutRecord);
+        zktecoDebug("checkInRecord", checkInRecord);
+        zktecoDebug("checkOutRecord", checkOutRecord);
 
         // Use the most significant status (prioritize leave types, then late, then normal)
         let preciseStatus = null;
@@ -604,7 +638,7 @@ export class ZKTecoController {
             break;
           }
         }
-        console.log("preciseStatus", preciseStatus);
+        zktecoDebug("preciseStatus", preciseStatus);
 
         return {
           id: record.id,
@@ -645,6 +679,9 @@ export class ZKTecoController {
             email: record.employee.email,
             department: record.employee.department,
             departmentEntity: record.employee.departmentEntity,
+            companies: record.employee.companyMemberships.map(
+              (membership: any) => membership.company,
+            ),
             shift: record.employee.shift
               ? {
                 id: record.employee.shift.id,
@@ -699,7 +736,16 @@ export class ZKTecoController {
       const paginatedRecords = filteredRecords.slice(skip, skip + take);
 
       const departments = await prisma.department.findMany({
-        where: { isActive: true },
+        where: {
+          isActive: true,
+          ...(companyId
+            ? {
+                companyAssignments: {
+                  some: { companyId: companyId as string },
+                },
+              }
+            : {}),
+        },
         orderBy: { name: "asc" },
         select: { id: true, name: true },
       });
@@ -1414,7 +1460,7 @@ export class ZKTecoController {
         });
       }
 
-      console.log(
+      zktecoDebug(
         `🔄 Fetching attendance records for device: ${deviceId} with filter: ${filter}`,
       );
 
@@ -1433,7 +1479,7 @@ export class ZKTecoController {
         start.setHours(0, 0, 0, 0); // Start of day
         end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999); // End of day
-        console.log(
+        zktecoDebug(
           `📅 Custom date range: ${start.toISOString()} to ${end.toISOString()}`,
         );
       }
@@ -1466,7 +1512,7 @@ export class ZKTecoController {
             end = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59);
             break;
         }
-        console.log(
+        zktecoDebug(
           `📅 Filter applied: ${filter} - ${start?.toISOString()} to ${end?.toISOString()}`,
         );
       }
@@ -1518,7 +1564,7 @@ export class ZKTecoController {
           : null,
       }));
 
-      console.log(
+      zktecoDebug(
         `📊 Found ${transformedRecords.length} attendance records for device ${deviceId}`,
       );
 
@@ -1754,7 +1800,7 @@ export class ZKTecoController {
       const leaveBalance =
         await zktecoService.getEmployeeLeaveBalance(employeeId);
 
-      console.log("leaveBalance", leaveBalance);
+      zktecoDebug("leaveBalance", leaveBalance);
 
       if (!leaveBalance) {
         return res.status(404).json({
@@ -1780,7 +1826,7 @@ export class ZKTecoController {
   static async validateRecordsForDeduction(req: Request, res: Response) {
     try {
       const { recordIds } = req.body;
-      console.log("recordIds", recordIds);
+      zktecoDebug("recordIds", recordIds);
 
       if (!recordIds || !Array.isArray(recordIds)) {
         return res.status(400).json({
@@ -1817,7 +1863,7 @@ export class ZKTecoController {
         });
       }
 
-      console.log(
+      zktecoDebug(
         `🔄 Exporting attendance data for device: ${deviceId} in ${format} format`,
       );
 
@@ -1926,7 +1972,7 @@ export class ZKTecoController {
         });
       }
 
-      console.log(
+      zktecoDebug(
         `📊 Exported ${exportData.length} attendance records in ${format} format`,
       );
     } catch (error) {
@@ -1988,7 +2034,7 @@ export class ZKTecoController {
         },
       });
 
-      console.log(
+      zktecoDebug(
         `✅ Employee created: ${employee.employeeId} - ${employee.firstName} ${employee.lastName}`,
       );
 
@@ -2016,7 +2062,7 @@ export class ZKTecoController {
   }
   static async getAttendanceStats(req: Request, res: Response) {
     try {
-      const { startDate, endDate, departmentId } = req.query;
+      const { startDate, endDate, departmentId, companyId } = req.query;
 
       // Pakistan today in YYYY-MM-DD format
       const getPakistanToday = () => {
@@ -2047,11 +2093,24 @@ export class ZKTecoController {
         employeeWhere.departmentId = departmentId as string;
       }
 
+      if (companyId) {
+        employeeWhere.companyMemberships = {
+          some: { companyId: companyId as string },
+        };
+      }
+
       const baseAttendanceWhere: any = {
         employee: {
           employeeId: { not: null },
           isActive: true,
           ...(departmentId ? { departmentId: departmentId as string } : {}),
+          ...(companyId
+            ? {
+                companyMemberships: {
+                  some: { companyId: companyId as string },
+                },
+              }
+            : {}),
         },
       };
 
@@ -2218,9 +2277,9 @@ export class ZKTecoController {
         where: attendanceWhere,
       });
 
-      console.log("Raw today attendance:", rawTodayCount);
-      console.log("Filtered today attendance:", filteredTodayCount);
-      console.log("attendanceWhere:", JSON.stringify(attendanceWhere, null, 2));
+      zktecoDebug("Raw today attendance:", rawTodayCount);
+      zktecoDebug("Filtered today attendance:", filteredTodayCount);
+      zktecoDebug("attendanceWhere:", JSON.stringify(attendanceWhere, null, 2));
 
       res.json({
         success: true,
@@ -2326,8 +2385,6 @@ export class ZKTecoController {
       const sn = req.query.SN as string;
 
       // 📝 LOG DEVICE CONNECTION: Track when devices connect
-      console.log(`iClock GET request from device: ${sn}, path: ${req.path}`);
-
       // 🔄 AUTO-SYNC: Service will automatically register/update device status
       const result = await zktecoService.handleIClockGetRequest(sn);
 
@@ -2352,29 +2409,6 @@ export class ZKTecoController {
   }
   static async handleIClockFData(req: Request, res: Response): Promise<void> {
     try {
-      const sn = req.query.SN as string;
-      const table = req.query.table as string;
-
-      console.log(`🔄 iClock fdata from device: ${sn}, table: ${table}`);
-      console.log(`📊 Query params:`, req.query);
-      console.log(`📦 Headers:`, req.headers);
-      console.log(`🔍 Device ${sn} status: ${sn ? "Connected" : "Unknown"}`);
-      console.log(`🌐 Request IP: ${req.ip}`);
-      console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
-
-      // Get raw body data
-      const postData = Buffer.isBuffer(req.body)
-        ? req.body
-        : Buffer.from(req.body || "", "utf-8");
-
-      console.log(`📝 Received ${postData.length} bytes of face data`);
-      if (postData.length > 0) {
-        console.log(`📋 Face data received from device ${sn}`);
-        console.log(`📊 Data type: ${table || "FACE"}`);
-      } else {
-        console.log(`⚠️ No face data received in request body`);
-      }
-
       // For now, just acknowledge receipt
       res.status(200).send("OK");
     } catch (error) {
@@ -2406,37 +2440,10 @@ export class ZKTecoController {
         return;
       }
 
-      console.log(`🔄 iClock cdata from device: ${sn}, table: ${table}`);
-      console.log(`📊 Query params:`, req.query);
-      console.log(`📦 Headers:`, req.headers);
-      console.log(`🔍 Device ${sn} status: ${sn ? "Connected" : "Unknown"}`);
-      console.log(`🌐 Request IP: ${req.ip}`);
-      console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
-
       // Get raw body data
       const postData = Buffer.isBuffer(req.body)
         ? req.body
         : Buffer.from(req.body || "", "utf-8");
-
-      console.log(`📝 Received ${postData.length} bytes of data`);
-      if (postData.length > 0) {
-        const dataStr = postData.toString("utf-8");
-        console.log(`📋 Full data: "${dataStr}"`);
-        console.log(`📊 Data preview: ${dataStr.substring(0, 200)}...`);
-
-        // Parse and log individual records
-        const lines = dataStr.split("\n");
-        console.log(`📊 Number of lines: ${lines.length}`);
-        lines.forEach((line, index) => {
-          if (line.trim()) {
-            console.log(`📋 Line ${index}: "${line.trim()}"`);
-            const parts = line.trim().split("\t");
-            console.log(`📊 Parts: [${parts.map((p) => `"${p}"`).join(", ")}]`);
-          }
-        });
-      } else {
-        console.log(`⚠️ No data received in request body`);
-      }
 
       const result = await zktecoService.handleIClockCData(sn, table, postData);
 
@@ -2460,7 +2467,7 @@ export class ZKTecoController {
         return;
       }
 
-      console.log(
+      zktecoDebug(
         `🔐 SuperAdmin ${currentUser.email} forcing finalization of all staging records`,
       );
 
@@ -2501,7 +2508,7 @@ export class ZKTecoController {
         return;
       }
 
-      console.log(
+      zktecoDebug(
         `🔐 SuperAdmin ${currentUser.email} running finalization cron manually`,
       );
 
@@ -2511,7 +2518,7 @@ export class ZKTecoController {
 
       res.json({
         success: result.success,
-        message: `Finalized ${result.finalized} records (1+ day old) with ${result.errors} errors`,
+        message: `Retried ${result.finalized} pending records with ${result.errors} errors`,
         data: {
           finalized: result.finalized,
           errors: result.errors,
@@ -2868,10 +2875,12 @@ export class ZKTecoController {
         sendAll = false,
         fromDate,
         toDate,
+        companyId,
       } = req.body as {
         sendAll?: boolean;
         fromDate?: string;
         toDate?: string;
+        companyId?: string;
       };
 
       if (!sendAll && (!fromDate || !toDate)) {
@@ -2895,6 +2904,7 @@ export class ZKTecoController {
           sendAll: Boolean(sendAll),
           fromDate,
           toDate,
+          companyId,
         });
 
       if (recordsNeedingReasons.length === 0) {
@@ -3104,6 +3114,7 @@ export class ZKTecoController {
       const {
         startDate,
         endDate,
+        companyId,
         departmentIds,
         arrivalStatuses,
         search,
@@ -3116,6 +3127,23 @@ export class ZKTecoController {
 
       const authenticatedRequest = req as any;
       const currentUser = authenticatedRequest.user;
+      const selectedCompanyId = String(companyId || "").trim();
+
+      const selectedCompany = selectedCompanyId
+        ? await prisma.company.findUnique({
+            where: { id: selectedCompanyId },
+            select: { id: true, name: true },
+          })
+        : null;
+
+      if (selectedCompanyId && !selectedCompany) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected company was not found",
+        });
+      }
+
+      const companyLabel = selectedCompany?.name || "All Companies";
 
       const departmentIdList = departmentIds
         ? String(departmentIds).split(",").filter(Boolean)
@@ -3157,6 +3185,12 @@ export class ZKTecoController {
           };
         }
 
+        if (selectedCompanyId) {
+          where.employee.companyMemberships = {
+            some: { companyId: selectedCompanyId },
+          };
+        }
+
         if (search) {
           const searchValue = String(search).trim();
 
@@ -3169,6 +3203,14 @@ export class ZKTecoController {
         }
       } else {
         where.employeeId = currentUser.id;
+
+        if (selectedCompanyId) {
+          where.employee = {
+            companyMemberships: {
+              some: { companyId: selectedCompanyId },
+            },
+          };
+        }
       }
 
       const workbook = new ExcelJS.Workbook();
@@ -3261,6 +3303,16 @@ export class ZKTecoController {
           record.employee?.department ||
           "N/A"
         );
+      };
+
+      const getCompanyNames = (record: any) => {
+        if (selectedCompany) return selectedCompany.name;
+
+        const names = (record.employee?.companyMemberships || [])
+          .map((membership: any) => membership.company?.name)
+          .filter(Boolean);
+
+        return names.length ? names.join(", ") : "N/A";
       };
 
 
@@ -3571,6 +3623,7 @@ export class ZKTecoController {
       attendanceSheet.columns = [
         { header: "Employee ID", key: "employeeId", width: 15 },
         { header: "Employee Name", key: "employeeName", width: 25 },
+        { header: "Company", key: "company", width: 24 },
         { header: "Email", key: "email", width: 30 },
         { header: "Department", key: "department", width: 22 },
         { header: "Date", key: "date", width: 15 },
@@ -3621,6 +3674,16 @@ export class ZKTecoController {
                 lastName: true,
                 email: true,
                 department: true,
+                companyMemberships: {
+                  select: {
+                    company: {
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
                 departmentEntity: {
                   select: {
                     id: true,
@@ -3702,6 +3765,7 @@ export class ZKTecoController {
             employeeName:
               `${record.employee?.firstName || ""} ${record.employee?.lastName || ""}`.trim() ||
               "N/A",
+            company: getCompanyNames(record),
             email: record.employee?.email || "N/A",
             department: getDepartmentName(record),
             date: formatDate(record.date),
@@ -3726,6 +3790,7 @@ export class ZKTecoController {
                 employeeName:
                   `${record.employee?.firstName || ""} ${record.employee?.lastName || ""}`.trim() ||
                   "N/A",
+                company: getCompanyNames(record),
                 department: getDepartmentName(record),
                 date: formatDate(record.date),
                 timestamp: formatTime(log.timestamp),
@@ -3742,7 +3807,7 @@ export class ZKTecoController {
       applyTitleRow(
         attendanceSheet,
         "Attendance Report",
-        `From ${fromDate} to ${toDate} | Generated At: ${new Date().toLocaleString()}`,
+        `${companyLabel} | From ${fromDate} to ${toDate} | Generated At: ${new Date().toLocaleString()}`,
         attendanceSheet.columnCount,
       );
 
@@ -3780,6 +3845,7 @@ export class ZKTecoController {
         summarySheet.addRows([
           { metric: "Start Date", value: fromDate },
           { metric: "End Date", value: toDate },
+          { metric: "Company", value: companyLabel },
           { metric: "Total Records", value: totalRecords },
           { metric: "On Time", value: summary.onTime },
           { metric: "Late Arrival", value: summary.lateArrival },
@@ -3807,7 +3873,7 @@ export class ZKTecoController {
         applyTitleRow(
           summarySheet,
           "Attendance Summary",
-          `From ${fromDate} to ${toDate}`,
+          `${companyLabel} | From ${fromDate} to ${toDate}`,
           summarySheet.columnCount,
         );
 
@@ -3823,6 +3889,7 @@ export class ZKTecoController {
         logsSheet.columns = [
           { header: "Employee ID", key: "employeeId", width: 15 },
           { header: "Employee Name", key: "employeeName", width: 25 },
+          { header: "Company", key: "company", width: 24 },
           { header: "Department", key: "department", width: 22 },
           { header: "Date", key: "date", width: 15 },
           { header: "Timestamp", key: "timestamp", width: 24 },
@@ -3835,7 +3902,7 @@ export class ZKTecoController {
         applyTitleRow(
           logsSheet,
           "ZKTeco Attendance Logs",
-          `From ${fromDate} to ${toDate}`,
+          `${companyLabel} | From ${fromDate} to ${toDate}`,
           logsSheet.columnCount,
         );
 
@@ -3903,6 +3970,12 @@ export class ZKTecoController {
             userWhere.departmentId = { in: departmentIdList };
           }
 
+          if (selectedCompanyId) {
+            userWhere.companyMemberships = {
+              some: { companyId: selectedCompanyId },
+            };
+          }
+
           if (search) {
             const searchValue = String(search).trim();
             userWhere.OR = [
@@ -3922,7 +3995,24 @@ export class ZKTecoController {
               lastName: true,
               email: true,
               department: true,
+              departmentEntity: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              companyMemberships: {
+                select: {
+                  company: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
               designation: true,
+              role: true,
               userRank: true,
               status: true,
             },
@@ -4001,6 +4091,11 @@ export class ZKTecoController {
                   date: dStr,
                   employeeId: emp.employeeId || "—",
                   employeeName: `${emp.firstName} ${emp.lastName}`,
+                  company: selectedCompany?.name ||
+                    emp.companyMemberships
+                      .map((membership: any) => membership.company.name)
+                      .join(", ") ||
+                    "—",
                   email: emp.email || "—",
                   department: (emp as any).departmentEntity?.name || (typeof emp.department === "string" ? emp.department : (emp.department as any)?.name) || "—",
                   designation: getDesignationName(emp),
@@ -4015,6 +4110,7 @@ export class ZKTecoController {
             { header: "Date", key: "date", width: 15 },
             { header: "Employee ID", key: "employeeId", width: 15 },
             { header: "Employee Name", key: "employeeName", width: 25 },
+            { header: "Company", key: "company", width: 24 },
             { header: "Email", key: "email", width: 28 },
             { header: "Department", key: "department", width: 22 },
             { header: "Designation", key: "designation", width: 22 },
@@ -4026,7 +4122,7 @@ export class ZKTecoController {
           applyTitleRow(
             unmarkedSheet,
             "Missing / Unmarked Attendance Report",
-            `From ${fromDate} to ${toDate}`,
+            `${companyLabel} | From ${fromDate} to ${toDate}`,
             unmarkedSheet.columnCount,
           );
 
@@ -4036,7 +4132,10 @@ export class ZKTecoController {
         }
       }
 
-      const filename = `Attendance_Report_${fromDate}_to_${toDate}.xlsx`;
+      const companyFilenamePart = companyLabel
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      const filename = `Attendance_Report_${companyFilenamePart}_${fromDate}_to_${toDate}.xlsx`;
 
       res.setHeader(
         "Content-Type",
@@ -4063,7 +4162,7 @@ export class ZKTecoController {
 
   static async getUnmarkedAttendance(req: Request, res: Response) {
     try {
-      const { startDate, endDate, date, departmentId, search } = req.query;
+      const { startDate, endDate, date, companyId, departmentId, search } = req.query;
 
       const pageNumber = Number(req.query.page) || 1;
       const limitNumber = req.query.limit ? Number(req.query.limit) : 5000;
@@ -4174,6 +4273,12 @@ export class ZKTecoController {
         userWhere.departmentId = departmentId as string;
       }
 
+      if (companyId) {
+        userWhere.companyMemberships = {
+          some: { companyId: companyId as string },
+        };
+      }
+
       if (search) {
         const searchValue = String(search).trim();
         userWhere.OR = [
@@ -4196,6 +4301,22 @@ export class ZKTecoController {
           lastName: true,
           email: true,
           department: true,
+          departmentEntity: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          companyMemberships: {
+            select: {
+              company: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
           designation: true,
           position: true,
           userRank: true,
@@ -4309,7 +4430,10 @@ export class ZKTecoController {
               lastName: emp.lastName,
               fullName: `${emp.firstName} ${emp.lastName}`,
               email: emp.email,
-              department: emp.department,
+              department: emp.departmentEntity?.name || emp.department,
+              companies: emp.companyMemberships.map(
+                (membership) => membership.company,
+              ),
               designation: getDesignationName(emp),
               position: emp.position,
               userRank: emp.userRank,
@@ -4366,7 +4490,7 @@ export class ZKTecoController {
 
   static async sendUnmarkedAttendanceReminders(req: Request, res: Response) {
     try {
-      const { date, employeeIds } = req.body;
+      const { date, employeeIds, companyId } = req.body;
 
       const getPakistanToday = () => {
         return new Date().toLocaleDateString("en-CA", {
@@ -4397,6 +4521,13 @@ export class ZKTecoController {
               { employeeId: { in: extractedIds } },
             ],
             isActive: true,
+            ...(companyId
+              ? {
+                  companyMemberships: {
+                    some: { companyId: String(companyId) },
+                  },
+                }
+              : {}),
           },
           select: { id: true, firstName: true, lastName: true, email: true, employeeId: true, role: true, userRank: true, status: true },
         });
@@ -4435,6 +4566,13 @@ export class ZKTecoController {
             isActive: true,
             employeeId: { not: null },
             id: { notIn: Array.from(markedIds) },
+            ...(companyId
+              ? {
+                  companyMemberships: {
+                    some: { companyId: String(companyId) },
+                  },
+                }
+              : {}),
           },
           select: { id: true, firstName: true, lastName: true, email: true, employeeId: true, role: true, userRank: true, status: true },
         });
@@ -4504,7 +4642,7 @@ export class ZKTecoController {
             }
           }
         }
-        console.log(`✅ Background email reminders completed: ${sentCount}/${eligibleEmployees.length} queued/sent.`);
+        zktecoDebug(`✅ Background email reminders completed: ${sentCount}/${eligibleEmployees.length} queued/sent.`);
       });
     } catch (error: any) {
       console.error("Error sending unmarked attendance reminders:", error);

@@ -41,6 +41,12 @@ export interface PdrEmailJobData {
   revertMessage?: string;
 }
 
+export interface PdrPortalClosureEmailJobData {
+  pdrId: number;
+  closesAt: string;
+  closeMode: "NOW" | "SCHEDULED";
+}
+
 const SKIP_NOTIFY_STATUSES: PdrOverallStatus[] = [
   PdrOverallStatus.HR_REVIEWING_EMPLOYEE,
   PdrOverallStatus.HR_REVIEWING_MANAGER,
@@ -108,7 +114,7 @@ function fullName(user: { firstName: string; lastName: string }): string {
 
 function pdrLink(pdrId: number): string {
   const base = (config.COMPANY_DOMAIN || "").replace(/\/$/, "");
-  return `${base}/pdr/${pdrId}`;
+  return `${base}/pdr/${pdrId}/fill`;
 }
 
 function employeeDetailsBlock(pdr: PdrWithRelations): string {
@@ -253,6 +259,48 @@ export class PdrEmailNotificationService {
     for (const n of notifications) {
       await EmailService.sendEmail(n.to, n.subject, n.html);
     }
+  }
+
+  static async processPortalClosureJob(
+    data: PdrPortalClosureEmailJobData,
+  ): Promise<void> {
+    const pdr = await prisma.pdr.findUnique({
+      where: { id: data.pdrId },
+      include: pdrInclude,
+    });
+
+    if (!pdr) throw new Error(`PDR ${data.pdrId} not found`);
+
+    const recipient = resolveNotifyEmail(pdr.user);
+    if (!recipient) {
+      console.warn(`PDR #${data.pdrId}: employee has no notification email`);
+      return;
+    }
+
+    const closesAt = new Date(data.closesAt);
+    const closesAtLabel = new Intl.DateTimeFormat("en-PK", {
+      timeZone: "Asia/Karachi",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(closesAt);
+    const cycle = pdr.pdr_cycle || "PDR Cycle";
+    const isImmediate = data.closeMode === "NOW";
+    const subject = isImmediate
+      ? `${cycle} — Employee PDR Access Closed`
+      : `${cycle} — Employee PDR Access Closing Scheduled`;
+
+    const body = `<p style="margin-top:0;">Hello <strong>${pdr.user.firstName}</strong>,</p>
+      <p>${
+        isImmediate
+          ? "HR has now closed employee access to this PDR."
+          : `HR has scheduled employee access to this PDR to close on <strong>${closesAtLabel}</strong>. A countdown is available in your HRMS portal.`
+      }</p>
+      ${employeeDetailsBlock(pdr as PdrWithRelations)}
+      <p><strong>Access closes:</strong> ${closesAtLabel} (Pakistan time)</p>
+      <p>You can continue viewing the PDR, but employee changes and submissions are disabled after the closing time.</p>
+      ${emailActionButton("View PDR Portal", pdrLink(pdr.id))}`;
+
+    await EmailService.sendEmail(recipient, subject, emailLayout(subject, body));
   }
 
   private static async buildNotifications(

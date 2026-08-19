@@ -1,6 +1,10 @@
 import { body } from "express-validator";
 
 export const createEmploymentTypeValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .trim()
     .notEmpty()
@@ -20,6 +24,10 @@ export const createEmploymentTypeValidation = [
 ];
 
 export const updateEmploymentTypeValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .optional()
     .trim()

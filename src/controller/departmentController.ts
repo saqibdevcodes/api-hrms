@@ -1,12 +1,17 @@
 import { Request, Response } from "express";
 import { validationResult } from "express-validator";
 import { prisma } from "../lib/prisma";
+import {
+  companyAssignmentInclude,
+  resolveActiveCompanyIds,
+  respondToCompanyScopeError,
+} from "../utils/companyScope";
 
 export class DepartmentController {
   // Get all departments
   static async getAllDepartments(req: Request, res: Response) {
     try {
-      const { page = 1, limit = 10, search = "", isActive } = req.query;
+      const { page = 1, limit = 10, search = "", isActive, companyId } = req.query;
       const pageNum = parseInt(page as string);
       const limitNum = parseInt(limit as string);
 
@@ -30,6 +35,9 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
       if (isActive !== undefined) {
         where.isActive = isActive === "true";
       }
+      if (companyId) {
+        where.companyAssignments = { some: { companyId: companyId as string } };
+      }
 
       const [departments, total] = await Promise.all([
         prisma.department.findMany({
@@ -38,6 +46,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
           ...(take !== undefined && { take }),
           orderBy: { createdAt: "desc" },
           include: {
+            companyAssignments: { include: companyAssignmentInclude },
             _count: {
               select: { users: true },
             },
@@ -77,6 +86,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
       const department = await prisma.department.findUnique({
         where: { id },
         include: {
+          companyAssignments: { include: companyAssignmentInclude },
           users: {
             select: {
               id: true,
@@ -127,7 +137,10 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
         });
       }
 
-      const { name, description, manager, budget } = req.body;
+      const { name, description, manager, budget, companyIds } = req.body;
+      const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
+        defaultWhenMissing: true,
+      });
 
       // Check if department name already exists
       const existingDepartment = await prisma.department.findUnique({
@@ -147,7 +160,11 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
           description,
           manager,
           budget: budget ? parseFloat(budget) : null,
+          companyAssignments: {
+            create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+          },
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.status(201).json({
@@ -156,6 +173,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
         data: { department },
       });
     } catch (error) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error creating department:", error);
       res.status(500).json({
         success: false,
@@ -178,7 +196,9 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
       }
 
       const { id } = req.params;
-      const { name, description, manager, budget, isActive } = req.body;
+      const { name, description, manager, budget, isActive, companyIds } = req.body;
+      const resolvedCompanyIds =
+        companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
       // Check if department exists
       const existingDepartment = await prisma.department.findUnique({
@@ -214,7 +234,14 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
           manager,
           budget: budget ? parseFloat(budget) : null,
           isActive,
+          ...(resolvedCompanyIds && {
+            companyAssignments: {
+              deleteMany: {},
+              create: resolvedCompanyIds.map((companyId) => ({ companyId })),
+            },
+          }),
         },
+        include: { companyAssignments: { include: companyAssignmentInclude } },
       });
 
       res.json({
@@ -223,6 +250,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
         data: { department },
       });
     } catch (error) {
+      if (respondToCompanyScopeError(error, res)) return;
       console.error("Error updating department:", error);
       res.status(500).json({
         success: false,

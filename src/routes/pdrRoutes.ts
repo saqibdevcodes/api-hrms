@@ -14,6 +14,7 @@ import {
   updatePdrContentValidator,
   createPdrCycleValidator,
   updatePdrDeadlinesValidator,
+  bulkClosePdrEmployeePortalValidator,
 } from "../validators/pdrValidator";
 
 const router = Router();
@@ -76,6 +77,16 @@ router.post(
   createBulkPdrValidator,
   validateRequest,
   PdrController.createBulkPdrs
+);
+
+// Close employee access to one or more PDRs now or at a scheduled time.
+router.patch(
+  "/bulk/employee-portal-close",
+  authenticate,
+  hrAndAdmin,
+  bulkClosePdrEmployeePortalValidator,
+  validateRequest,
+  PdrController.bulkCloseEmployeePortal,
 );
 
 // Start filling PDR (Employee or Manager)

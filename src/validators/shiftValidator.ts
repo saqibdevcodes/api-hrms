@@ -1,6 +1,10 @@
 import { body } from "express-validator";
 
 export const createShiftValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .notEmpty()
     .withMessage("Shift name is required")
@@ -31,6 +35,10 @@ export const createShiftValidation = [
 ];
 
 export const updateShiftValidation = [
+  body("companyIds")
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
   body("name")
     .optional()
     .isLength({ min: 2, max: 100 })

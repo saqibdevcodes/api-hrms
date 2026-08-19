@@ -24,6 +24,13 @@ export class PdrController {
     const isLineManager = pdr.linemanager_id === req.user.id;
     const isDirector = pdr.director_id === req.user.id || req.user.userRank === "DIRECTOR";
 
+    if (
+      isOwner &&
+      (phase === "employeeAccess" || phase === "employeeAcknowledgement")
+    ) {
+      PdrService.assertEmployeePortalOpen(pdr);
+    }
+
     if (phase === "employeeAccess" && !isOwner) {
       throw new Error("Only the assigned employee can perform this PDR action");
     }
@@ -104,6 +111,7 @@ export class PdrController {
       const cycle = req.query.cycle as string | undefined;
       const section = req.query.section as "mine" | "team" | "all" | undefined;
       const department = req.query.department as string | undefined;
+      const companyId = req.query.companyId as string | undefined;
       const includeSummary =
         req.query.includeSummary === "true" || req.query.includeSummary === "1";
 
@@ -111,7 +119,7 @@ export class PdrController {
         req.user.id,
         req.user.role,
         req.user.userRank,
-        { page, limit, status, cycle, section, department, includeSummary },
+        { page, limit, status, cycle, section, department, companyId, includeSummary },
       );
 
       res.status(200).json(result);
@@ -162,7 +170,7 @@ export class PdrController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { userId, linemanagerId, directorId, pdrCycle, pdrCycleId, phaseDeadlines } = req.body;
+      const { userId, companyId, linemanagerId, directorId, pdrCycle, pdrCycleId, phaseDeadlines } = req.body;
 
       if (!linemanagerId) {
         return res.status(400).json({
@@ -171,16 +179,17 @@ export class PdrController {
         });
       }
 
-      if (!userId || !pdrCycle) {
+      if (!userId || !companyId || !pdrCycle) {
         return res.status(400).json({
           success: false,
-          message: "userId and pdrCycle are required",
+          message: "userId, companyId and pdrCycle are required",
         });
       }
 
       const pdr = await PdrService.createPdr(
         {
           userId,
+          companyId,
           linemanager_id: linemanagerId,
           directorId,
           pdrCycle,
@@ -213,12 +222,12 @@ export class PdrController {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { pdrCycle, pdrCycleId, departmentId, userIds, phaseDeadlines } = req.body;
+      const { pdrCycle, pdrCycleId, companyId, departmentId, userIds, phaseDeadlines } = req.body;
 
-      if (!pdrCycle) {
+      if (!pdrCycle || !companyId) {
         return res.status(400).json({
           success: false,
-          message: "pdrCycle is required",
+          message: "pdrCycle and companyId are required",
         });
       }
 
@@ -230,6 +239,7 @@ export class PdrController {
         Array.isArray(userIds) ? userIds : undefined,
         pdrCycleId,
         phaseDeadlines,
+        companyId,
       );
 
       res.status(201).json({
@@ -242,6 +252,50 @@ export class PdrController {
       res.status(400).json({
         success: false,
         message: error.message || "Failed to create bulk PDRs",
+      });
+    }
+  }
+
+  /**
+   * Close employee portal access to selected PDRs now or at a future time.
+   */
+  static async bulkCloseEmployeePortal(
+    req: AuthenticatedRequest,
+    res: Response,
+  ) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { pdrIds, closeMode, closesAt } = req.body as {
+        pdrIds: number[];
+        closeMode: "NOW" | "SCHEDULED";
+        closesAt?: string;
+      };
+      const effectiveClosesAt =
+        closeMode === "NOW" ? new Date() : new Date(closesAt as string);
+
+      const result = await PdrService.bulkCloseEmployeePortal({
+        pdrIds: pdrIds.map(Number),
+        closesAt: effectiveClosesAt,
+        closeMode,
+        closedBy: req.user.id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message:
+          closeMode === "NOW"
+            ? `Employee access closed for ${result.updatedCount} PDR(s)`
+            : `Employee access closing scheduled for ${result.updatedCount} PDR(s)`,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("Error closing employee PDR access:", error);
+      res.status(400).json({
+        success: false,
+        message: error.message || "Failed to close employee PDR access",
       });
     }
   }
@@ -786,8 +840,9 @@ export class PdrController {
     try {
       const cycle = req.query.cycle as string | undefined;
       const departmentId = req.query.departmentId as string | undefined;
+      const companyId = req.query.companyId as string | undefined;
 
-      const stats = await PdrService.getPdrStatistics({ cycle, departmentId });
+      const stats = await PdrService.getPdrStatistics({ cycle, departmentId, companyId });
 
       res.status(200).json({
         success: true,

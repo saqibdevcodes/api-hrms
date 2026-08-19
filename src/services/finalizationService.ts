@@ -1,20 +1,25 @@
 /**
  * Finalization Service
  *
- * Handles the 1-day staging to final record finalization process.
+ * Finalizes validated staging records into the live attendance tables.
  *
  * Flow:
  * 1. Device punches -> ZKTecoAttendanceStaging (immediate)
- * 2. After 1 day -> ZKTecoAttendanceRecord (finalized)
- * 3. After 1 day -> Attendance table (finalized)
+ * 2. Immediately -> ZKTecoAttendanceRecord (finalized)
+ * 3. Immediately -> Attendance table (visible in HRMS)
  */
 
 import { prisma } from "../lib/prisma";
 
+const finalizationDebug = (...args: unknown[]): void => {
+  if (process.env.ZKTECO_VERBOSE_LOGS === "true") {
+    console.log(...args);
+  }
+};
+
 export class FinalizationService {
   /**
-   * Finalize staging records that are 1+ day old.
-   * This should be run by a cron job every hour or day.
+   * Retry any records that were not finalized during real-time processing.
    */
   public async finalizeStagingRecords(): Promise<{
     success: boolean;
@@ -22,27 +27,19 @@ export class FinalizationService {
     errors: number;
   }> {
     try {
-      console.log("🔄 Starting finalization process...");
-
-      // Find all staging records that are 1+ day old and not yet finalized
-      // createdAt is stored as PKT, so compare with PKT "now"
-      const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-      const oneDayAgo = new Date(Date.now() + PKT_OFFSET_MS);
-      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+      finalizationDebug("🔄 Starting finalization retry process...");
 
       const stagingRecords = await prisma.zKTecoAttendanceStaging.findMany({
         where: {
           isFinalized: false,
-          createdAt: {
-            lte: oneDayAgo,
-          },
+          userId: { not: null },
         },
         orderBy: {
           timestamp: "asc",
         },
       });
 
-      console.log(
+      finalizationDebug(
         `📊 Found ${stagingRecords.length} staging records to finalize`,
       );
 
@@ -62,7 +59,7 @@ export class FinalizationService {
         }
       }
 
-      console.log(
+      finalizationDebug(
         `✅ Finalization complete: ${finalizedCount} finalized, ${errorCount} errors`,
       );
 
@@ -84,36 +81,44 @@ export class FinalizationService {
   /**
    * Finalize a single staging record
    */
-  private async finalizeSingleRecord(stagingRecord: any): Promise<void> {
-    console.log(`\n🔄 Finalizing record ${stagingRecord.id}...`);
+  private async finalizeSingleRecord(stagingRecord: any): Promise<any | null> {
+    finalizationDebug(`🔄 Finalizing record ${stagingRecord.id}...`);
 
     const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
     const pktNow = () => new Date(Date.now() + PKT_OFFSET_MS);
+    let finalizedAttendance: any = null;
 
-    // Step 1: Create final ZKTeco record
-    const finalRecord = await prisma.zKTecoAttendanceRecord.create({
-      data: {
-        employeeId: stagingRecord.employeeId,
-        deviceId: stagingRecord.deviceId,
-        timestamp: stagingRecord.timestamp,
-        checkType: stagingRecord.checkType,
-        verifyType: stagingRecord.verifyType,
-        workCode: stagingRecord.workCode,
-        overallStatus: stagingRecord.overallStatus,
-        processed: false,
-        processingError: stagingRecord.processingError,
-        userId: stagingRecord.userId,
-        finalizedFrom: stagingRecord.id,
-        finalizedAt: pktNow(),
-      },
+    // Reuse an existing final record if an earlier attempt only partially
+    // completed. This makes the real-time retry path idempotent.
+    let finalRecord = await prisma.zKTecoAttendanceRecord.findFirst({
+      where: { finalizedFrom: stagingRecord.id },
     });
 
-    console.log(`✅ Created final record: ${finalRecord.id}`);
+    if (!finalRecord) {
+      finalRecord = await prisma.zKTecoAttendanceRecord.create({
+        data: {
+          employeeId: stagingRecord.employeeId,
+          deviceId: stagingRecord.deviceId,
+          timestamp: stagingRecord.timestamp,
+          checkType: stagingRecord.checkType,
+          verifyType: stagingRecord.verifyType,
+          workCode: stagingRecord.workCode,
+          overallStatus: stagingRecord.overallStatus,
+          processed: false,
+          processingError: stagingRecord.processingError,
+          userId: stagingRecord.userId,
+          finalizedFrom: stagingRecord.id,
+          finalizedAt: pktNow(),
+        },
+      });
+    }
+
+    finalizationDebug(`✅ Final record ready: ${finalRecord.id}`);
 
     // Step 2: Create or update attendance record
-    console.log(`🔍 Checking attendance creation conditions:`);
-    console.log(`   userId: ${stagingRecord.userId}`);
-    console.log(`   processingError: ${stagingRecord.processingError}`);
+    finalizationDebug(`🔍 Checking attendance creation conditions:`);
+    finalizationDebug(`   userId: ${stagingRecord.userId}`);
+    finalizationDebug(`   processingError: ${stagingRecord.processingError}`);
 
     // Skip only if there's a real error (not just tracking notes)
     const isRealError =
@@ -122,15 +127,15 @@ export class FinalizationService {
       !stagingRecord.processingError.includes("(will apply in final table)");
 
     if (stagingRecord.userId && !isRealError) {
-      console.log(`✅ Conditions met, finding employee...`);
+      finalizationDebug(`✅ Conditions met, finding employee...`);
       const employee = await prisma.user.findUnique({
         where: { id: stagingRecord.userId },
         include: { shift: true },
       });
 
-      console.log(`   Employee found: ${employee ? "Yes" : "No"}`);
+      finalizationDebug(`   Employee found: ${employee ? "Yes" : "No"}`);
       if (employee) {
-        console.log(
+        finalizationDebug(
           `   Employee: ${employee.firstName} ${employee.lastName} (${employee.id})`,
         );
         const attendanceDate = new Date(stagingRecord.timestamp);
@@ -171,7 +176,7 @@ export class FinalizationService {
             },
           });
 
-          console.log(`✅ Created attendance record: ${attendance.id}`);
+          finalizationDebug(`✅ Created attendance record: ${attendance.id}`);
         } else {
           // Update existing attendance record
           const updateData: any = {
@@ -200,8 +205,10 @@ export class FinalizationService {
             data: updateData,
           });
 
-          console.log(`✅ Updated attendance record: ${attendance.id}`);
+          finalizationDebug(`✅ Updated attendance record: ${attendance.id}`);
         }
+
+        finalizedAttendance = attendance;
 
         // Link final record to attendance
         await prisma.zKTecoAttendanceRecord.update({
@@ -224,7 +231,44 @@ export class FinalizationService {
       },
     });
 
-    console.log(`✅ Marked staging record as finalized`);
+    finalizationDebug(`✅ Marked staging record as finalized`);
+    return finalizedAttendance;
+  }
+
+  /**
+   * Finalize one valid punch immediately so it is visible in the HRMS.
+   */
+  public async finalizeStagingRecordImmediately(
+    stagingRecordId: string,
+  ): Promise<{ success: boolean; attendance: any | null }> {
+    try {
+      const stagingRecord = await prisma.zKTecoAttendanceStaging.findUnique({
+        where: { id: stagingRecordId },
+      });
+
+      if (!stagingRecord) {
+        throw new Error("Staging record not found");
+      }
+
+      if (stagingRecord.isFinalized) {
+        const existingFinalRecord =
+          await prisma.zKTecoAttendanceRecord.findFirst({
+            where: { finalizedFrom: stagingRecord.id },
+            include: { attendance: true },
+          });
+
+        return {
+          success: true,
+          attendance: existingFinalRecord?.attendance || null,
+        };
+      }
+
+      const attendance = await this.finalizeSingleRecord(stagingRecord);
+      return { success: true, attendance };
+    } catch (error) {
+      console.error("❌ Error finalizing real-time attendance record:", error);
+      return { success: false, attendance: null };
+    }
   }
 
   /**
@@ -243,11 +287,9 @@ export class FinalizationService {
         throw new Error("Staging record not found");
       }
 
-      if (stagingRecord.isFinalized) {
-        throw new Error("Record already finalized");
-      }
-
-      await this.finalizeSingleRecord(stagingRecord);
+      const result =
+        await this.finalizeStagingRecordImmediately(stagingRecordId);
+      if (!result.success) return false;
 
       // Update with who forced the finalization
       const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
@@ -275,7 +317,7 @@ export class FinalizationService {
     errors: number;
   }> {
     try {
-      console.log("🔄 Force finalizing all staging records...");
+      finalizationDebug("🔄 Force finalizing all staging records...");
 
       const stagingRecords = await prisma.zKTecoAttendanceStaging.findMany({
         where: {
@@ -286,7 +328,7 @@ export class FinalizationService {
         },
       });
 
-      console.log(
+      finalizationDebug(
         `📊 Found ${stagingRecords.length} staging records to force finalize`,
       );
 
@@ -317,7 +359,7 @@ export class FinalizationService {
         }
       }
 
-      console.log(
+      finalizationDebug(
         `✅ Force finalization complete: ${finalizedCount} finalized, ${errorCount} errors`,
       );
 

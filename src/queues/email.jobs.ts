@@ -7,6 +7,7 @@ import { EmailQueueService } from "../services/emailQueueService";
 import {
   PdrEmailJobData,
   PdrEmailNotificationService,
+  PdrPortalClosureEmailJobData,
 } from "../services/pdrEmailNotificationService";
 
 export const queuePdrStatusEmail = (data: PdrEmailJobData) => {
@@ -23,6 +24,10 @@ export const queuePdrCreatedEmail = (pdrId: number | string) => {
     targetStatus: PdrOverallStatus.CREATED_BY_HR,
   });
 };
+
+export const queuePdrPortalClosureEmail = (
+  data: PdrPortalClosureEmailJobData,
+) => EmailQueueService.enqueue(EMAIL_EVENTS.PDR_EMPLOYEE_PORTAL_CLOSE, data);
 
 export const queueAttendanceReminderEmail = (data: AttendanceReminderJobData) => {
   return EmailQueueService.enqueue(EMAIL_EVENTS.ATTENDANCE_REMINDER, data);
