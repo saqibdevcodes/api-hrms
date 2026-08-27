@@ -6,6 +6,20 @@ const isCUID = (value: string) => {
   return /^c[a-z0-9]{24}$/.test(value);
 };
 
+const parseIdArray = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : value;
+  } catch {
+    return value
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+  }
+};
+
 export const createEmployeeValidation = [
   // Required fields
   body("firstName")
@@ -75,6 +89,17 @@ export const createEmployeeValidation = [
     .custom(isCUID)
     .withMessage("Invalid leave policy ID"),
 
+  body("companyIds")
+    .optional()
+    .customSanitizer(parseIdArray)
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
+
+  body("companyIds.*")
+    .optional()
+    .custom(isCUID)
+    .withMessage("Invalid company ID"),
+
   // Optional personal fields
   body("fatherHusbandName")
     .optional()
@@ -98,7 +123,7 @@ export const createEmployeeValidation = [
 
   body("gender")
     .optional()
-    .isIn(["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"])
+    .isIn(["MALE", "FEMALE"])
     .withMessage("Invalid gender"),
 
   body("maritalStatus")
@@ -207,15 +232,7 @@ export const createEmployeeValidation = [
 
   body("userRank")
     .optional()
-    .isIn([
-      "DIRECTOR",
-      "LINE_MANAGER",
-      "EMPLOYEE",
-      "SENIOR_MANAGER",
-      "TEAM_LEAD",
-      "SPECIALIST",
-      "EXECUTIVE",
-    ])
+    .isIn(["DIRECTOR", "LINE_MANAGER", "EMPLOYEE"])
     .withMessage("Invalid user rank"),
 
   // Supervisor validation based on rank
@@ -259,7 +276,7 @@ export const createEmployeeValidation = [
   body("salary")
     .optional()
     .isFloat({ min: 0 })
-    .withMessage("Salary must be a positive number"),
+    .withMessage("Salary must be a number greater than or equal to 0"),
 
   body("currency")
     .optional()
@@ -375,6 +392,17 @@ export const updateEmployeeValidation = [
     .custom(isCUID)
     .withMessage("Invalid leave policy ID"),
 
+  body("companyIds")
+    .optional()
+    .customSanitizer(parseIdArray)
+    .isArray({ min: 1 })
+    .withMessage("At least one company is required"),
+
+  body("companyIds.*")
+    .optional()
+    .custom(isCUID)
+    .withMessage("Invalid company ID"),
+
   // Personal fields
   body("fatherHusbandName")
     .optional()
@@ -398,7 +426,7 @@ export const updateEmployeeValidation = [
 
   body("gender")
     .optional()
-    .isIn(["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"])
+    .isIn(["MALE", "FEMALE"])
     .withMessage("Invalid gender"),
 
   body("maritalStatus")
@@ -477,15 +505,7 @@ export const updateEmployeeValidation = [
 
   body("userRank")
     .optional()
-    .isIn([
-      "DIRECTOR",
-      "LINE_MANAGER",
-      "EMPLOYEE",
-      "SENIOR_MANAGER",
-      "TEAM_LEAD",
-      "SPECIALIST",
-      "EXECUTIVE",
-    ])
+    .isIn(["DIRECTOR", "LINE_MANAGER", "EMPLOYEE"])
     .withMessage("Invalid user rank"),
 
   // Supervisor validation based on rank
@@ -529,7 +549,7 @@ export const updateEmployeeValidation = [
   body("salary")
     .optional()
     .isFloat({ min: 0 })
-    .withMessage("Salary must be a positive number"),
+    .withMessage("Salary must be a number greater than or equal to 0"),
 
   body("currency")
     .optional()

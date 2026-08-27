@@ -421,21 +421,6 @@ export class EmployeeController {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Create emergency detail if provided
-      let emergencyDetail = null;
-      if (emergencyContactName && emergencyContactPhone) {
-        emergencyDetail = await prisma.emergencyDetail.create({
-          data: {
-            contactName: emergencyContactName,
-            contactPhone: emergencyContactPhone,
-            contactEmail: emergencyContactEmail || null,
-            relationship: emergencyContactRelation || "Emergency Contact",
-            contactAddress: emergencyContactAddress || null,
-            alternatePhone: emergencyContactAlternatePhone || null,
-          },
-        });
-      }
-
       // Generate employee ID
       const departmentCode = await prisma.department.findUnique({
         where: { id: departmentId },
@@ -476,6 +461,20 @@ export class EmployeeController {
           leaveId,
           employmentTypeId,
         });
+
+        const emergencyDetail =
+          emergencyContactName && emergencyContactPhone
+            ? await tx.emergencyDetail.create({
+                data: {
+                  contactName: emergencyContactName,
+                  contactPhone: emergencyContactPhone,
+                  contactEmail: emergencyContactEmail || null,
+                  relationship: emergencyContactRelation || "Emergency Contact",
+                  contactAddress: emergencyContactAddress || null,
+                  alternatePhone: emergencyContactAlternatePhone || null,
+                },
+              })
+            : null;
 
         // Create user with all employee data
         const user = await tx.user.create({
@@ -639,7 +638,7 @@ export class EmployeeController {
           });
         }
 
-        return { user, employeeLeave, assignedCompanyIds };
+        return { user, employeeLeave, assignedCompanyIds, emergencyDetail };
       });
 
       // Return success with created data (excluding password)
@@ -693,7 +692,7 @@ export class EmployeeController {
             supervisorIds: supervisorIdsArray,
           },
           employeeLeave: result.employeeLeave,
-          emergencyDetail,
+          emergencyDetail: result.emergencyDetail,
           files: {
             cnicFront: cnicFrontFile?.filename || null,
             cnicBack: cnicBackFile?.filename || null,
@@ -742,6 +741,16 @@ export class EmployeeController {
       if (error.message?.includes("validation")) {
         statusCode = 400;
         errorMessage = "Validation error";
+      }
+
+      if (
+        error.message?.includes("selected companies") ||
+        error.message?.includes("selected company") ||
+        error.message?.includes("active company") ||
+        error.message?.includes("invalid or inactive")
+      ) {
+        statusCode = 400;
+        errorMessage = error.message;
       }
 
       // Handle file upload errors

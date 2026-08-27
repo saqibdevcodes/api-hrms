@@ -21,12 +21,14 @@ import pdrRoutes from "./pdrRoutes";
 import documnetRoutes from "./documentRoutes";
 import eventRoutes from "./eventRoutes";
 import companyRoutes from "./companyRoutes";
+import ticketRoutes from "./ticketRoutes";
 
 const router = Router();
 
 router.use("/pdr", pdrRoutes);
 router.use("/documents", documnetRoutes);
 router.use("/events", eventRoutes);
+router.use("/tickets", ticketRoutes);
 
 // Authentication routes (public)
 router.use("/auth", authRoutes);

@@ -22,7 +22,13 @@ export interface CreateNotificationData {
     | "PDR_SUBMISSION"
     | "PDR_REVIEW"
     | "PDR_APPROVAL"
-    | "PDR_REJECTED";
+    | "PDR_REJECTED"
+    | "TICKET_CREATED"
+    | "TICKET_ASSIGNED"
+    | "TICKET_UPDATED"
+    | "TICKET_COMMENT"
+    | "TICKET_RESOLVED"
+    | "TICKET_SLA_BREACHED";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   data?: any;
 }

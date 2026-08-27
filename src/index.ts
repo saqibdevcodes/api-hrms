@@ -14,6 +14,7 @@ import { SocketManager } from "./socket/socketManager";
 import { zktecoService } from "./services/zktecoService";
 import { finalizationService } from "./services/finalizationService";
 import { startEmailWorker } from "./workers/emailWorkerRunner";
+import { TicketNotificationService } from "./services/ticketNotificationService";
 
 // Validate environment configuration
 try {
@@ -395,6 +396,25 @@ const startServer = async () => {
       });
 
       console.log("🧹 OTP cleanup scheduled: Every 30 minutes");
+      console.log("");
+
+      // Escalate unresolved helpdesk requests that have crossed their SLA.
+      cron.schedule(
+        "*/15 * * * *",
+        async () => {
+          try {
+            const count = await TicketNotificationService.processSlaBreaches();
+            if (count > 0) {
+              console.log(`Helpdesk SLA escalations processed: ${count}`);
+            }
+          } catch (error) {
+            console.error("Helpdesk SLA escalation check failed:", error);
+          }
+        },
+        { timezone: "Asia/Karachi" },
+      );
+
+      console.log("Helpdesk SLA monitoring scheduled: Every 15 minutes");
       console.log("");
 
       const emailWorkerEnabled =

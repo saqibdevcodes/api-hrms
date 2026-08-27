@@ -145,6 +145,14 @@ model User {
 
   companyMemberships CompanyEmployee[]
 
+  requestedTickets      Ticket[]           @relation("TicketRequester")
+  ticketAssignments     TicketAssignee[]   @relation("TicketAssignedUser")
+  ticketAssignmentsMade TicketAssignee[]   @relation("TicketAssignedByUser")
+  ticketComments        TicketComment[]    @relation("TicketCommentAuthor")
+  ticketAttachments     TicketAttachment[] @relation("TicketAttachmentUploader")
+  ticketWatchers        TicketWatcher[]
+  ticketActivities      TicketActivity[]   @relation("TicketActivityActor")
+
   @@map("users")
 }
 
@@ -326,13 +334,15 @@ model Company {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  employees       CompanyEmployee[]
-  departments     CompanyDepartment[]
-  contractTypes   CompanyContractType[]
-  shifts          CompanyShift[]
-  leavePolicies   CompanyLeavePolicy[]
-  employmentTypes CompanyEmploymentType[]
-  pdrs            Pdr[]
+  employees        CompanyEmployee[]
+  departments      CompanyDepartment[]
+  contractTypes    CompanyContractType[]
+  shifts           CompanyShift[]
+  leavePolicies    CompanyLeavePolicy[]
+  employmentTypes  CompanyEmploymentType[]
+  pdrs             Pdr[]
+  ticketCategories TicketCategory[]
+  tickets          Ticket[]
 
   @@index([isActive])
   @@map("companies")
@@ -695,6 +705,175 @@ model Notification {
   @@map("notifications")
 }
 
+// Helpdesk Ticket Management
+model TicketCategory {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String
+  description          String?  @db.Text
+  color                String   @default("blue")
+  icon                 String   @default("life-buoy")
+  supportEmail         String?
+  routingDepartment    String?
+  firstResponseMinutes Int      @default(240)
+  resolutionMinutes    Int      @default(2880)
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId String?
+  tickets   Ticket[]
+
+  @@unique([companyId, slug])
+  @@index([isActive, sortOrder])
+  @@map("ticket_categories")
+}
+
+model TicketSequence {
+  period      String
+  serviceCode String
+  lastNumber  Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@id([period, serviceCode])
+  @@map("ticket_sequences")
+}
+
+model Ticket {
+  id                  String         @id @default(cuid())
+  ticketNumber        String         @unique
+  subject             String
+  description         String         @db.Text
+  status              TicketStatus   @default(OPEN)
+  priority            TicketPriority @default(MEDIUM)
+  impact              TicketImpact   @default(SINGLE_USER)
+  channel             TicketChannel  @default(PORTAL)
+  customCategory      String?
+  contactPreference   String?        @default("PORTAL_EMAIL")
+  firstResponseAt     DateTime?
+  responseDueAt       DateTime?
+  resolutionDueAt     DateTime?
+  resolvedAt          DateTime?
+  closedAt            DateTime?
+  reopenedAt          DateTime?
+  lastActivityAt      DateTime       @default(now())
+  resolutionSummary   String?        @db.Text
+  rootCause           String?        @db.Text
+  satisfactionRating  Int?
+  satisfactionComment String?        @db.Text
+  isEscalated         Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  requester   User            @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  requesterId String
+  category    TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  company     Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  companyId   String?
+
+  comments    TicketComment[]
+  attachments TicketAttachment[]
+  assignees   TicketAssignee[]
+  watchers    TicketWatcher[]
+  activities  TicketActivity[]
+
+  @@index([requesterId, createdAt])
+  @@index([companyId, status, priority])
+  @@index([categoryId, status])
+  @@index([resolutionDueAt, status])
+  @@index([lastActivityAt])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id         String   @id @default(cuid())
+  body       String   @db.Text
+  isInternal Boolean  @default(false)
+  isEdited   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId    String
+  author      User               @relation("TicketCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  authorId    String
+  attachments TicketAttachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_comments")
+}
+
+model TicketAttachment {
+  id         String   @id @default(cuid())
+  fileName   String
+  fileUrl    String
+  mimeType   String
+  fileSize   Int
+  storageKey String?
+  createdAt  DateTime @default(now())
+
+  ticket       Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId     String
+  comment      TicketComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId    String?
+  uploadedBy   User           @relation("TicketAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedById String
+
+  @@index([ticketId])
+  @@index([commentId])
+  @@map("ticket_attachments")
+}
+
+model TicketWatcher {
+  ticketId String
+  userId   String
+  addedAt  DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, userId])
+  @@index([userId])
+  @@map("ticket_watchers")
+}
+
+model TicketAssignee {
+  ticketId     String
+  userId       String
+  assignedById String?
+  assignedAt   DateTime @default(now())
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user       User   @relation("TicketAssignedUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User?  @relation("TicketAssignedByUser", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([ticketId, userId])
+  @@index([userId, assignedAt])
+  @@index([assignedById])
+  @@map("ticket_assignees")
+}
+
+model TicketActivity {
+  id        String   @id @default(cuid())
+  action    String
+  field     String?
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  ticket   Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+  actor    User?   @relation("TicketActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId  String?
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_activities")
+}
+
 model Loan {
   id           String    @id @default(cuid())
   userId       String
@@ -841,6 +1020,12 @@ enum NotificationType {
   PDR_REVIEW
   PDR_APPROVAL
   PDR_REJECTED
+  TICKET_CREATED
+  TICKET_ASSIGNED
+  TICKET_UPDATED
+  TICKET_COMMENT
+  TICKET_RESOLVED
+  TICKET_SLA_BREACHED
 }
 
 enum NotificationPriority {
@@ -848,6 +1033,38 @@ enum NotificationPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_REQUESTER
+  ON_HOLD
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketImpact {
+  SINGLE_USER
+  MULTIPLE_USERS
+  DEPARTMENT
+  COMPANY
+}
+
+enum TicketChannel {
+  PORTAL
+  EMAIL
+  PHONE
+  WALK_IN
+  SYSTEM
 }
 
 // PDR Status Enums
