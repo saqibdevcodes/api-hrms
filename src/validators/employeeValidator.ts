@@ -6,6 +6,13 @@ const isCUID = (value: string) => {
   return /^c[a-z0-9]{24}$/.test(value);
 };
 
+
+const isCUIDCompany = (value: string) => {
+  if (typeof value !== "string") return false;
+  return /^c[a-z0-9]{24}$/i.test(value) || /^[a-zA-Z0-9_-]{3,60}$/.test(value);
+};
+
+
 const parseIdArray = (value: unknown): unknown => {
   if (Array.isArray(value)) return value;
   if (typeof value !== "string") return value;
@@ -89,7 +96,7 @@ export const createEmployeeValidation = [
     .custom(isCUID)
     .withMessage("Invalid leave policy ID"),
 
-  body("companyIds")
+    body("companyIds")
     .optional()
     .customSanitizer(parseIdArray)
     .isArray({ min: 1 })
@@ -97,7 +104,7 @@ export const createEmployeeValidation = [
 
   body("companyIds.*")
     .optional()
-    .custom(isCUID)
+    .custom(isCUIDCompany)
     .withMessage("Invalid company ID"),
 
   // Optional personal fields
