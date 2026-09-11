@@ -15,9 +15,29 @@ import {
   createPdrCycleValidator,
   updatePdrDeadlinesValidator,
   bulkClosePdrEmployeePortalValidator,
+  pdrExportValidator,
 } from "../validators/pdrValidator";
 
 const router = Router();
+
+// Export preview + Excel export (HR/Admin only).
+// Registered before the "/:id" routes so "export" is never treated as an ID.
+router.post(
+  "/export/preview",
+  authenticate,
+  hrAndAdmin,
+  pdrExportValidator,
+  validateRequest,
+  PdrController.getExportPreview,
+);
+router.post(
+  "/export",
+  authenticate,
+  hrAndAdmin,
+  pdrExportValidator,
+  validateRequest,
+  PdrController.exportPdrs,
+);
 
 // Get all PDRs (role-filtered)
 router.get(

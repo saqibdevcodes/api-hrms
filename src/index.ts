@@ -68,7 +68,7 @@ app.use(
       "Pragma",
       "Expires",
     ],
-    exposedHeaders: ["Cache-Control", "Pragma", "Expires"],
+    exposedHeaders: ["Cache-Control", "Pragma", "Expires", "Content-Disposition"],
   }),
 );
 

@@ -3,6 +3,11 @@ import { Response } from "express";
 import { PdrOverallStatus } from "@prisma/client";
 import { AuthenticatedRequest } from "../types/auth";
 import { PdrService } from "../services/pdrService";
+import {
+  generatePdrExport,
+  getExportPreview,
+  parseExportFilters,
+} from "../services/pdrExportService";
 import { prisma } from "../lib/prisma";
 import { NotificationService } from "../services/notificationService";
 export class PdrController {
@@ -52,6 +57,95 @@ export class PdrController {
     }
 
     PdrService.assertPhaseOpen(pdr, phase);
+  }
+
+  /**
+   * Preview the PDR export result size for the selected filters.
+   * Used by the export dialog to show "X employees • Y PDR records".
+   */
+  static async getExportPreview(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      try {
+        PdrController.assertExportAccess(req);
+      } catch (error: any) {
+        return res.status(error.statusCode || 403).json({
+          success: false,
+          message: error.message || "Not authorized",
+        });
+      }
+
+      const filters = parseExportFilters(req.body || {});
+      const preview = await getExportPreview(filters);
+
+      res.status(200).json({ success: true, data: preview });
+    } catch (error: any) {
+      console.error("❌ Error previewing PDR export:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to preview PDR export",
+      });
+    }
+  }
+
+  /**
+   * Export PDR records to a professional Excel workbook (HR/Admin only).
+   */
+  static async exportPdrs(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      try {
+        PdrController.assertExportAccess(req);
+      } catch (error: any) {
+        return res.status(error.statusCode || 403).json({
+          success: false,
+          message: error.message || "Not authorized",
+        });
+      }
+
+      const filters = parseExportFilters(req.body || {});
+      const generatedByName = `${req.user.email}`;
+      const exportFile = await generatePdrExport(
+        filters,
+        generatedByName,
+      );
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${exportFile.filename}"`,
+      );
+      res.setHeader("X-Export-Record-Count", String(exportFile.recordCount));
+      res.setHeader("X-Export-Employee-Count", String(exportFile.employeeCount));
+      res.status(200).end(exportFile.buffer);
+    } catch (error: any) {
+      console.error("❌ Error exporting PDRs:", error);
+      const status = error.statusCode || 500;
+      res.status(status).json({
+        success: false,
+        message: error.message || "Failed to export PDR data",
+      });
+    }
+  }
+
+  private static assertExportAccess(req: AuthenticatedRequest) {
+    const role = req.user?.role || "";
+    if (!["HR", "ADMIN", "SUPERADMIN"].includes(role)) {
+      const error: any = new Error(
+        "You are not authorized to export PDR data",
+      );
+      error.statusCode = 403;
+      throw error;
+    }
   }
 
   /**

@@ -8,7 +8,8 @@
     "vercel-build": "prisma generate && tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "ts-node prisma/seed.ts",
-    "email-worker": "tsx src/workers/email.worker.ts"
+    "email-worker": "tsx src/workers/email.worker.ts",
+    "test:pdr-export": "tsx tests/pdr-export-workbook.test.ts && tsx tests/pdr-calculation-parity.test.ts && tsx tests/pdr-export-api.test.ts"
   },
   "keywords": [],
   "author": "",

@@ -235,3 +235,46 @@ export const updatePdrDeadlinesValidator = [
   body("phaseDeadlines.employeeAcknowledgement.deadline").optional({ nullable: true }).isISO8601().withMessage("Invalid date"),
   body("pdr_timeline").optional({ nullable: true }).isString().withMessage("Timeline must be a string"),
 ];
+
+export const pdrExportValidator = [
+  body("companyIds")
+    .optional({ nullable: true })
+    .isArray()
+    .withMessage("companyIds must be an array of company IDs"),
+  body("companyIds.*")
+    .optional()
+    .isString()
+    .withMessage("Each company ID must be a string"),
+  body("departments")
+    .optional({ nullable: true })
+    .isArray()
+    .withMessage("departments must be an array of department names"),
+  body("departments.*")
+    .optional()
+    .isString()
+    .withMessage("Each department must be a string"),
+  body("cycleIds")
+    .optional({ nullable: true })
+    .isArray()
+    .withMessage("cycleIds must be an array of cycle IDs"),
+  body("cycleIds.*")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Each cycle ID must be a positive integer"),
+  body("userIds")
+    .optional({ nullable: true })
+    .isArray()
+    .withMessage("userIds must be an array of employee IDs"),
+  body("userIds.*")
+    .optional()
+    .isString()
+    .withMessage("Each employee ID must be a string"),
+  body("statuses")
+    .optional({ nullable: true })
+    .isArray()
+    .withMessage("statuses must be an array of PDR statuses"),
+  body("statuses.*")
+    .optional()
+    .isString()
+    .withMessage("Each status must be a string"),
+];
