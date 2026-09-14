@@ -7,6 +7,9 @@
     "build": "tsc",
     "vercel-build": "prisma generate && tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:attendance": "tsx tests/attendance-timing.test.ts",
+    "test:employee-validation": "tsx tests/employee-company-validation.test.ts",
+    "test:employee-company-scope": "tsx tests/employee-company-scope.test.ts",
     "seed": "ts-node prisma/seed.ts",
     "email-worker": "tsx src/workers/email.worker.ts",
     "test:pdr-export": "tsx tests/pdr-export-workbook.test.ts && tsx tests/pdr-calculation-parity.test.ts && tsx tests/pdr-export-api.test.ts"
