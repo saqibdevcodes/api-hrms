@@ -407,7 +407,7 @@ export const updateEmployeeValidation = [
 
   body("companyIds.*")
     .optional()
-    .custom(isCUID)
+    .custom(isCUIDCompany)
     .withMessage("Invalid company ID"),
 
   // Personal fields

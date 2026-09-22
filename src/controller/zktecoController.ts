@@ -11,6 +11,11 @@ import { EmailService } from "../utils/emailService";
 import { AttendanceReminderService } from "../services/attendanceReminderService";
 import { queueAttendanceReminderEmail } from "../queues/email.jobs";
 import { EmailQueueService } from "../services/emailQueueService";
+import {
+  shiftTimeOnAttendanceDate,
+  secondsAfter,
+  formatAttendanceDuration,
+} from "../utils/attendanceTiming";
 import ExcelJS from 'exceljs'
 
 const zktecoDebug = (...args: unknown[]): void => {
@@ -429,6 +434,7 @@ export class ZKTecoController {
       ): {
         status: string;
         lateMinutes?: number;
+        lateSeconds?: number;
         earlyOutMinutes?: number;
         workingHours?: string;
         checkInStatus?: string;
@@ -444,13 +450,7 @@ export class ZKTecoController {
             const attendanceDate = new Date(record.date);
             const shiftEnd = new Date(shift.endTime);
 
-            const todayShiftEnd = new Date(attendanceDate);
-            todayShiftEnd.setHours(
-              shiftEnd.getHours(),
-              shiftEnd.getMinutes(),
-              0,
-              0,
-            );
+            const todayShiftEnd = shiftTimeOnAttendanceDate(attendanceDate, shiftEnd);
 
             const earlyOutMinutes =
               checkOutTime < todayShiftEnd
@@ -493,32 +493,15 @@ export class ZKTecoController {
         const earlyOutTime = shift.earlyOut ? new Date(shift.earlyOut) : null;
 
         // Set the shift times to the attendance date
-        const todayShiftStart = new Date(attendanceDate);
-        todayShiftStart.setHours(
-          shiftStart.getHours(),
-          shiftStart.getMinutes(),
-          0,
-          0,
-        );
+        const todayShiftStart = shiftTimeOnAttendanceDate(attendanceDate, shiftStart);
         zktecoDebug("todayShiftStart", todayShiftStart);
 
-        const todayShiftEnd = new Date(attendanceDate);
-        todayShiftEnd.setHours(
-          shiftEnd.getHours(),
-          shiftEnd.getMinutes(),
-          0,
-          0,
-        );
+        const todayShiftEnd = shiftTimeOnAttendanceDate(attendanceDate, shiftEnd);
         zktecoDebug("todayShiftEnd", todayShiftEnd);
 
         // Calculate late arrival
-        const lateMinutes =
-          checkInTime > todayShiftStart
-            ? Math.floor(
-              (checkInTime.getTime() - todayShiftStart.getTime()) /
-              (1000 * 60),
-            )
-            : 0;
+        const lateSeconds = secondsAfter(checkInTime, todayShiftStart);
+        const lateMinutes = Math.floor(lateSeconds / 60);
         zktecoDebug("checkInTime", new Date(checkInTime).toLocaleTimeString());
         zktecoDebug("checkOutTime", checkOutTime);
 
@@ -553,13 +536,7 @@ export class ZKTecoController {
 
         // Check for half day (if left before half day threshold)
         if (halfDayStart && checkOutTime) {
-          const todayHalfDayStart = new Date(attendanceDate);
-          todayHalfDayStart.setHours(
-            halfDayStart.getHours(),
-            halfDayStart.getMinutes(),
-            0,
-            0,
-          );
+          const todayHalfDayStart = shiftTimeOnAttendanceDate(attendanceDate, halfDayStart);
 
           if (checkOutTime < todayHalfDayStart) {
             status = "HALF_DAY";
@@ -591,6 +568,7 @@ export class ZKTecoController {
         return {
           status,
           lateMinutes: lateMinutes,
+          lateSeconds,
           earlyOutMinutes: earlyOutMinutes,
           workingHours: workingHours,
           checkInStatus: checkInStatus,
@@ -653,6 +631,7 @@ export class ZKTecoController {
 
           // Shift-based calculations
           lateMinutes: calculatedStatus.lateMinutes,
+          lateSeconds: calculatedStatus.lateSeconds,
           earlyOutMinutes: calculatedStatus.earlyOutMinutes,
           workingHours: calculatedStatus.workingHours,
 
@@ -845,13 +824,7 @@ export class ZKTecoController {
             const checkOutTime = new Date(record.checkOut);
             const attendanceDate = new Date(record.date);
             const shiftEnd = new Date(shift.endTime);
-            const todayShiftEnd = new Date(attendanceDate);
-            todayShiftEnd.setHours(
-              shiftEnd.getHours(),
-              shiftEnd.getMinutes(),
-              0,
-              0,
-            );
+            const todayShiftEnd = shiftTimeOnAttendanceDate(attendanceDate, shiftEnd);
             const earlyOutMinutes =
               checkOutTime < todayShiftEnd
                 ? Math.floor(
@@ -882,29 +855,12 @@ export class ZKTecoController {
           ? new Date(shift.halfDayStart)
           : null;
 
-        const todayShiftStart = new Date(attendanceDate);
-        todayShiftStart.setHours(
-          shiftStart.getHours(),
-          shiftStart.getMinutes(),
-          0,
-          0,
-        );
+        const todayShiftStart = shiftTimeOnAttendanceDate(attendanceDate, shiftStart);
 
-        const todayShiftEnd = new Date(attendanceDate);
-        todayShiftEnd.setHours(
-          shiftEnd.getHours(),
-          shiftEnd.getMinutes(),
-          0,
-          0,
-        );
+        const todayShiftEnd = shiftTimeOnAttendanceDate(attendanceDate, shiftEnd);
 
-        const lateMinutes =
-          checkInTime > todayShiftStart
-            ? Math.floor(
-              (checkInTime.getTime() - todayShiftStart.getTime()) /
-              (1000 * 60),
-            )
-            : 0;
+        const lateSeconds = secondsAfter(checkInTime, todayShiftStart);
+        const lateMinutes = Math.floor(lateSeconds / 60);
 
         let earlyOutMinutes = 0;
         let workingHours = "";
@@ -930,13 +886,7 @@ export class ZKTecoController {
         let status = "PRESENT";
 
         if (halfDayStart && checkOutTime) {
-          const todayHalfDayStart = new Date(attendanceDate);
-          todayHalfDayStart.setHours(
-            halfDayStart.getHours(),
-            halfDayStart.getMinutes(),
-            0,
-            0,
-          );
+          const todayHalfDayStart = shiftTimeOnAttendanceDate(attendanceDate, halfDayStart);
           if (checkOutTime < todayHalfDayStart) {
             status = "HALF_DAY";
           }
@@ -963,6 +913,7 @@ export class ZKTecoController {
         return {
           status,
           lateMinutes,
+          lateSeconds,
           earlyOutMinutes,
           workingHours,
           checkInStatus,
@@ -1028,6 +979,7 @@ export class ZKTecoController {
           notes: record.notes,
           reason: record.reason,
           lateMinutes: calculatedStatus.lateMinutes ?? 0,
+          lateSeconds: calculatedStatus.lateSeconds ?? 0,
           earlyOutMinutes: calculatedStatus.earlyOutMinutes ?? 0,
           workingHours: calculatedStatus.workingHours || null,
           checkInStatus,
@@ -2993,6 +2945,30 @@ export class ZKTecoController {
         return;
       }
 
+      // Recalculate from stored timestamps so stale table values cannot inflate the email.
+      let lateSeconds = record.lateSeconds ?? (record.lateMinutes || 0) * 60;
+      let earlyOutSeconds = (record.earlyOutMinutes || 0) * 60;
+      if (record.id && (record.checkIn || record.checkOut)) {
+        const stored = await prisma.attendance.findUnique({
+          where: { id: record.id },
+          include: { employee: { select: { shift: true } } },
+        });
+        if (stored?.employee.shift) {
+          if (stored.checkIn) {
+            lateSeconds = secondsAfter(
+              stored.checkIn,
+              shiftTimeOnAttendanceDate(stored.date, stored.employee.shift.startTime),
+            );
+          }
+          if (stored.checkOut) {
+            earlyOutSeconds = secondsAfter(
+              shiftTimeOnAttendanceDate(stored.date, stored.employee.shift.endTime),
+              stored.checkOut,
+            );
+          }
+        }
+      }
+
       // Build attendance issue description (HTML)
       const issues = [];
 
@@ -3000,9 +2976,9 @@ export class ZKTecoController {
         issues.push(
           "<li><strong style='color: #dc2626;'>⚠️ No check-in recorded</strong></li>",
         );
-      } else if (record.checkInStatus === "LATE" && record.lateMinutes > 0) {
+      } else if (record.checkInStatus === "LATE" && lateSeconds > 0) {
         issues.push(
-          `<li><span style='color: #ea580c;'>Check-in was <strong>late by ${record.lateMinutes} minute(s)</strong></span></li>`,
+          `<li><span style='color: #ea580c;'>Check-in was <strong>late by ${formatAttendanceDuration(lateSeconds)}</strong></span></li>`,
         );
       }
 
@@ -3011,11 +2987,11 @@ export class ZKTecoController {
           "<li><strong style='color: #dc2626;'>⚠️ No check-out recorded</strong></li>",
         );
       } else if (
-        record.checkOutStatus === "EARLY" &&
-        record.earlyOutMinutes > 0
+        ["EARLY", "EARLY_OUT"].includes(record.checkOutStatus) &&
+        earlyOutSeconds > 0
       ) {
         issues.push(
-          `<li><span style='color: #ea580c;'>Check-out was <strong>early by ${record.earlyOutMinutes} minute(s)</strong></span></li>`,
+          `<li><span style='color: #ea580c;'>Check-out was <strong>early by ${formatAttendanceDuration(earlyOutSeconds)}</strong></span></li>`,
         );
       }
 

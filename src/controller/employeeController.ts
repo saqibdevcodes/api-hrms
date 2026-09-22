@@ -6,6 +6,7 @@ import path from "path";
 import { prisma } from "../lib/prisma";
 import { AuthenticatedRequest } from "../types/auth";
 import { companyAssignmentInclude } from "../utils/companyScope";
+import { assertEmploymentResourcesInCompanies } from "../utils/employeeCompanyScope";
 
 type UserRank = "EMPLOYEE" | "LINE_MANAGER" | "DIRECTOR";
 
@@ -23,57 +24,6 @@ const parseIdArray = (value: unknown): string[] => {
   }
 
   return Array.from(new Set(value.split(",").map((id) => id.trim()).filter(Boolean)));
-};
-
-const assertEmploymentResourcesInCompanies = async (
-  db: any,
-  companyIds: string[],
-  resources: {
-    departmentId?: string | null;
-    contractTypeId?: string | null;
-    shiftId?: string | null;
-    leaveId?: string | null;
-    employmentTypeId?: string | null;
-  },
-) => {
-  const checks = [
-    resources.departmentId && {
-      label: "Department",
-      count: db.companyDepartment.count({
-        where: { departmentId: resources.departmentId, companyId: { in: companyIds } },
-      }),
-    },
-    resources.contractTypeId && {
-      label: "Contract type",
-      count: db.companyContractType.count({
-        where: { contractTypeId: resources.contractTypeId, companyId: { in: companyIds } },
-      }),
-    },
-    resources.shiftId && {
-      label: "Shift",
-      count: db.companyShift.count({
-        where: { shiftId: resources.shiftId, companyId: { in: companyIds } },
-      }),
-    },
-    resources.leaveId && {
-      label: "Leave policy",
-      count: db.companyLeavePolicy.count({
-        where: { leavePolicyId: resources.leaveId, companyId: { in: companyIds } },
-      }),
-    },
-    resources.employmentTypeId && {
-      label: "Employment type",
-      count: db.companyEmploymentType.count({
-        where: { employmentTypeId: resources.employmentTypeId, companyId: { in: companyIds } },
-      }),
-    },
-  ].filter(Boolean) as Array<{ label: string; count: Promise<number> }>;
-
-  for (const check of checks) {
-    if ((await check.count) !== companyIds.length) {
-      throw new Error(`${check.label} is not assigned to every selected company`);
-    }
-  }
 };
 
 export class EmployeeController {
