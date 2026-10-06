@@ -912,12 +912,22 @@ export class PdrService {
 
   /**
    * Validate if user can perform transition
+   *
+   * Manager and director transitions are PDR-assignment-scoped: the actor
+   * must be the person the PDR actually assigns (`linemanager_id` /
+   * `director_id`). A global userRank alone never authorises them.
+   * HR keeps its existing override through the explicit "HR" allowedRoles.
    */
   static canTransition(
     currentStatus: PdrOverallStatus,
     targetStatus: PdrOverallStatus,
     userRole: string,
     userRank?: string,
+    assignment?: {
+      actorId: string;
+      linemanager_id?: string | null;
+      director_id?: string | null;
+    },
   ): boolean {
     const transitions = this.statusTransitions[currentStatus];
     if (!transitions) return false;
@@ -927,28 +937,32 @@ export class PdrService {
     );
     if (!validTransition) return false;
 
-    // Check if user's role or rank is allowed
-    // HR role is allowed for HR tasks
-    // HR with LINE_MANAGER rank is also allowed for LINE_MANAGER tasks
+    const allowedRoles = validTransition.allowedRoles;
     const isHR = userRole === "HR" || userRole === "ADMIN"; // Backward compatibility
 
     // Check if transition requires HR role
-    const requiresHR = validTransition.allowedRoles.includes("HR");
-    if (requiresHR && isHR) {
+    if (allowedRoles.includes("HR") && isHR) {
       return true;
     }
 
-    // Check if transition requires LINE_MANAGER and user has LINE_MANAGER rank (even if HR)
-    const requiresManager =
-      validTransition.allowedRoles.includes("LINE_MANAGER");
-    if (requiresManager && userRank === "LINE_MANAGER") {
-      return true;
+    const requiresManager = allowedRoles.includes("LINE_MANAGER");
+    const requiresDirector = allowedRoles.includes("DIRECTOR");
+
+    if (requiresManager || requiresDirector) {
+      // Assignment-scoped responsibility (see doc comment above).
+      if (assignment) {
+        return requiresManager
+          ? assignment.linemanager_id === assignment.actorId
+          : assignment.director_id === assignment.actorId;
+      }
+      // Legacy fallback for callers that provide no assignment context.
+      return requiresManager
+        ? userRank === "LINE_MANAGER"
+        : userRank === "DIRECTOR" || userRole === "DIRECTOR";
     }
 
     // Check other roles
-    return validTransition.allowedRoles.some(
-      (role) => role === userRole || role === userRank,
-    );
+    return allowedRoles.some((role) => role === userRole);
   }
 
   /**
@@ -977,6 +991,11 @@ export class PdrService {
       targetStatus,
       data.userRole,
       data.userRank, // Pass userRank separately
+      {
+        actorId: data.userId,
+        linemanager_id: pdr.linemanager_id,
+        director_id: pdr.director_id,
+      },
     );
 
     if (!canTransition) {
@@ -1485,49 +1504,37 @@ export class PdrService {
       // ADMIN can only view all employee PDRs (excluding their own)
       baseWhereClause.userId = { not: userId };
     } else {
-      // Non-HR users or HR without section filter - use role-based filtering
-      if (
-        userRole === Role.EMPLOYEE &&
-        userRank !== UserRank.LINE_MANAGER &&
-        userRank !== UserRank.DIRECTOR
-      ) {
-        // Regular employees see only their own PDRs
-        baseWhereClause.userId = userId;
-      } else if (userRank === UserRank.LINE_MANAGER) {
-        // Managers see BOTH their own PDRs AND subordinate PDRs
-        if (userRole === Role.EMPLOYEE) {
-          const subordinateIds = await this.getAllSubordinateIds(userId);
+      // Non-HR users or HR without section filter.
+      // Visibility is scoped by the PDR's EXPLICIT assignments
+      // (`linemanager_id` / `director_id` snapshots), never by the user's
+      // global userRank — rank alone must not grant cross-access.
+      if (userRole === Role.EMPLOYEE) {
+        const subordinateIds = await this.getAllSubordinateIds(userId);
 
-          baseWhereClause.userId = {
-            in: [userId, ...subordinateIds],
-          };
-        } else if (isHR) {
-          // HR with LINE_MANAGER rank: by default show all (unless section specified)
-          // No filter - shows all PDRs
-        }
-      } else if (userRank === UserRank.DIRECTOR) {
-        // Directors see their own PDRs AND PDRs where they are director/line manager.
-        // Separate lists are also returned below as `directorPdrLists`.
-        if (userRole === Role.EMPLOYEE) {
-          baseWhereClause.OR = [
-            { userId: userId },
-          
-            // Director action required
-            {
-              director_id: userId,
-              overallStatus: PdrOverallStatus.DIRECTOR_REVIEWING,
+        baseWhereClause.OR = [
+          // Own PDRs
+          { userId: userId },
+
+          // Team PDRs — the line-management tree discovered through
+          // pdr.linemanager_id (assignment-based), visible across the
+          // cycle exactly as before.
+          ...(subordinateIds.length
+            ? [{ userId: { in: subordinateIds } }]
+            : []),
+
+          // Director-assignment PDRs — visible while the director phase is
+          // active (HR approved / director reviewing). A user who is the
+          // assigned director sees these regardless of their global rank.
+          {
+            director_id: userId,
+            overallStatus: {
+              in: [
+                PdrOverallStatus.HR_APPROVED_MANAGER,
+                PdrOverallStatus.DIRECTOR_REVIEWING,
+              ],
             },
-          
-            // Line Manager action required
-            {
-              linemanager_id: userId,
-              overallStatus: PdrOverallStatus.MANAGER_PENDING,
-            },
-          ];
-        } else if (isHR) {
-          // HR with DIRECTOR rank: by default show all
-          // No filter - shows all PDRs
-        }
+          },
+        ];
       } else if (isHR) {
         // HR role (regardless of rank) sees all PDRs (no additional filter)
         // No filter applied
@@ -1565,7 +1572,11 @@ export class PdrService {
         }
       | undefined;
 
-    if (userRole === Role.EMPLOYEE && userRank === UserRank.DIRECTOR) {
+    // Assignment-scoped work queues for non-HR users (any rank): the three
+    // lists are keyed on the PDR's explicit linemanager_id / director_id,
+    // so a user who is line manager on one PDR and director on another sees
+    // each PDR under the responsibility the assignment actually gives them.
+    if (userRole === Role.EMPLOYEE) {
       const [ownPdrs, directorReviewPdrs, lineManagerReviewPdrs] =
         await Promise.all([
           prisma.pdr.findMany({
@@ -1603,6 +1614,7 @@ export class PdrService {
                   PdrOverallStatus.MANAGER_PENDING,
                   PdrOverallStatus.HR_REVERTED_TO_MANAGER,
                   PdrOverallStatus.MANAGER_REVISING,
+                  PdrOverallStatus.EMPLOYEE_REVERT_TO_MANAGER,
                 ],
               },
             }),

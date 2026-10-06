@@ -26,8 +26,13 @@ export class PdrController {
 
     const isHrLike = PdrController.isHrLike(req);
     const isOwner = pdr.userId === req.user.id;
+    // PDR-assignment-scoped responsibilities: they come from the PDR's own
+    // linemanager_id / director_id snapshots — never from the user's global
+    // userRank. HR/Admin keep their existing override (isHrLike); the
+    // directorReview endpoint additionally honours ADMIN users holding
+    // DIRECTOR rank (existing behaviour, enforced there).
     const isLineManager = pdr.linemanager_id === req.user.id;
-    const isDirector = pdr.director_id === req.user.id || req.user.userRank === "DIRECTOR";
+    const isDirector = pdr.director_id === req.user.id;
 
     if (
       isOwner &&
@@ -456,8 +461,11 @@ export class PdrController {
         // Use LINE_MANAGER for filling manager sections
         effectiveRole = "LINE_MANAGER";
       } else {
-        // User is director or admin/HR
-        effectiveRole = req.user.userRank || req.user.role;
+        // Unreachable in practice (the phase guard above already restricts
+        // employeeAccess to the owner and managerAccess to the assigned line
+        // manager). Use the functional role — a global userRank must never
+        // drive PDR authorization.
+        effectiveRole = req.user.role;
       }
 
       const updatedPdr = await PdrService.transitionStatus(
@@ -537,7 +545,8 @@ export class PdrController {
         // User is the line manager OR HR with LINE_MANAGER rank submitting manager section
         effectiveRole = "LINE_MANAGER";
       } else {
-        effectiveRole = req.user.userRank || req.user.role;
+        // Unreachable in practice (phase guards above). See startFilling note.
+        effectiveRole = req.user.role;
       }
 
       const updatedPdr = await PdrService.transitionStatus(
