@@ -87,7 +87,6 @@ async function main() {
       name: "Engineering",
       description: "Software development and technical operations",
       manager: "John Smith",
-      budget: 500000,
       isActive: true,
     },
   });
@@ -99,7 +98,6 @@ async function main() {
       name: "Human Resources",
       description: "Employee management and organizational development",
       manager: "Sarah Johnson",
-      budget: 200000,
       isActive: true,
     },
   });
@@ -217,7 +215,6 @@ async function main() {
       name: "Super Admin Dept",
       description: "Department for Super Admin",
       manager: "Super Admin",
-      budget: 100000,
       isActive: true,
     },
   });
@@ -229,7 +226,6 @@ async function main() {
       name: "Information Technology",
       description: "IT Department",
       manager: "Wasif Zia",
-      budget: 300000,
       isActive: true,
     },
   });

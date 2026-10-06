@@ -132,7 +132,7 @@ export class ContractTypeController {
         });
       }
 
-      const { name, description, duration, isActive = true, companyIds } = req.body;
+      const { name, description, duration, durationUnit = "MONTH", isActive = true, companyIds } = req.body;
       const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
         defaultWhenMissing: true,
       });
@@ -141,7 +141,8 @@ export class ContractTypeController {
         data: {
           name,
           description,
-          duration: duration ? parseInt(duration) : null,
+          duration: duration == null ? null : Number(duration),
+          durationUnit,
           isActive,
           companyAssignments: {
             create: resolvedCompanyIds.map((companyId) => ({ companyId })),
@@ -188,7 +189,7 @@ export class ContractTypeController {
         });
       }
 
-      const { name, description, duration, isActive, companyIds } = req.body;
+      const { name, description, duration, durationUnit, isActive, companyIds } = req.body;
       const resolvedCompanyIds =
         companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
@@ -208,7 +209,8 @@ export class ContractTypeController {
         data: {
           name,
           description,
-          duration: duration ? parseInt(duration) : null,
+          duration: duration == null ? duration : Number(duration),
+          durationUnit,
           isActive,
           ...(resolvedCompanyIds && {
             companyAssignments: {

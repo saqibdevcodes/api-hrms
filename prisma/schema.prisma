@@ -136,6 +136,7 @@ model User {
   employeeLeave EmployeeLeave?
   Loan          Loan[]
   AdvanceSalary AdvanceSalary[]
+  attendanceReasons AttendanceReason[] @relation("EmployeeAttendanceReasons")
 
   hasSystemAccess Boolean @default(true)
 
@@ -176,14 +177,20 @@ model EmergencyDetail {
 }
 
 // Contract Types
+enum ContractDurationUnit {
+  MONTH
+  YEAR
+}
+
 model ContractType {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?  @db.Text
-  duration    Int? // Duration in months
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String               @id @default(cuid())
+  name         String               @unique
+  description  String?              @db.Text
+  duration     Int?
+  durationUnit ContractDurationUnit @default(MONTH)
+  isActive     Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   // Relations
   users              User[]
@@ -309,7 +316,6 @@ model Department {
   name        String   @unique
   description String?  @db.Text
   manager     String?
-  budget      Decimal?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -317,6 +323,7 @@ model Department {
   // Relations
   users              User[]
   companyAssignments CompanyDepartment[]
+  shiftTimings       DepartmentShiftTiming[]
 
   @@map("departments")
 }
@@ -586,8 +593,17 @@ model AttendanceReason {
   status            String? //approved, rejected, pending
   datetime          DateTime
 
+  // Regularisation workflow fields
+  regularisationType String? // TECHNICAL_ISSUE, FIELD_WORK, BIOMETRIC_GLITCH, MISSING_PUNCH, OTHER
+  employeeId         String?
+  employee           User?   @relation("EmployeeAttendanceReasons", fields: [employeeId], references: [id])
+  notifiedRecipients String? @db.Text
+  reviewedBy         String?
+  reviewedAt         DateTime?
+
   attachments AttendanceReasonAttachment[]
 
+  @@index([employeeId])
   @@map("attendance_reasons")
 }
 
@@ -616,6 +632,84 @@ model AttendanceDeduction {
   deductionType   String? // "LATE_TO_HALF_DAY" or "HALF_DAY_TO_FULL_DAY"
 
   @@map("attendance_deductions")
+}
+
+// Attendance Policy Rules & Global Portal Settings
+model AttendancePolicySetting {
+  id                                String   @id @default(cuid())
+  policyName                        String   @default("Iris Communications Attendance Policy")
+  scopeDescription                  String?  @db.Text
+
+  // Grace Period: 15 minutes allowed after official reporting time
+  gracePeriodMinutes                Int      @default(15)
+
+  // Monthly Allowances & Thresholds
+  monthlyLateArrivalsAllowed        Int      @default(3) // 3 late comings allowed per month
+  lateArrivalThresholdMinutes       Int      @default(60) // up to 1 hour late
+  monthlyEarlyOutAllowed            Int      @default(1) // 1 early out allowed per month
+  earlyOutThresholdMinutes          Int      @default(60) // up to 1 hour early
+  lateExceededDeduction             String   @default("HALF_DAY_LEAVE") // HALF_DAY_LEAVE or LEAVE_WITHOUT_PAY
+  earlyOutExceededDeduction         String   @default("HALF_DAY_LEAVE") // HALF_DAY_LEAVE or LEAVE_WITHOUT_PAY
+
+  // Missing Punch Rules
+  missingBothPunchesAction          String   @default("ABSENT") // Missing both IN and OUT without justification counts as Absent
+  missingOnePunchAction             String   @default("LATE_OR_EARLY") // Missing only one punch is treated as Late IN or Early OUT
+  deductSalaryOnUnjustifiedAbsent   Boolean  @default(true) // Salary deduction on unjustified absent
+
+  // Biometric Attendance Tracking Rules
+  mandatoryBiometric                Boolean  @default(true) // Mandatory thumb impression or face scanning
+  allowedBiometricMethods           String   @default("THUMB_FACE") // THUMB_FACE
+  requireTimeInAndTimeOut           Boolean  @default(true)
+  trackHeadAndRegionalOffices       Boolean  @default(true)
+
+  // Technical Issue & Field Work Regularisation Workflow Rules
+  regularisationDeadlineDays        Int      @default(1) // By next working day
+  regularisationNotifyHR            Boolean  @default(true)
+  regularisationNotifyIT            Boolean  @default(true)
+  regularisationNotifyHOD           Boolean  @default(true)
+  regularisationNotifyLineManager   Boolean  @default(true)
+  hrEmails                          String   @default("hr@iriscommunications.com.pk")
+  itEmails                          String   @default("it@iriscommunications.com.pk")
+  allowTechnicalIssueRegularisation Boolean  @default(true)
+  allowFieldWorkRegularisation      Boolean  @default(true)
+
+  isActive                          Boolean  @default(true)
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
+
+  @@map("attendance_policy_settings")
+}
+
+// Department-wise Working Shift Timings
+model DepartmentShiftTiming {
+  id             String      @id @default(cuid())
+  name           String      // "General Departments", "Administrative Staff (Research Wing)", etc.
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  category       String      @default("GENERAL") // GENERAL, RESEARCH_WING, CUSTOM
+
+  // Monday - Thursday
+  monThuStart    String      @default("09:30")
+  monThuEnd      String      @default("18:00")
+
+  // Friday
+  friStart       String      @default("09:30")
+  friEnd         String      @default("18:00")
+
+  // Saturday
+  satStart       String      @default("09:30")
+  satEnd         String      @default("18:00")
+  satWorkingType String      @default("ALTERNATE") // ALTERNATE, ALL, OFF
+
+  // Sunday
+  sunWorkingType String      @default("OFF") // OFF, WORKING
+
+  notes          String?     @db.Text
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("department_shift_timings")
 }
 
 // Leave Management

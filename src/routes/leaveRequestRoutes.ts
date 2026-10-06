@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { LeaveRequestController } from "../controller/leaveRequestController";
-import { authenticate, hrAndAdmin } from "../middleware/auth";
+import { authenticate, hrAndAdmin, managerAndAbove } from "../middleware/auth";
 import { validateRequest } from "../middleware/validateRequest";
 import {
   createLeaveRequestValidation,
@@ -47,19 +47,19 @@ router.put(
 // DELETE /api/leave-requests/:id - Delete leave request
 router.delete("/:id", LeaveRequestController.deleteLeaveRequest);
 
-// POST /api/leave-requests/:id/approve - Approve leave request (HR and Admin only)
+// POST /api/leave-requests/:id/approve - Approve leave request (Managers, HR, Admin)
 router.post(
   "/:id/approve",
-  hrAndAdmin,
+  managerAndAbove,
   approveRejectLeaveRequestValidation,
   validateRequest,
   LeaveRequestController.approveLeaveRequest
 );
 
-// POST /api/leave-requests/:id/reject - Reject leave request (HR and Admin only)
+// POST /api/leave-requests/:id/reject - Reject leave request (Managers, HR, Admin)
 router.post(
   "/:id/reject",
-  hrAndAdmin,
+  managerAndAbove,
   approveRejectLeaveRequestValidation,
   validateRequest,
   LeaveRequestController.rejectLeaveRequest

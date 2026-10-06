@@ -1,5 +1,24 @@
 import { body } from "express-validator";
 
+const durationValidation = () => [
+  body("duration")
+    .optional({ values: "null" })
+    .custom((value) =>
+      (typeof value === "number" && Number.isInteger(value)) ||
+      (typeof value === "string" && /^\d+$/.test(value))
+    )
+    .withMessage("Duration must contain whole numbers only")
+    .bail()
+    .isInt({ min: 1, max: 120 })
+    .withMessage("Duration must be between 1 and 120"),
+  body("durationUnit")
+    .optional()
+    .isString()
+    .bail()
+    .isIn(["MONTH", "YEAR"])
+    .withMessage("Duration unit must be MONTH or YEAR"),
+];
+
 export const createContractTypeValidation = [
   body("companyIds")
     .optional()
@@ -16,12 +35,7 @@ export const createContractTypeValidation = [
     .isLength({ max: 500 })
     .withMessage("Description must be at most 500 characters"),
 
-  body("duration")
-    .optional()
-    .isInt({ min: 1, max: 120 })
-    .withMessage(
-      "Duration must be a positive integer between 1 and 120 months"
-    ),
+  ...durationValidation(),
 
   body("isActive")
     .optional()
@@ -44,12 +58,7 @@ export const updateContractTypeValidation = [
     .isLength({ max: 500 })
     .withMessage("Description must be at most 500 characters"),
 
-  body("duration")
-    .optional()
-    .isInt({ min: 1, max: 120 })
-    .withMessage(
-      "Duration must be a positive integer between 1 and 120 months"
-    ),
+  ...durationValidation(),
 
   body("isActive")
     .optional()

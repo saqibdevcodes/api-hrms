@@ -137,7 +137,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
         });
       }
 
-      const { name, description, manager, budget, companyIds } = req.body;
+      const { name, description, manager, companyIds } = req.body;
       const resolvedCompanyIds = await resolveActiveCompanyIds(companyIds, {
         defaultWhenMissing: true,
       });
@@ -159,7 +159,6 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
           name,
           description,
           manager,
-          budget: budget ? parseFloat(budget) : null,
           companyAssignments: {
             create: resolvedCompanyIds.map((companyId) => ({ companyId })),
           },
@@ -196,7 +195,7 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
       }
 
       const { id } = req.params;
-      const { name, description, manager, budget, isActive, companyIds } = req.body;
+      const { name, description, manager, isActive, companyIds } = req.body;
       const resolvedCompanyIds =
         companyIds === undefined ? undefined : await resolveActiveCompanyIds(companyIds);
 
@@ -232,7 +231,6 @@ const skip = isUnlimited ? undefined : (pageNum - 1) * rawLimit;
           name,
           description,
           manager,
-          budget: budget ? parseFloat(budget) : null,
           isActive,
           ...(resolvedCompanyIds && {
             companyAssignments: {

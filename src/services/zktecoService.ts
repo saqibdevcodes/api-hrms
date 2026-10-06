@@ -1710,15 +1710,16 @@ export class ZKTecoService {
     if (checkType === "check_in") {
       const toa = checkTime; // Time of arrival
       this.logVerbose("toa", toa);
-      // On time arrival = toa < st
-      if (toa < todayShiftStart) {
-        return "ON_TIME_ARRIVAL"; //ok
+      // On time arrival = within official shift start + 15-minute grace period
+      const graceCutoff = new Date(todayShiftStart.getTime() + 15 * 60 * 1000);
+      if (toa <= graceCutoff) {
+        return "ON_TIME_ARRIVAL"; // within grace period
       }
-      this.logVerbose("toa < todayShiftStart", toa < todayShiftStart);
-      // late = toa >= st && < hfs
+      this.logVerbose("toa > graceCutoff", toa > graceCutoff);
+      // late = after grace period and before half day threshold
       if (
         todayHalfDayStart &&
-        toa >= todayShiftStart &&
+        toa > graceCutoff &&
         toa < todayHalfDayStart
       ) {
         return "LATE"; //ok

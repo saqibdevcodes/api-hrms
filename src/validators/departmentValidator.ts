@@ -27,17 +27,6 @@ export const createDepartmentValidation = [
     .trim()
     .isLength({ max: 100 })
     .withMessage("Manager name cannot exceed 100 characters"),
-
-  body("budget")
-    .optional()
-    .isNumeric()
-    .withMessage("Budget must be a valid number")
-    .custom((value) => {
-      if (value && parseFloat(value) < 0) {
-        throw new Error("Budget cannot be negative");
-      }
-      return true;
-    }),
 ];
 
 export const updateDepartmentValidation = [
@@ -68,17 +57,6 @@ export const updateDepartmentValidation = [
     .trim()
     .isLength({ max: 100 })
     .withMessage("Manager name cannot exceed 100 characters"),
-
-  body("budget")
-    .optional()
-    .isNumeric()
-    .withMessage("Budget must be a valid number")
-    .custom((value) => {
-      if (value && parseFloat(value) < 0) {
-        throw new Error("Budget cannot be negative");
-      }
-      return true;
-    }),
 
   body("isActive")
     .optional()

@@ -16,7 +16,8 @@ import {
   secondsAfter,
   formatAttendanceDuration,
 } from "../utils/attendanceTiming";
-import ExcelJS from 'exceljs'
+import ExcelJS from 'exceljs';
+import { AttendancePolicyService } from "../services/attendancePolicyService";
 
 const zktecoDebug = (...args: unknown[]): void => {
   if (process.env.ZKTECO_VERBOSE_LOGS === "true") {
@@ -178,6 +179,7 @@ export class ZKTecoController {
         departmentId,
         search,
         arrivalStatus,
+        scope,
         page = 1,
         limit = 50,
       } = req.query;
@@ -200,7 +202,83 @@ export class ZKTecoController {
         currentUser.role,
       );
 
-      if (canViewAllRecords) {
+      let targetUserId: string | null = null;
+      if (employeeId) {
+        const empStr = String(employeeId).trim();
+        if (empStr.toLowerCase() === "me" || empStr.toLowerCase() === "self") {
+          targetUserId = currentUser.id;
+        } else {
+          const userMatch = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { id: empStr },
+                { employeeId: empStr },
+                { email: empStr },
+              ],
+            },
+            select: { id: true },
+          });
+          targetUserId = userMatch ? userMatch.id : empStr;
+        }
+      }
+
+      const isLineManager =
+        currentUser.role === "MANAGER" ||
+        currentUser.userRank === "LINE_MANAGER" ||
+        currentUser.userRank === "MANAGER";
+
+      // Helper to fetch direct subordinates for a manager by exact email / ID
+      const mgrEmail = (currentUser.email || "").toLowerCase().trim();
+      const mgrId = currentUser.id;
+
+      // 1. Personal view explicitly requested OR target is self
+      if (scope === "personal" || targetUserId === currentUser.id) {
+        where.employeeId = currentUser.id;
+        zktecoDebug(`👤 User ${currentUser.email} viewing their own personal attendance`);
+      }
+      // 2. Team view: Line Managers or Managers viewing their direct subordinates
+      else if (scope === "team") {
+        const subordinates = await prisma.user.findMany({
+          where: {
+            isActive: true,
+            id: { not: mgrId },
+            OR: [
+              { manager: { equals: mgrEmail } },
+              { manager: { contains: mgrEmail } },
+              { manager: { equals: mgrId } },
+            ],
+          },
+          select: { id: true },
+        });
+
+        const subordinateIds = subordinates.map((s) => s.id);
+
+        if (subordinateIds.length === 0) {
+          where.employeeId = "__NO_SUBORDINATES__";
+        } else if (targetUserId && subordinateIds.includes(targetUserId)) {
+          where.employeeId = targetUserId;
+        } else {
+          where.employeeId = { in: subordinateIds };
+        }
+
+        if (search) {
+          const searchValue = String(search).trim();
+          where.employee = {
+            OR: [
+              { firstName: { contains: searchValue } },
+              { lastName: { contains: searchValue } },
+              { email: { contains: searchValue } },
+              { employeeId: { contains: searchValue } },
+            ],
+          };
+        }
+
+        zktecoDebug(
+          `👔 Manager ${currentUser.email} viewing direct team (${subordinateIds.length} members) attendance`,
+        );
+      }
+      // 3. Whole-company operations view (Only for Admin / HR / SuperAdmin in company scope)
+      else if (canViewAllRecords && (scope === "company" || !scope)) {
         where.employee = {
           employeeId: {
             not: null,
@@ -208,8 +286,8 @@ export class ZKTecoController {
           isActive: true,
         };
 
-        if (employeeId) {
-          where.employee.id = employeeId as string;
+        if (targetUserId) {
+          where.employeeId = targetUserId;
         }
 
         if (companyId) {
@@ -236,9 +314,11 @@ export class ZKTecoController {
         }
 
         zktecoDebug(
-          `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing attendance records`,
+          `👥 Privileged User ${currentUser.email} (${currentUser.role}) viewing company attendance records`,
         );
-      } else {
+      }
+      // 4. Default for Line Managers and Employees: ALWAYS THEIR OWN PERSONAL ATTENDANCE
+      else {
         where.employeeId = currentUser.id;
 
         if (companyId) {
@@ -427,6 +507,9 @@ export class ZKTecoController {
         },
       });
 
+      // Load active attendance policy settings (grace period, missing punch actions, allowances)
+      const policy = await AttendancePolicyService.getActivePolicy();
+
       // Helper function to calculate attendance status based on shift timing
       const calculateAttendanceStatus = (
         record: any,
@@ -462,17 +545,21 @@ export class ZKTecoController {
 
             // Determine check-out status
             let checkOutStatus = "ON_TIME_LEAVE";
-            if (earlyOutMinutes > 30) {
+            if (earlyOutMinutes > 15) {
               checkOutStatus = "EARLY_OUT";
             }
 
+            // Per Policy: Missing only one punch is treated as Late IN or Early OUT if configured
+            const isLateOrEarly = (policy?.missingOnePunchAction || "LATE_OR_EARLY") === "LATE_OR_EARLY";
+
             return {
-              status: "ABSENT",
+              status: isLateOrEarly ? "LATE" : (policy?.missingOnePunchAction || "ABSENT"),
+              checkInStatus: isLateOrEarly ? "LATE" : "MISSING_PUNCH",
               checkOutStatus: checkOutStatus,
               earlyOutMinutes: earlyOutMinutes,
             };
           }
-          return { status: "ABSENT" };
+          return { status: policy?.missingBothPunchesAction || "ABSENT" };
         }
         zktecoDebug("shift", shift);
 
@@ -543,27 +630,31 @@ export class ZKTecoController {
           }
         }
 
-        // Check for late arrival (more than 15 minutes late)
-        if (lateMinutes > 15) {
+        // Check for late arrival using configured grace period (default: 15 minutes)
+        const graceMinutes = policy?.gracePeriodMinutes ?? 15;
+        if (lateMinutes > graceMinutes) {
           status = status === "HALF_DAY" ? "HALF_DAY" : "LATE";
         }
 
-        // Check for early departure (more than 30 minutes early)
-        if (earlyOutMinutes > 30 && status !== "HALF_DAY") {
+        // Check for early departure (more than 15 minutes early)
+        if (earlyOutMinutes > 15 && status !== "HALF_DAY") {
           status = "EARLY_OUT";
         }
 
         // Determine check-in status
         let checkInStatus = "ON_TIME_ARRIVAL";
-        if (lateMinutes > 15) {
+        if (lateMinutes > graceMinutes) {
           checkInStatus = "LATE";
         }
 
         // Determine check-out status
-        let checkOutStatus = checkOutTime ? "ON_TIME_LEAVE" : undefined;
-        if (checkOutTime && earlyOutMinutes > 30) {
-          checkOutStatus = "EARLY_OUT";
-        }
+        let checkOutStatus = checkOutTime
+          ? earlyOutMinutes > 15
+            ? "EARLY_OUT"
+            : "ON_TIME_LEAVE"
+          : (policy?.missingOnePunchAction || "LATE_OR_EARLY") === "LATE_OR_EARLY"
+            ? "EARLY_OUT"
+            : undefined;
 
         return {
           status,
@@ -1165,6 +1256,218 @@ export class ZKTecoController {
       res.status(500).json({
         success: false,
         message: "Failed to fetch employee dashboard stats",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  static async getManagerTeamOverview(req: Request, res: Response) {
+    try {
+      const authenticatedRequest = req as AuthenticatedRequest;
+      const currentUser = authenticatedRequest.user;
+
+      if (!currentUser?.id) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      // Check user details
+      const user = await prisma.user.findUnique({
+        where: { id: currentUser.id },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          department: true,
+          userRank: true,
+          role: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // Find subordinates: strictly match direct manager email or ID
+      const userMgrEmail = (user.email || "").toLowerCase().trim();
+      const userMgrId = user.id;
+
+      const managerConditions: any[] = [
+        { manager: { equals: userMgrEmail } },
+        { manager: { contains: userMgrEmail } },
+        { manager: { equals: userMgrId } },
+      ];
+
+      const subordinates = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { not: user.id },
+          OR: managerConditions,
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          employeeId: true,
+          department: true,
+          position: true,
+          officialMobile: true,
+          userRank: true,
+        },
+        orderBy: { firstName: "asc" },
+      });
+
+      const subordinateIds = subordinates.map((s) => s.id);
+
+      const now = new Date();
+      const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      const todayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59));
+
+      // Fetch today's attendance for subordinates
+      const todayAttendances =
+        subordinateIds.length > 0
+          ? await prisma.attendance.findMany({
+              where: {
+                employeeId: { in: subordinateIds },
+                date: { gte: todayStart, lte: todayEnd },
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    employeeId: true,
+                  },
+                },
+              },
+            })
+          : [];
+
+      // Fetch pending leave requests for subordinates
+      const pendingLeaves =
+        subordinateIds.length > 0
+          ? await prisma.leaveRequest.findMany({
+              where: {
+                employeeId: { in: subordinateIds },
+                status: "PENDING",
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    employeeId: true,
+                    department: true,
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            })
+          : [];
+
+      // Fetch pending regularisations for subordinates
+      const pendingRegularisations =
+        subordinateIds.length > 0
+          ? await prisma.attendanceReason.findMany({
+              where: {
+                employeeId: { in: subordinateIds },
+                status: "PENDING",
+              },
+              include: {
+                employee: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    employeeId: true,
+                    department: true,
+                  },
+                },
+              },
+              orderBy: { datetime: "desc" },
+            })
+          : [];
+
+      let presentCount = 0;
+      let lateCount = 0;
+      let absentCount = 0;
+      let onLeaveCount = 0;
+
+      const teamList = subordinates.map((sub) => {
+        const att = todayAttendances.find((a) => a.employeeId === sub.id);
+        const onLeave = pendingLeaves.some(
+          (l) => l.employeeId === sub.id && (l.status as string) === "APPROVED"
+        );
+
+        let status = "ABSENT";
+        let checkInTime: string | null = null;
+        let checkOutTime: string | null = null;
+
+        if (onLeave) {
+          status = "ON_LEAVE";
+          onLeaveCount++;
+        } else if (att?.checkIn) {
+          checkInTime = att.checkIn.toISOString();
+          checkOutTime = att.checkOut ? att.checkOut.toISOString() : null;
+          if (att.status === "LATE" || String(att.notes || "").includes("Late")) {
+            status = "LATE";
+            lateCount++;
+            presentCount++;
+          } else {
+            status = "PRESENT";
+            presentCount++;
+          }
+        } else {
+          status = "ABSENT";
+          absentCount++;
+        }
+
+        return {
+          id: sub.id,
+          name: `${sub.firstName} ${sub.lastName}`.trim(),
+          employeeId: sub.employeeId || "—",
+          email: sub.email,
+          department: sub.department || "General",
+          position: sub.position || "Employee",
+          status,
+          checkIn: checkInTime,
+          checkOut: checkOutTime,
+          reason: att?.reason || null,
+        };
+      });
+
+      res.json({
+        success: true,
+        message: "Manager team overview retrieved successfully",
+        data: {
+          teamStats: {
+            totalMembers: subordinates.length,
+            present: presentCount,
+            late: lateCount,
+            absent: absentCount,
+            onLeave: onLeaveCount,
+            pendingApprovals:
+              pendingLeaves.length + pendingRegularisations.length,
+          },
+          subordinates: teamList,
+          pendingLeaves,
+          pendingRegularisations,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching manager team overview:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch manager team overview",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -4232,17 +4535,46 @@ export class ZKTecoController {
 
       const authenticatedRequest = req as any;
       const currentUser = authenticatedRequest.user;
-      const isEmployeeRole =
-        currentUser &&
-        !["ADMIN", "HR", "SUPERADMIN"].includes(currentUser.role);
+      const { scope } = req.query;
+
+      const isPrivileged = ["ADMIN", "HR", "SUPERADMIN"].includes(currentUser?.role);
+      const isLineManager =
+        currentUser?.role === "MANAGER" ||
+        currentUser?.userRank === "LINE_MANAGER" ||
+        currentUser?.userRank === "MANAGER";
 
       const userWhere: any = {
         isActive: true,
         employeeId: { not: null },
       };
 
-      if (isEmployeeRole && currentUser?.id) {
-        userWhere.id = currentUser.id;
+      if (scope === "personal") {
+        userWhere.id = currentUser?.id;
+      } else if (scope === "team") {
+        const unmarkMgrEmail = (currentUser?.email || "").toLowerCase().trim();
+        const unmarkMgrId = currentUser?.id;
+        const subordinates = await prisma.user.findMany({
+          where: {
+            isActive: true,
+            id: { not: unmarkMgrId },
+            OR: [
+              { manager: { equals: unmarkMgrEmail } },
+              { manager: { contains: unmarkMgrEmail } },
+              { manager: { equals: unmarkMgrId } },
+            ],
+          },
+          select: { id: true },
+        });
+        const subIds = subordinates.map((s) => s.id);
+        if (subIds.length === 0) {
+          userWhere.id = "__NO_SUBORDINATES__";
+        } else {
+          userWhere.id = { in: subIds };
+        }
+      } else if (isPrivileged && (scope === "company" || !scope)) {
+        // Company-wide for HR/Admin
+      } else {
+        userWhere.id = currentUser?.id;
       }
 
       if (departmentId) {
@@ -4625,6 +4957,225 @@ export class ZKTecoController {
       return res.status(500).json({
         success: false,
         message: "Failed to send unmarked attendance reminders",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  // SuperAdmin only: Edit attendance record (checkIn, checkOut, status, notes, reason)
+  static async superAdminEditAttendance(req: Request, res: Response): Promise<void> {
+    try {
+      const authenticatedReq = req as any;
+      const currentUser = authenticatedReq.user;
+
+      if (!currentUser || String(currentUser.role).toUpperCase() !== "SUPERADMIN") {
+        res.status(403).json({
+          success: false,
+          message: "Access denied. Only Super Admin can edit attendance records directly.",
+        });
+        return;
+      }
+
+      const {
+        id,
+        employeeId,
+        date,
+        checkInTime,
+        checkOutTime,
+        status,
+        notes,
+        reason,
+        totalHours,
+      } = req.body;
+
+      if (!employeeId && !id) {
+        res.status(400).json({
+          success: false,
+          message: "Either employeeId or attendance record id is required.",
+        });
+        return;
+      }
+
+      // Find target user
+      let targetUser: any = null;
+      if (employeeId) {
+        const empStr = String(employeeId).trim();
+        targetUser = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { id: empStr },
+              { employeeId: empStr },
+              { email: empStr },
+            ],
+          },
+        });
+      }
+
+      // If id is provided and not unmarked, try finding existing record
+      let existingRecord: any = null;
+      if (id && !String(id).startsWith("unmarked-")) {
+        existingRecord = await prisma.attendance.findUnique({
+          where: { id: String(id) },
+          include: { employee: true },
+        });
+        if (existingRecord && !targetUser) {
+          targetUser = existingRecord.employee;
+        }
+      }
+
+      if (!targetUser) {
+        res.status(404).json({
+          success: false,
+          message: "Target employee not found.",
+        });
+        return;
+      }
+
+      // Determine date
+      const targetDateStr = date
+        ? String(date).split("T")[0]
+        : existingRecord
+        ? existingRecord.date.toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+
+      const dateOnly = new Date(`${targetDateStr}T00:00:00.000Z`);
+
+      // If existingRecord wasn't found by id, look for it by (employeeId, date)
+      if (!existingRecord) {
+        existingRecord = await prisma.attendance.findFirst({
+          where: {
+            employeeId: targetUser.id,
+            date: dateOnly,
+          },
+        });
+      }
+
+      // Parse checkIn and checkOut
+      let parsedCheckIn: Date | null = null;
+      if (checkInTime) {
+        const checkInStr = String(checkInTime).trim();
+        if (checkInStr.includes("T")) {
+          parsedCheckIn = new Date(checkInStr);
+        } else {
+          const parts = checkInStr.split(":");
+          const hh = (parts[0] || "00").padStart(2, "0");
+          const mm = (parts[1] || "00").padStart(2, "0");
+          const ss = (parts[2] || "00").padStart(2, "0");
+          parsedCheckIn = new Date(`${targetDateStr}T${hh}:${mm}:${ss}.000Z`);
+        }
+      }
+
+      let parsedCheckOut: Date | null = null;
+      if (checkOutTime) {
+        const checkOutStr = String(checkOutTime).trim();
+        if (checkOutStr.includes("T")) {
+          parsedCheckOut = new Date(checkOutStr);
+        } else {
+          const parts = checkOutStr.split(":");
+          const hh = (parts[0] || "00").padStart(2, "0");
+          const mm = (parts[1] || "00").padStart(2, "0");
+          const ss = (parts[2] || "00").padStart(2, "0");
+          parsedCheckOut = new Date(`${targetDateStr}T${hh}:${mm}:${ss}.000Z`);
+        }
+      }
+
+      // Calculate working hours
+      let calculatedHours: number | null = null;
+      if (totalHours !== undefined && totalHours !== null && totalHours !== "") {
+        calculatedHours = parseFloat(String(totalHours));
+      } else if (parsedCheckIn && parsedCheckOut) {
+        const diffMs = parsedCheckOut.getTime() - parsedCheckIn.getTime();
+        calculatedHours = diffMs > 0 ? parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2)) : 0;
+      }
+
+      // Determine status
+      const validStatuses = ["PRESENT", "ABSENT", "LATE", "HALF_DAY", "WORK_FROM_HOME"];
+      let finalStatus: any = "PRESENT";
+      if (status && validStatuses.includes(String(status).toUpperCase())) {
+        finalStatus = String(status).toUpperCase();
+      } else if (parsedCheckIn) {
+        finalStatus = "PRESENT";
+      } else {
+        finalStatus = "ABSENT";
+      }
+
+      const adminNote = notes !== undefined
+        ? String(notes)
+        : existingRecord?.notes || `Updated by SuperAdmin (${currentUser.email})`;
+
+      const adminReason = reason !== undefined
+        ? String(reason)
+        : existingRecord?.reason || null;
+
+      let resultRecord: any = null;
+
+      if (existingRecord) {
+        resultRecord = await prisma.attendance.update({
+          where: { id: existingRecord.id },
+          data: {
+            checkIn: parsedCheckIn,
+            checkOut: parsedCheckOut,
+            status: finalStatus,
+            notes: adminNote,
+            reason: adminReason,
+            totalHours: calculatedHours !== null ? calculatedHours : undefined,
+            deviceCheckIns: parsedCheckIn ? (existingRecord.deviceCheckIns || 1) : 0,
+            deviceCheckOuts: parsedCheckOut ? (existingRecord.deviceCheckOuts || 1) : 0,
+            lastDeviceSync: new Date(),
+          },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                department: true,
+              },
+            },
+          },
+        });
+      } else {
+        resultRecord = await prisma.attendance.create({
+          data: {
+            employeeId: targetUser.id,
+            date: dateOnly,
+            checkIn: parsedCheckIn,
+            checkOut: parsedCheckOut,
+            status: finalStatus,
+            notes: adminNote,
+            reason: adminReason,
+            totalHours: calculatedHours !== null ? calculatedHours : null,
+            deviceCheckIns: parsedCheckIn ? 1 : 0,
+            deviceCheckOuts: parsedCheckOut ? 1 : 0,
+            lastDeviceSync: new Date(),
+          },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                department: true,
+              },
+            },
+          },
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Attendance for ${targetUser.firstName} ${targetUser.lastName} on ${targetDateStr} updated successfully`,
+        data: resultRecord,
+      });
+    } catch (error: any) {
+      console.error("Error in superAdminEditAttendance:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to update attendance record",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }

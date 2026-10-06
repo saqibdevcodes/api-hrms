@@ -23,6 +23,8 @@ import eventRoutes from "./eventRoutes";
 import companyRoutes from "./companyRoutes";
 import ticketRoutes from "./ticketRoutes";
 
+import attendancePolicyRoutes from "./attendancePolicyRoutes";
+
 const router = Router();
 
 router.use("/pdr", pdrRoutes);
@@ -71,6 +73,7 @@ router.use("/off-days", offDaysRoutes);
 
 // ZKTeco device management routes (protected)
 router.use("/zkteco", zktecoRoutes);
+router.use("/attendance-policy", attendancePolicyRoutes);
 
 // Loan management routes (protected)
 router.use("/loans", loanRoutes);

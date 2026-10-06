@@ -51,4 +51,13 @@ router.post(
   EmployeeLeaveController.initializeFromPolicy
 );
 
+// POST /api/employee-leaves/reset - Reset leaves overall, per department, or per employee (HR and Admin only)
+router.post(
+  "/reset",
+  authenticate,
+  hrAndAdmin,
+  EmployeeLeaveController.resetLeaves
+);
+
 export default router;
+

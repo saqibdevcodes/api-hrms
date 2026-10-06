@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ZKTecoController } from "../controller/zktecoController";
-import { authenticate, validateRequest } from "../middleware/auth";
+import { authenticate, validateRequest, SuperAdmin } from "../middleware/auth";
 import {
   addDeviceValidator,
   deviceIdValidator,
@@ -95,6 +95,11 @@ router.get(
   getEmpDashboardValidator,
   validateRequest,
   ZKTecoController.getEmpStatsData,
+);
+router.get(
+  "/attendance/manager-team",
+  authenticate,
+  ZKTecoController.getManagerTeamOverview,
 );
 router.get(
   "/attendance/fetch-all-from-machine",
@@ -217,6 +222,14 @@ router.post(
   "/attendance/run-finalization-cron",
   authenticate,
   ZKTecoController.runFinalizationCron,
+);
+
+// SuperAdmin only: Edit attendance record directly
+router.put(
+  "/attendance/superadmin-edit",
+  authenticate,
+  SuperAdmin,
+  ZKTecoController.superAdminEditAttendance,
 );
 
 export default router;
