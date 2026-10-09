@@ -302,8 +302,9 @@ export class ZKTecoController {
 
         if (search) {
           const searchValue = String(search).trim();
+          const tokens = searchValue.split(/\s+/).filter(Boolean);
 
-          where.employee.OR = [
+          const searchConditions: any[] = [
             { firstName: { contains: searchValue } },
             { lastName: { contains: searchValue } },
             { email: { contains: searchValue } },
@@ -311,6 +312,23 @@ export class ZKTecoController {
             { position: { contains: searchValue } },
             { department: { contains: searchValue } },
           ];
+
+          if (tokens.length >= 2) {
+            searchConditions.push({
+              AND: [
+                { firstName: { contains: tokens[0] } },
+                { lastName: { contains: tokens.slice(1).join(" ") } },
+              ],
+            });
+            searchConditions.push({
+              AND: [
+                { firstName: { contains: tokens.slice(0, -1).join(" ") } },
+                { lastName: { contains: tokens[tokens.length - 1] } },
+              ],
+            });
+          }
+
+          where.employee.OR = searchConditions;
         }
 
         zktecoDebug(
@@ -3472,13 +3490,31 @@ export class ZKTecoController {
 
         if (search) {
           const searchValue = String(search).trim();
+          const tokens = searchValue.split(/\s+/).filter(Boolean);
 
-          where.employee.OR = [
+          const searchConditions: any[] = [
             { firstName: { contains: searchValue } },
             { lastName: { contains: searchValue } },
             { email: { contains: searchValue } },
             { employeeId: { contains: searchValue } },
           ];
+
+          if (tokens.length >= 2) {
+            searchConditions.push({
+              AND: [
+                { firstName: { contains: tokens[0] } },
+                { lastName: { contains: tokens.slice(1).join(" ") } },
+              ],
+            });
+            searchConditions.push({
+              AND: [
+                { firstName: { contains: tokens.slice(0, -1).join(" ") } },
+                { lastName: { contains: tokens[tokens.length - 1] } },
+              ],
+            });
+          }
+
+          where.employee.OR = searchConditions;
         }
       } else {
         where.employeeId = currentUser.id;
@@ -4083,6 +4119,273 @@ export class ZKTecoController {
         skip += take;
       }
 
+      // Process Missing / Unmarked Attendance
+      const unmarkedExportRows: any[] = [];
+      const includeUnmarkedBool = includeUnmarked === "true" || arrivalStatusList.includes("UNMARKED") || arrivalStatusList.includes("ON_LEAVE");
+
+      if (includeUnmarkedBool) {
+        // Calculate off days and dates list
+        const dbOffDays = await prisma.offDay.findMany({
+          where: {
+            date: {
+              gte: new Date(`${fromDate}T00:00:00.000Z`),
+              lte: new Date(`${toDate}T23:59:59.999Z`),
+            },
+          },
+        });
+
+        const offDaysMap = new Map<string, string>();
+        dbOffDays.forEach((od) => {
+          if (od.date) {
+            const dStr = new Date(od.date).toISOString().split("T")[0];
+            offDaysMap.set(dStr, od.reason || "Official Off Day");
+          }
+        });
+
+        const dayNamesMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const datesList: string[] = [];
+        const curDate = new Date(`${fromDate}T00:00:00.000Z`);
+        const endDateObj = new Date(`${toDate}T00:00:00.000Z`);
+
+        const diffTime = Math.abs(endDateObj.getTime() - curDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        const maxDays = Math.min(diffDays, 31);
+
+        for (let i = 0; i < maxDays; i++) {
+          const dStr = curDate.toISOString().split("T")[0];
+          const dayOfWeek = curDate.getUTCDay();
+
+          if (dayOfWeek !== 0 && !offDaysMap.has(dStr)) {
+            datesList.push(dStr);
+          }
+          curDate.setUTCDate(curDate.getUTCDate() + 1);
+        }
+
+        if (datesList.length > 0) {
+          const overallStart = new Date(`${datesList[0]}T00:00:00.000Z`);
+          const overallEnd = new Date(`${datesList[datesList.length - 1]}T00:00:00.000Z`);
+          overallEnd.setUTCDate(overallEnd.getUTCDate() + 1);
+
+          const userWhere: any = {
+            isActive: true,
+            employeeId: { not: null },
+          };
+
+          if (departmentIdList.length) {
+            userWhere.departmentId = { in: departmentIdList };
+          }
+
+          if (selectedCompanyId) {
+            userWhere.companyMemberships = {
+              some: { companyId: selectedCompanyId },
+            };
+          }
+
+          if (search) {
+            const searchValue = String(search).trim();
+            const tokens = searchValue.split(/\s+/).filter(Boolean);
+
+            const searchConditions: any[] = [
+              { firstName: { contains: searchValue } },
+              { lastName: { contains: searchValue } },
+              { email: { contains: searchValue } },
+              { employeeId: { contains: searchValue } },
+            ];
+
+            if (tokens.length >= 2) {
+              searchConditions.push({
+                AND: [
+                  { firstName: { contains: tokens[0] } },
+                  { lastName: { contains: tokens.slice(1).join(" ") } },
+                ],
+              });
+              searchConditions.push({
+                AND: [
+                  { firstName: { contains: tokens.slice(0, -1).join(" ") } },
+                  { lastName: { contains: tokens[tokens.length - 1] } },
+                ],
+              });
+            }
+
+            userWhere.OR = searchConditions;
+          }
+
+          const activeEmpList = await prisma.user.findMany({
+            where: userWhere,
+            select: {
+              id: true,
+              employeeId: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
+              departmentEntity: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              companyMemberships: {
+                select: {
+                  company: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+              designation: true,
+              role: true,
+              userRank: true,
+              status: true,
+              shift: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+            orderBy: { firstName: "asc" },
+          });
+
+          const filteredActiveEmpList = activeEmpList.filter((emp) => {
+            if ((emp as any).role === "SUPER_ADMIN" || (emp as any).userRank === "SUPER_ADMIN") return false;
+            if ((emp as any).status === "INACTIVE" || (emp as any).isActive === false) return false;
+            const empId = String(emp.employeeId || "").trim();
+            if (!empId || empId === "—" || empId === "null" || empId === "undefined" || empId.startsWith("-")) return false;
+            return true;
+          });
+
+          const markedAtt = await prisma.attendance.findMany({
+            where: {
+              date: { gte: overallStart, lt: overallEnd },
+            },
+            select: { employeeId: true, date: true },
+          });
+
+          const stagingAtt = await prisma.zKTecoAttendanceStaging.findMany({
+            where: {
+              timestamp: { gte: overallStart, lt: overallEnd },
+              userId: { not: null },
+            },
+            select: { userId: true, timestamp: true },
+          });
+
+          const appLeaves = await prisma.leaveRequest.findMany({
+            where: {
+              status: "APPROVED",
+              startDate: { lte: overallEnd },
+              endDate: { gte: overallStart },
+            },
+            select: { employeeId: true, startDate: true, endDate: true, reason: true },
+          });
+
+          const markedSet = new Set<string>();
+          markedAtt.forEach((a) => {
+            if (a.employeeId && a.date) {
+              const dStr = new Date(a.date).toISOString().split("T")[0];
+              markedSet.add(`${a.employeeId}_${dStr}`);
+            }
+          });
+          stagingAtt.forEach((s) => {
+            if (s.userId && s.timestamp) {
+              const dStr = new Date(s.timestamp).toISOString().split("T")[0];
+              markedSet.add(`${s.userId}_${dStr}`);
+            }
+          });
+
+          const sortedDates = [...datesList].reverse();
+
+          for (const dStr of sortedDates) {
+            const dStart = new Date(`${dStr}T00:00:00.000Z`);
+            const dEnd = new Date(`${dStr}T00:00:00.000Z`);
+            dEnd.setUTCDate(dEnd.getUTCDate() + 1);
+
+            const dayName = dayNamesMap[dStart.getUTCDay()];
+
+            for (const emp of filteredActiveEmpList) {
+              const key = `${emp.id}_${dStr}`;
+              if (!markedSet.has(key)) {
+                const leave = appLeaves.find(
+                  (l) =>
+                    l.employeeId === emp.id &&
+                    new Date(l.startDate) <= dEnd &&
+                    new Date(l.endDate) >= dStart,
+                );
+
+                const statusLabel = leave ? "On Approved Leave" : "Unmarked / Missing";
+
+                unmarkedExportRows.push({
+                  dayName,
+                  date: dStr,
+                  employeeId: emp.employeeId || "—",
+                  employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim() || "—",
+                  company: selectedCompany?.name ||
+                    emp.companyMemberships
+                      ?.map((membership: any) => membership.company?.name)
+                      .filter(Boolean)
+                      .join(", ") ||
+                    "—",
+                  email: emp.email || "—",
+                  department: (emp as any).departmentEntity?.name || (typeof emp.department === "string" ? emp.department : (emp.department as any)?.name) || "—",
+                  designation: getDesignationName(emp),
+                  status: statusLabel,
+                });
+
+                // Also add to primary Attendance Records sheet
+                const shouldAddToAttendanceSheet =
+                  !arrivalStatusList.length ||
+                  arrivalStatusList.includes("UNMARKED") ||
+                  (leave && arrivalStatusList.includes("ON_LEAVE"));
+
+                if (shouldAddToAttendanceSheet) {
+                  totalRecords++;
+                  if (leave) {
+                    summary.absent++;
+                  }
+
+                  const empCompanyName =
+                    selectedCompany?.name ||
+                    emp.companyMemberships
+                      ?.map((m: any) => m.company?.name)
+                      .filter(Boolean)
+                      .join(", ") ||
+                    "—";
+
+                  const empDeptName =
+                    (emp as any).departmentEntity?.name ||
+                    (typeof emp.department === "string"
+                      ? emp.department
+                      : (emp.department as any)?.name) ||
+                    "—";
+
+                  attendanceSheet.addRow({
+                    employeeId: emp.employeeId || "—",
+                    employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim() || "—",
+                    company: empCompanyName,
+                    email: emp.email || "—",
+                    department: empDeptName,
+                    date: formatDate(dStr),
+                    checkIn: "N/A",
+                    checkInStatus: leave ? "On Leave" : "Unmarked",
+                    checkOut: "N/A",
+                    checkOutStatus: "N/A",
+                    status: leave ? "On Leave" : "Unmarked",
+                    lateMinutes: 0,
+                    earlyOutMinutes: 0,
+                    workingHours: "N/A",
+                    shift: emp.shift?.name || "No Shift",
+                    ...(includeReasons === "true"
+                      ? { reason: leave ? (leave.reason || "Approved Leave") : "Unmarked / Missing Attendance" }
+                      : {}),
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
       applyTitleRow(
         attendanceSheet,
         "Attendance Report",
@@ -4132,6 +4435,7 @@ export class ZKTecoController {
           { metric: "Early Out", value: summary.earlyOut },
           { metric: "Work From Home", value: summary.workFromHome },
           { metric: "Absent", value: summary.absent },
+          { metric: "Unmarked / Missing", value: unmarkedExportRows.length },
           {
             metric: "Department Filter",
             value: departmentIdList.length
@@ -4195,220 +4499,33 @@ export class ZKTecoController {
         });
       }
 
-      if (includeUnmarked === "true") {
+      if (includeUnmarked === "true" && unmarkedExportRows.length) {
         const unmarkedSheet = workbook.addWorksheet("Missing Attendance");
 
-        // Calculate off days and dates list
-        const dbOffDays = await prisma.offDay.findMany({
-          where: {
-            date: {
-              gte: new Date(`${fromDate}T00:00:00.000Z`),
-              lte: new Date(`${toDate}T23:59:59.999Z`),
-            },
-          },
-        });
+        unmarkedSheet.columns = [
+          { header: "Day", key: "dayName", width: 15 },
+          { header: "Date", key: "date", width: 15 },
+          { header: "Employee ID", key: "employeeId", width: 15 },
+          { header: "Employee Name", key: "employeeName", width: 25 },
+          { header: "Company", key: "company", width: 24 },
+          { header: "Email", key: "email", width: 28 },
+          { header: "Department", key: "department", width: 22 },
+          { header: "Designation", key: "designation", width: 22 },
+          { header: "Status", key: "status", width: 24 },
+        ];
 
-        const offDaysMap = new Map<string, string>();
-        dbOffDays.forEach((od) => {
-          if (od.date) {
-            const dStr = new Date(od.date).toISOString().split("T")[0];
-            offDaysMap.set(dStr, od.reason || "Official Off Day");
-          }
-        });
+        unmarkedSheet.addRows(unmarkedExportRows);
 
-        const dayNamesMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-        const datesList: string[] = [];
-        const curDate = new Date(`${fromDate}T00:00:00.000Z`);
-        const endDateObj = new Date(`${toDate}T00:00:00.000Z`);
+        applyTitleRow(
+          unmarkedSheet,
+          "Missing / Unmarked Attendance Report",
+          `${companyLabel} | From ${fromDate} to ${toDate}`,
+          unmarkedSheet.columnCount,
+        );
 
-        const diffTime = Math.abs(endDateObj.getTime() - curDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        const maxDays = Math.min(diffDays, 31);
-
-        for (let i = 0; i < maxDays; i++) {
-          const dStr = curDate.toISOString().split("T")[0];
-          const dayOfWeek = curDate.getUTCDay();
-
-          if (dayOfWeek !== 0 && !offDaysMap.has(dStr)) {
-            datesList.push(dStr);
-          }
-          curDate.setUTCDate(curDate.getUTCDate() + 1);
-        }
-
-        if (datesList.length > 0) {
-          const overallStart = new Date(`${datesList[0]}T00:00:00.000Z`);
-          const overallEnd = new Date(`${datesList[datesList.length - 1]}T00:00:00.000Z`);
-          overallEnd.setUTCDate(overallEnd.getUTCDate() + 1);
-
-          const userWhere: any = {
-            isActive: true,
-            employeeId: { not: null },
-          };
-
-          if (departmentIdList.length) {
-            userWhere.departmentId = { in: departmentIdList };
-          }
-
-          if (selectedCompanyId) {
-            userWhere.companyMemberships = {
-              some: { companyId: selectedCompanyId },
-            };
-          }
-
-          if (search) {
-            const searchValue = String(search).trim();
-            userWhere.OR = [
-              { firstName: { contains: searchValue } },
-              { lastName: { contains: searchValue } },
-              { email: { contains: searchValue } },
-              { employeeId: { contains: searchValue } },
-            ];
-          }
-
-          const activeEmpList = await prisma.user.findMany({
-            where: userWhere,
-            select: {
-              id: true,
-              employeeId: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              department: true,
-              departmentEntity: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              companyMemberships: {
-                select: {
-                  company: {
-                    select: {
-                      id: true,
-                      name: true,
-                    },
-                  },
-                },
-              },
-              designation: true,
-              role: true,
-              userRank: true,
-              status: true,
-            },
-            orderBy: { firstName: "asc" },
-          });
-
-
-          const filteredActiveEmpList = activeEmpList.filter((emp) => {
-            if ((emp as any).role === "SUPER_ADMIN" || (emp as any).userRank === "SUPER_ADMIN") return false;
-            if ((emp as any).status === "INACTIVE" || (emp as any).isActive === false) return false;
-            const empId = String(emp.employeeId || "").trim();
-            if (!empId || empId === "—" || empId === "null" || empId === "undefined" || empId.startsWith("-")) return false;
-            return true;
-          });
-
-          const markedAtt = await prisma.attendance.findMany({
-            where: {
-              date: { gte: overallStart, lt: overallEnd },
-            },
-            select: { employeeId: true, date: true },
-          });
-
-          const stagingAtt = await prisma.zKTecoAttendanceStaging.findMany({
-            where: {
-              timestamp: { gte: overallStart, lt: overallEnd },
-              userId: { not: null },
-            },
-            select: { userId: true, timestamp: true },
-          });
-
-          const appLeaves = await prisma.leaveRequest.findMany({
-            where: {
-              status: "APPROVED",
-              startDate: { lte: overallEnd },
-              endDate: { gte: overallStart },
-            },
-            select: { employeeId: true, startDate: true, endDate: true },
-          });
-
-          const markedSet = new Set<string>();
-          markedAtt.forEach((a) => {
-            if (a.employeeId && a.date) {
-              const dStr = new Date(a.date).toISOString().split("T")[0];
-              markedSet.add(`${a.employeeId}_${dStr}`);
-            }
-          });
-          stagingAtt.forEach((s) => {
-            if (s.userId && s.timestamp) {
-              const dStr = new Date(s.timestamp).toISOString().split("T")[0];
-              markedSet.add(`${s.userId}_${dStr}`);
-            }
-          });
-
-          const unmarkedExportRows: any[] = [];
-          const sortedDates = [...datesList].reverse();
-
-          for (const dStr of sortedDates) {
-            const dStart = new Date(`${dStr}T00:00:00.000Z`);
-            const dEnd = new Date(`${dStr}T00:00:00.000Z`);
-            dEnd.setUTCDate(dEnd.getUTCDate() + 1);
-
-            const dayName = dayNamesMap[dStart.getUTCDay()];
-
-            for (const emp of filteredActiveEmpList) {
-              const key = `${emp.id}_${dStr}`;
-              if (!markedSet.has(key)) {
-                const leave = appLeaves.find(
-                  (l) =>
-                    l.employeeId === emp.id &&
-                    new Date(l.startDate) <= dEnd &&
-                    new Date(l.endDate) >= dStart,
-                );
-
-                unmarkedExportRows.push({
-                  dayName,
-                  date: dStr,
-                  employeeId: emp.employeeId || "—",
-                  employeeName: `${emp.firstName} ${emp.lastName}`,
-                  company: selectedCompany?.name ||
-                    emp.companyMemberships
-                      .map((membership: any) => membership.company.name)
-                      .join(", ") ||
-                    "—",
-                  email: emp.email || "—",
-                  department: (emp as any).departmentEntity?.name || (typeof emp.department === "string" ? emp.department : (emp.department as any)?.name) || "—",
-                  designation: getDesignationName(emp),
-                  status: leave ? "On Approved Leave" : "Unmarked / Missing",
-                });
-              }
-            }
-          }
-
-          unmarkedSheet.columns = [
-            { header: "Day", key: "dayName", width: 15 },
-            { header: "Date", key: "date", width: 15 },
-            { header: "Employee ID", key: "employeeId", width: 15 },
-            { header: "Employee Name", key: "employeeName", width: 25 },
-            { header: "Company", key: "company", width: 24 },
-            { header: "Email", key: "email", width: 28 },
-            { header: "Department", key: "department", width: 22 },
-            { header: "Designation", key: "designation", width: 22 },
-            { header: "Status", key: "status", width: 24 },
-          ];
-
-          unmarkedSheet.addRows(unmarkedExportRows);
-
-          applyTitleRow(
-            unmarkedSheet,
-            "Missing / Unmarked Attendance Report",
-            `${companyLabel} | From ${fromDate} to ${toDate}`,
-            unmarkedSheet.columnCount,
-          );
-
-          applyHeaderStyle(unmarkedSheet, 4);
-          applyBodyStyle(unmarkedSheet, 5);
-          applySheetSettings(unmarkedSheet, 4);
-        }
+        applyHeaderStyle(unmarkedSheet, 4);
+        applyBodyStyle(unmarkedSheet, 5);
+        applySheetSettings(unmarkedSheet, 4);
       }
 
       const companyFilenamePart = companyLabel
