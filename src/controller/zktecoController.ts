@@ -990,6 +990,26 @@ export class ZKTecoController {
           const minutes = Math.floor((workingSeconds % 3600) / 60);
           const seconds = Math.floor(workingSeconds % 60);
           workingHours = `${hours}h ${minutes}m ${seconds}s`;
+        } else if (checkInTime) {
+          const now = new Date();
+          const currentWallClockTime = new Date(
+            Date.UTC(
+              now.getFullYear(),
+              now.getMonth(),
+              now.getDate(),
+              now.getHours(),
+              now.getMinutes(),
+              now.getSeconds(),
+            ),
+          ).getTime();
+          const checkInWallClockTime = checkInTime.getTime();
+          const inProgressSeconds = Math.max(
+            0,
+            Math.floor((currentWallClockTime - checkInWallClockTime) / 1000),
+          );
+          const hours = Math.floor(inProgressSeconds / 3600);
+          const minutes = Math.floor((inProgressSeconds % 3600) / 60);
+          workingHours = `${hours}h ${minutes}m`;
         }
 
         let status = "PRESENT";
@@ -1031,7 +1051,7 @@ export class ZKTecoController {
       };
 
       const transformRecord = (record: any) => {
-        const shift = record.employee?.shift ?? null;
+        const shift = record.employee?.shift ?? employeeProfile?.shift ?? null;
         const calculatedStatus = calculateAttendanceStatus(record, shift);
 
         const checkInRecord = record.zktecoRecords.find(
@@ -1098,22 +1118,23 @@ export class ZKTecoController {
         };
       };
 
-      const toDateOnly = (value: Date) =>
-        new Date(value.getFullYear(), value.getMonth(), value.getDate());
+      const now = new Date();
+      const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0));
+      const localToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0));
+      const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
 
-      const parseDateQuery = (value: string) => {
+      const parseSelectedDate = (value: string) => {
         const [year, month, day] = value.split("-").map(Number);
-        return new Date(year, month - 1, day);
+        return {
+          utcDate: new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)),
+          localDate: new Date(year, month - 1, day, 0, 0, 0, 0),
+        };
       };
 
-      const now = new Date();
-      const today = toDateOnly(now);
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-      const selectedDate =
+      const parsedSelectedDate =
         typeof selectedDateQuery === "string" && selectedDateQuery
-          ? parseDateQuery(selectedDateQuery)
+          ? parseSelectedDate(selectedDateQuery)
           : null;
 
       const [
@@ -1132,12 +1153,24 @@ export class ZKTecoController {
           orderBy: { date: "desc" },
         }),
         prisma.attendance.findFirst({
-          where: { employeeId: targetEmployeeId, date: today },
+          where: {
+            employeeId: targetEmployeeId,
+            OR: [
+              { date: utcToday },
+              { date: localToday },
+            ],
+          },
           select: attendanceSelect,
         }),
-        selectedDate
+        parsedSelectedDate
           ? prisma.attendance.findFirst({
-            where: { employeeId: targetEmployeeId, date: selectedDate },
+            where: {
+              employeeId: targetEmployeeId,
+              OR: [
+                { date: parsedSelectedDate.utcDate },
+                { date: parsedSelectedDate.localDate },
+              ],
+            },
             select: attendanceSelect,
           })
           : Promise.resolve(null),
@@ -1162,6 +1195,25 @@ export class ZKTecoController {
           },
         }),
       ]);
+
+      let resolvedTodayRecord = todayRecord;
+      if (!resolvedTodayRecord) {
+        // Fallback: check if an attendance record exists matching today's UTC range or linked via raw punches
+        const rawPunch = await prisma.zKTecoAttendanceRecord.findFirst({
+          where: {
+            userId: targetEmployeeId,
+            timestamp: {
+              gte: utcToday,
+              lte: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)),
+            },
+          },
+          include: { attendance: { select: attendanceSelect } },
+          orderBy: { timestamp: "desc" },
+        });
+        if (rawPunch?.attendance) {
+          resolvedTodayRecord = rawPunch.attendance;
+        }
+      }
 
       const transformedMonthRecords = monthRecords.map(transformRecord);
 
@@ -1258,9 +1310,9 @@ export class ZKTecoController {
         success: true,
         message: "Employee dashboard stats retrieved successfully",
         data: {
-          today: buildDayDetail(today, todayRecord),
-          selectedDate: selectedDate
-            ? buildDayDetail(selectedDate, selectedDateRecord)
+          today: buildDayDetail(utcToday, resolvedTodayRecord),
+          selectedDate: parsedSelectedDate
+            ? buildDayDetail(parsedSelectedDate.utcDate, selectedDateRecord)
             : null,
           month: monthStats,
           leaves: {

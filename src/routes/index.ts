@@ -74,6 +74,7 @@ router.use("/off-days", offDaysRoutes);
 // ZKTeco device management routes (protected)
 router.use("/zkteco", zktecoRoutes);
 router.use("/attendance-policy", attendancePolicyRoutes);
+router.use("/zkteco/attendance-policy", attendancePolicyRoutes);
 
 // Loan management routes (protected)
 router.use("/loans", loanRoutes);

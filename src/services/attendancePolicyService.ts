@@ -302,8 +302,10 @@ export class AttendancePolicyService {
   static async getMonthlyAllowanceStatus(employeeId: string, monthDate: Date = new Date()) {
     const policy = await this.getActivePolicy();
 
-    const startOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1));
-    const endOfMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0, 23, 59, 59));
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const startOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+    const endOfMonth = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
     // Resolve user if employeeId is an employee code, email, or cuid
     const user = await prisma.user.findFirst({
@@ -314,10 +316,19 @@ export class AttendancePolicyService {
           { email: employeeId },
         ],
       },
-      select: { id: true },
+      select: {
+        id: true,
+        departmentId: true,
+        shift: true,
+      },
     });
 
     const targetUserId = user ? user.id : employeeId;
+
+    // Default shift fallback if user has no shift assigned
+    const defaultShift = !user?.shift
+      ? await prisma.shift.findFirst({ where: { isActive: true } })
+      : null;
 
     // Get all attendance records for this employee this month
     const records = await prisma.attendance.findMany({
@@ -351,7 +362,7 @@ export class AttendancePolicyService {
     const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
 
     for (const record of records) {
-      const shift = record.employee?.shift;
+      const shift = record.employee?.shift || user?.shift || defaultShift;
       if (!record.checkIn && !record.checkOut) {
         absentCount++;
         continue;
@@ -383,6 +394,13 @@ export class AttendancePolicyService {
             lateExceededCount++;
           }
         }
+      } else if (
+        record.checkIn &&
+        (record.status === "LATE" ||
+          record.zktecoRecords?.some((r: any) => r.overallStatus === "LATE"))
+      ) {
+        lateCount++;
+        lateWithinThresholdCount++;
       }
 
       if (shift && record.checkOut) {
@@ -407,6 +425,12 @@ export class AttendancePolicyService {
             earlyOutExceededCount++;
           }
         }
+      } else if (
+        record.checkOut &&
+        record.zktecoRecords?.some((r: any) => r.overallStatus === "EARLY_OUT")
+      ) {
+        earlyOutCount++;
+        earlyOutWithinThresholdCount++;
       }
     }
 
