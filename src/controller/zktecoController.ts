@@ -1119,16 +1119,24 @@ export class ZKTecoController {
       };
 
       const now = new Date();
-      const utcToday = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0));
-      const localToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      const monthStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
+      const getPakistanToday = () => {
+        return new Date().toLocaleDateString("en-CA", {
+          timeZone: "Asia/Karachi",
+        });
+      };
+      const todayStr = getPakistanToday();
+      const todayDate = new Date(`${todayStr}T00:00:00.000Z`);
+      const todayDateEnd = new Date(`${todayStr}T23:59:59.999Z`);
+      const monthStart = new Date(`${todayStr.slice(0, 7)}-01T00:00:00.000Z`);
+      const [yearNum, monthNum] = todayStr.split("-").map(Number);
+      const monthEnd = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59, 999));
 
       const parseSelectedDate = (value: string) => {
         const [year, month, day] = value.split("-").map(Number);
+        const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         return {
-          utcDate: new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0)),
-          localDate: new Date(year, month - 1, day, 0, 0, 0, 0),
+          utcDate: new Date(`${dateStr}T00:00:00.000Z`),
+          utcDateEnd: new Date(`${dateStr}T23:59:59.999Z`),
         };
       };
 
@@ -1155,23 +1163,25 @@ export class ZKTecoController {
         prisma.attendance.findFirst({
           where: {
             employeeId: targetEmployeeId,
-            OR: [
-              { date: utcToday },
-              { date: localToday },
-            ],
+            date: {
+              gte: todayDate,
+              lte: todayDateEnd,
+            },
           },
           select: attendanceSelect,
+          orderBy: { date: "desc" },
         }),
         parsedSelectedDate
           ? prisma.attendance.findFirst({
             where: {
               employeeId: targetEmployeeId,
-              OR: [
-                { date: parsedSelectedDate.utcDate },
-                { date: parsedSelectedDate.localDate },
-              ],
+              date: {
+                gte: parsedSelectedDate.utcDate,
+                lte: parsedSelectedDate.utcDateEnd,
+              },
             },
             select: attendanceSelect,
+            orderBy: { date: "desc" },
           })
           : Promise.resolve(null),
         prisma.leaveRequest.count({
@@ -1203,8 +1213,8 @@ export class ZKTecoController {
           where: {
             userId: targetEmployeeId,
             timestamp: {
-              gte: utcToday,
-              lte: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)),
+              gte: todayDate,
+              lte: todayDateEnd,
             },
           },
           include: { attendance: { select: attendanceSelect } },
@@ -1310,7 +1320,7 @@ export class ZKTecoController {
         success: true,
         message: "Employee dashboard stats retrieved successfully",
         data: {
-          today: buildDayDetail(utcToday, resolvedTodayRecord),
+          today: buildDayDetail(todayDate, resolvedTodayRecord),
           selectedDate: parsedSelectedDate
             ? buildDayDetail(parsedSelectedDate.utcDate, selectedDateRecord)
             : null,
