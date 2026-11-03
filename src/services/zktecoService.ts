@@ -962,12 +962,13 @@ export class ZKTecoService {
   }
 
   /**
-   * Handle progressive deductions and update employee leaves
-   * 3 LATE = 1 HALF_DAY_LEAVE deduction
-   * 2 HALF_DAY_LEAVE = 1 FULL_DAY_LEAVE deduction (from casual leaves)
-   * PLUS: Automatic deduction for FULL_DAY_LEAVE status
+   * Handle direct leave quota deductions and update employee leaves
+   * Deducts directly from actual leave quota without waiting or summing for the month:
+   * - Each LATE arrival: 0.5 day deducted directly from actual leave quota (casual/annual)
+   * - Each HALF_DAY_LEAVE: 0.5 day deducted directly from actual leave quota
+   * - Each FULL_DAY_LEAVE: 1.0 day deducted directly from actual leave quota
    */
-  private async handleProgressiveDeductions(
+  public async handleDirectLeaveDeductions(
     employeeId: string,
     attendanceId: string,
   ): Promise<void> {
@@ -1000,7 +1001,7 @@ export class ZKTecoService {
         },
       );
 
-      // NEW: Get today's FULL_DAY_LEAVE records for automatic deduction
+      // Get today's FULL_DAY_LEAVE records for automatic deduction
       const today = new Date();
       const todayStart = new Date(
         today.getFullYear(),
@@ -1030,100 +1031,78 @@ export class ZKTecoService {
         });
 
       this.logVerbose(
-        `📊 Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`,
+        `📊 Direct Leave Deduction for Employee ${employeeId} - Unused Late: ${unusedLateRecords.length}, Unused Half Day: ${unusedHalfDayRecords.length}, Today FULL_DAY_LEAVE: ${todayFullDayLeaveRecords.length}`,
       );
 
-      // NEW: Automatic deduction for FULL_DAY_LEAVE status
+      // 1. Process FULL_DAY_LEAVE: 1.0 day direct deduction from actual leave quota
       if (todayFullDayLeaveRecords.length > 0) {
-        this.logVerbose(
-          `🚫 Processing automatic deduction for ${todayFullDayLeaveRecords.length} FULL_DAY_LEAVE record(s)`,
-        );
-
         for (const record of todayFullDayLeaveRecords) {
-          // Mark this record as used for deduction
           await this.markRecordsAsUsedForDeduction([record.id]);
-
-          // Apply 1 day deduction from casual leaves
           await this.deductFromLeavePolicy(
             employeeId,
             1.0,
             "FULL_DAY_LEAVE_AUTOMATIC",
           );
-
-          // Create deduction record
           await this.createAttendanceDeduction(
             attendanceId,
-            `Automatic deduction for FULL_DAY_LEAVE status (${record.checkType})`,
-            1.0, // Full day
+            `Direct leave quota deduction for FULL_DAY_LEAVE status (${record.checkType})`,
+            1.0,
             employeeId,
             [record.id],
             "FULL_DAY_LEAVE_AUTOMATIC",
           );
-
           this.logVerbose(
-            `⚠️ Applied automatic FULL_DAY_LEAVE deduction for employee ${employeeId}. Record: ${record.id}`,
+            `⚠️ Applied direct FULL_DAY_LEAVE 1.0-day deduction for employee ${employeeId}. Record: ${record.id}`,
           );
         }
       }
 
-      // Check for 3 LATE = 1 HALF_DAY_LEAVE deduction
-      if (unusedLateRecords.length >= 3) {
-        // Take the first 3 unused late records
-        const recordsToUse = unusedLateRecords.slice(0, 3);
-        const recordIds = recordsToUse.map((r: any) => r.id);
-
+      // 2. Process LATE records: Deduct 0.5 day directly per late arrival (no waiting for 3 or month-end)
+      for (const record of unusedLateRecords) {
+        await this.markRecordsAsUsedForDeduction([record.id]);
+        await this.deductFromLeavePolicy(employeeId, 0.5, "LATE_TO_HALF_DAY");
         await this.createAttendanceDeduction(
           attendanceId,
-          "3 Late arrivals converted to Half Day Leave deduction",
-          0.5, // Half day
+          "Late arrival deducted directly (0.5 day) from actual leave quota",
+          0.5,
           employeeId,
-          recordIds,
-          "LATE_TO_HALF_DAY",
+          [record.id],
+          "LATE_DIRECT_DEDUCTION",
         );
-
-        // Mark these records as used for deduction
-        await this.markRecordsAsUsedForDeduction(recordIds);
-
-        // Deduct from leave policy
-        await this.deductFromLeavePolicy(employeeId, 0.5, "LATE_TO_HALF_DAY");
-
         this.logVerbose(
-          `⚠️ Applied Half Day deduction for 3 late arrivals to employee ${employeeId}. Records: ${recordIds.join(
-            ", ",
-          )}`,
+          `⚠️ Applied direct 0.5-day leave quota deduction for late arrival to employee ${employeeId}. Record: ${record.id}`,
         );
       }
 
-      // Check for 2 HALF_DAY_LEAVE = 1 FULL_DAY_LEAVE deduction
-      if (unusedHalfDayRecords.length >= 2) {
-        // Take the first 2 unused half day records
-        const recordsToUse = unusedHalfDayRecords.slice(0, 2);
-        const recordIds = recordsToUse.map((r: any) => r.id);
-
+      // 3. Process HALF_DAY_LEAVE records: Deduct 0.5 day directly per half-day leave (no waiting for 2 or month-end)
+      for (const record of unusedHalfDayRecords) {
+        await this.markRecordsAsUsedForDeduction([record.id]);
+        await this.deductFromLeavePolicy(employeeId, 0.5, "HALF_DAY_TO_FULL_DAY");
         await this.createAttendanceDeduction(
           attendanceId,
-          "2 Half Day leaves converted to Full Day Leave deduction",
-          1.0, // Full day
+          "Half Day leave deducted directly (0.5 day) from actual leave quota",
+          0.5,
           employeeId,
-          recordIds,
-          "HALF_DAY_TO_FULL_DAY",
+          [record.id],
+          "HALF_DAY_DIRECT_DEDUCTION",
         );
-
-        // Mark these records as used for deduction
-        await this.markRecordsAsUsedForDeduction(recordIds);
-
-        // Deduct from leave policy
-        await this.deductFromLeavePolicy(employeeId, 1, "HALF_DAY_TO_FULL_DAY");
-
         this.logVerbose(
-          `⚠️ Applied Full Day deduction and deducted from casual leaves for employee ${employeeId}. Records: ${recordIds.join(
-            ", ",
-          )}`,
+          `⚠️ Applied direct 0.5-day leave quota deduction for half day leave to employee ${employeeId}. Record: ${record.id}`,
         );
       }
     } catch (error) {
-      console.error("Error handling progressive deductions:", error);
+      console.error("Error handling direct leave deductions:", error);
     }
+  }
+
+  /**
+   * Backwards-compatible alias for handleDirectLeaveDeductions
+   */
+  public async handleProgressiveDeductions(
+    employeeId: string,
+    attendanceId: string,
+  ): Promise<void> {
+    return this.handleDirectLeaveDeductions(employeeId, attendanceId);
   }
 
   /**
@@ -1213,100 +1192,49 @@ export class ZKTecoService {
       this.logVerbose(`📋 Leave policy for ${employeeId}: ${leavePolicy.name}`);
 
       // Determine which leave category to deduct from based on violation type
-      let leaveCategory: string = "";
-      let currentBalance: number = 0;
-      let newBalance: number = 0;
+      let remainingToDeduct = daysToDeduct;
+      let deductedFromCasual = 0;
+      let deductedFromAnnual = 0;
 
-      if (violationType === "LATE_TO_HALF_DAY") {
-        // For 3 LATE = 0.5 day deduction, prefer casual leaves first
-        if (employeeLeave.casualLeaves >= daysToDeduct) {
-          leaveCategory = "casualLeaves";
-          currentBalance = employeeLeave.casualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
+      if (employeeLeave.casualLeaves > 0 && remainingToDeduct > 0) {
+        deductedFromCasual = Math.min(employeeLeave.casualLeaves, remainingToDeduct);
+        const newCasual = Math.max(0, employeeLeave.casualLeaves - deductedFromCasual);
+        remainingToDeduct -= deductedFromCasual;
 
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { casualLeaves: newBalance },
-          });
-        } else if (employeeLeave.annualLeaves >= daysToDeduct) {
-          // Fallback to annual leaves if casual leaves insufficient
-          leaveCategory = "annualLeaves";
-          currentBalance = employeeLeave.annualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
+        await prisma.employeeLeave.update({
+          where: { userId: employeeId },
+          data: { casualLeaves: newCasual },
+        });
 
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { annualLeaves: newBalance },
-          });
-        } else {
-          console.warn(
-            `⚠️ Insufficient leave balance for deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`,
-          );
-          return;
-        }
-      } else if (violationType === "HALF_DAY_TO_FULL_DAY") {
-        // For 2 HALF_DAY_LEAVE = 1 day deduction, prefer annual leaves
-        if (employeeLeave.annualLeaves >= daysToDeduct) {
-          leaveCategory = "annualLeaves";
-          currentBalance = employeeLeave.annualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
-
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { annualLeaves: newBalance },
-          });
-        } else if (employeeLeave.casualLeaves >= daysToDeduct) {
-          // Fallback to casual leaves if annual leaves insufficient
-          leaveCategory = "casualLeaves";
-          currentBalance = employeeLeave.casualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
-
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { casualLeaves: newBalance },
-          });
-        } else {
-          console.warn(
-            `⚠️ Insufficient leave balance for deduction. Annual: ${employeeLeave.annualLeaves}, Casual: ${employeeLeave.casualLeaves}`,
-          );
-          return;
-        }
-      } else if (violationType === "FULL_DAY_LEAVE_AUTOMATIC") {
-        // NEW: For FULL_DAY_LEAVE status, always deduct from casual leaves
-        if (employeeLeave.casualLeaves >= daysToDeduct) {
-          leaveCategory = "casualLeaves";
-          currentBalance = employeeLeave.casualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
-
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { casualLeaves: newBalance },
-          });
-        } else if (employeeLeave.annualLeaves >= daysToDeduct) {
-          // Fallback to annual leaves if casual leaves insufficient
-          leaveCategory = "annualLeaves";
-          currentBalance = employeeLeave.annualLeaves;
-          newBalance = Math.max(0, currentBalance - daysToDeduct);
-
-          await prisma.employeeLeave.update({
-            where: { userId: employeeId },
-            data: { annualLeaves: newBalance },
-          });
-        } else {
-          console.warn(
-            `⚠️ Insufficient leave balance for FULL_DAY_LEAVE deduction. Casual: ${employeeLeave.casualLeaves}, Annual: ${employeeLeave.annualLeaves}`,
-          );
-          return;
-        }
+        this.logVerbose(
+          `📉 Deducted ${deductedFromCasual} day(s) directly from casualLeaves. Old: ${employeeLeave.casualLeaves}, New: ${newCasual}`,
+        );
       }
 
-      this.logVerbose(
-        `📉 Deducted ${daysToDeduct} day(s) from ${leaveCategory}. Old balance: ${currentBalance}, New balance: ${newBalance}`,
-      );
+      if (employeeLeave.annualLeaves > 0 && remainingToDeduct > 0) {
+        deductedFromAnnual = Math.min(employeeLeave.annualLeaves, remainingToDeduct);
+        const newAnnual = Math.max(0, employeeLeave.annualLeaves - deductedFromAnnual);
+        remainingToDeduct -= deductedFromAnnual;
+
+        await prisma.employeeLeave.update({
+          where: { userId: employeeId },
+          data: { annualLeaves: newAnnual },
+        });
+
+        this.logVerbose(
+          `📉 Deducted ${deductedFromAnnual} day(s) directly from annualLeaves. Old: ${employeeLeave.annualLeaves}, New: ${newAnnual}`,
+        );
+      }
+
+      if (remainingToDeduct > 0) {
+        console.warn(
+          `⚠️ Leave quota exhausted for employee ${employeeId}. Shortfall: ${remainingToDeduct} day(s) (treated as Leave Without Pay / LWP).`,
+        );
+      }
 
       // Log the deduction details for audit
       this.logVerbose(
-        `📊 Leave deduction applied: ${violationType} → ${daysToDeduct} day(s) from ${leaveCategory}`,
+        `📊 Direct leave deduction applied: ${violationType} → ${daysToDeduct} day(s) total (Casual: ${deductedFromCasual}, Annual: ${deductedFromAnnual})`,
       );
 
       // Also log the updated leave balance summary
@@ -1900,6 +1828,12 @@ export class ZKTecoService {
           );
 
         if (result.success && result.attendance) {
+          // Immediately apply direct leave deductions from employee's actual leave quota
+          await this.handleDirectLeaveDeductions(
+            employee.id,
+            result.attendance.id,
+          );
+
           await this.emitAttendanceUpdate(employee, result.attendance, {
             ...attendanceData,
             timestamp: pktTimestamp,

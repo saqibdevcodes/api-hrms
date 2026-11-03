@@ -2883,10 +2883,10 @@ export class ZKTecoController {
         return;
       }
 
-      if (reason.trim().length < 10) {
+      if (reason.trim().length < 5) {
         res.status(400).json({
           success: false,
-          message: "Reason must be at least 10 characters long",
+          message: "Reason must be at least 5 characters long",
         });
         return;
       }
